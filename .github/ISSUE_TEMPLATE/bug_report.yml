@@ -1,0 +1,40 @@
+name: Bug report
+description: Report a defect in ssh-manager
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug, plus what you expected instead.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      description: The exact commands run (redact secrets).
+      placeholder: |
+        1. sshmgr reconcile
+        2. ...
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: ssh-manager version
+      placeholder: "ssh-manager version"
+    validations:
+      required: true
+  - type: input
+    id: os
+    attributes:
+      label: OS / platform
+      placeholder: "macOS 15.x (arm64)"
+    validations:
+      required: true
+  - type: textarea
+    id: doctor
+    attributes:
+      label: "`sshmgr doctor` output"
+      render: shell

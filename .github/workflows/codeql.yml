@@ -1,0 +1,40 @@
+name: CodeQL
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  schedule:
+    - cron: "0 6 * * 1"   # Mondays 06:00 UTC
+
+permissions:
+  contents: read
+
+jobs:
+  analyze:
+    # Code scanning needs GitHub Advanced Security on private repos, which this
+    # repo does not have. Run only when public, so it self-activates at go-public
+    # without failing every push while private.
+    if: github.event.repository.visibility == 'public'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      # A job-level permissions block REPLACES the workflow-level one, so
+      # checkout needs contents:read explicitly to clone the (private) repo.
+      contents: read
+      actions: read            # read workflow metadata (needed on private repos)
+      security-events: write   # upload results to the Security tab
+    strategy:
+      fail-fast: false
+      matrix:
+        # Scan the Python code and the workflow files themselves.
+        language: [python, actions]
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          persist-credentials: false
+      - uses: github/codeql-action/init@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
+        with:
+          languages: ${{ matrix.language }}
+      - uses: github/codeql-action/analyze@dd903d2e4f5405488e5ef1422510ee31c8b32357 # v3
