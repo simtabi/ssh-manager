@@ -1,0 +1,5 @@
+# Normalize line endings to LF (matches .editorconfig).
+* text=auto eol=lf
+*.png binary
+*.age binary
+*.tar.gz binary

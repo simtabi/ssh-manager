@@ -1,0 +1,15 @@
+{{ managed_header }}
+{% for h in hosts %}
+Host {{ h.alias }}
+    HostName {{ h.hostname }}
+    User {{ h.user }}
+{% if h.port and h.port != 22 %}
+    Port {{ h.port }}
+{% endif %}
+    IdentityFile {{ h.identity_file }}
+    UserKnownHostsFile {{ h.known_hosts }}
+{% for key, value in h.raw_options.items() %}
+    {{ key }} {{ value }}
+{% endfor %}
+
+{% endfor %}
