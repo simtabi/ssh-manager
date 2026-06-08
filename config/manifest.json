@@ -1,0 +1,107 @@
+{
+  "version": 1,
+  "defaults": {
+    "key_type": "ed25519",
+    "key_scope": "per_service",
+    "rotate_after_days": 365,
+    "warn_before_days": [
+      30,
+      14,
+      7,
+      1
+    ],
+    "expiry_check": {
+      "enabled": true,
+      "debounce_hours": 24,
+      "desktop_notify": true
+    },
+    "global_options": {
+      "AddKeysToAgent": "yes",
+      "IgnoreUnknown": "UseKeychain",
+      "UseKeychain": "yes",
+      "IdentitiesOnly": "yes",
+      "ServerAliveInterval": 60
+    }
+  },
+  "profiles": {
+    "work": {
+      "key_scope": "per_service",
+      "hosts": [
+        {
+          "alias": "unc",
+          "hostname": "sc.its.unc.edu",
+          "user": "uncgit",
+          "port": 443,
+          "key_name": "work_unc-ed25519",
+          "requires_vpn": true,
+          "vpn_name": "UNC VPN",
+          "vpn_url": "https://vpn.unc.edu"
+        }
+      ]
+    },
+    "personal": {
+      "key_scope": "per_service",
+      "hosts": [
+        {
+          "alias": "github-personal",
+          "hostname": "github.com",
+          "user": "git",
+          "provider": "github",
+          "key_name": "personal_github-ed25519"
+        }
+      ]
+    },
+    "simtabi": {
+      "key_scope": "per_service",
+      "hosts": [
+        {
+          "alias": "github-simtabi",
+          "hostname": "github.com",
+          "user": "git",
+          "provider": "github",
+          "token_env": "GH_TOKEN_SIMTABI",
+          "key_name": "simtabi_github-ed25519"
+        }
+      ]
+    },
+    "development": {
+      "key_scope": "per_service",
+      "hosts": [
+        {
+          "alias": "oribi-web",
+          "hostname": "143.198.186.131",
+          "user": "ploi",
+          "provider": "ploi",
+          "key_name": "development_oribi-web-ed25519",
+          "tags": [
+            "app"
+          ]
+        },
+        {
+          "alias": "oribi-db-maria",
+          "hostname": "161.35.104.205",
+          "user": "ploi",
+          "provider": "ploi",
+          "key_name": "development_oribi-db-maria-ed25519",
+          "tags": [
+            "db"
+          ]
+        },
+        {
+          "alias": "oribi-db-psql",
+          "hostname": "167.71.19.80",
+          "user": "ploi",
+          "provider": "ploi",
+          "key_name": "development_oribi-db-psql-ed25519",
+          "tags": [
+            "db"
+          ]
+        }
+      ]
+    },
+    "school": {
+      "key_scope": "per_service",
+      "hosts": []
+    }
+  }
+}

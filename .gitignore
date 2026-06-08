@@ -1,0 +1,42 @@
+# secrets / runtime state: NEVER commit. The real per-user home is ~/.sshmgr
+# (outside the repo); config/ here is only the example manifest + schemas.
+.env
+config/.env
+**/age-identity.txt
+**/*-identity.txt
+*.age
+*.age.sha256
+*.age.contents
+config/log/
+config/snapshots/
+config/.state/
+# runtime state that older builds wrote into ./config (now under ~/.sshmgr)
+config/.lock
+config/.expiry-cache.json
+config/.notify-cache.json
+config/audit.log
+
+# generated ~/.ssh is NOT in this repo; if you also version it via chezmoi,
+# allowlist only *.pub and config there, never private keys.
+
+# python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.pyc
+
+# os / editor / tooling
+.DS_Store
+*.swp
+.idea/
+.vscode/
+.claude/

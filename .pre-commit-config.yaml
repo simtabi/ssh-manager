@@ -1,0 +1,31 @@
+# Local safety net (secrets + hygiene + lint). Run: pre-commit install
+repos:
+  - repo: https://github.com/gitleaks/gitleaks
+    rev: v8.18.4
+    hooks:
+      - id: gitleaks
+  - repo: https://github.com/pre-commit/pre-commit-hooks
+    rev: v4.6.0
+    hooks:
+      - id: detect-private-key
+      - id: end-of-file-fixer
+      - id: trailing-whitespace
+      - id: mixed-line-ending
+        args: [--fix=lf]
+      - id: check-merge-conflict
+      - id: check-added-large-files
+      - id: check-yaml
+      - id: check-toml
+      - id: check-json
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.5.0
+    hooks:
+      - id: ruff
+  - repo: local
+    hooks:
+      - id: sync-package-data
+        name: sync providers.json/.env-example into package data
+        entry: .build/sync-data.sh
+        language: system
+        pass_filenames: false
+        files: '^(config/providers\.json|\.env-example)$'

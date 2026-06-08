@@ -1,0 +1,163 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "ssh-manager manifest",
+  "type": "object",
+  "required": [
+    "version",
+    "profiles"
+  ],
+  "properties": {
+    "version": {
+      "type": "integer",
+      "const": 1
+    },
+    "defaults": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "key_type": {
+          "type": "string"
+        },
+        "key_scope": {
+          "enum": [
+            "per_service",
+            "shared"
+          ]
+        },
+        "rotate_after_days": {
+          "type": "integer"
+        },
+        "warn_before_days": {
+          "type": "array",
+          "items": {
+            "type": "integer"
+          }
+        },
+        "expiry_check": {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "enabled": {
+              "type": "boolean"
+            },
+            "debounce_hours": {
+              "type": "integer"
+            },
+            "desktop_notify": {
+              "type": "boolean"
+            }
+          }
+        },
+        "global_options": {
+          "type": "object",
+          "additionalProperties": {
+            "type": [
+              "string",
+              "integer"
+            ]
+          }
+        }
+      }
+    },
+    "profiles": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "object",
+        "additionalProperties": false,
+        "properties": {
+          "key_scope": {
+            "enum": [
+              "per_service",
+              "shared"
+            ]
+          },
+          "key_name": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
+          "hosts": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "alias",
+                "hostname",
+                "user"
+              ],
+              "properties": {
+                "alias": {
+                  "type": "string"
+                },
+                "hostname": {
+                  "type": "string"
+                },
+                "user": {
+                  "type": "string"
+                },
+                "port": {
+                  "type": "integer",
+                  "default": 22
+                },
+                "provider": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "token_env": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "key_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "tags": {
+                  "type": "array",
+                  "items": {
+                    "type": "string"
+                  }
+                },
+                "requires_vpn": {
+                  "type": "boolean",
+                  "description": "Host is only reachable over a VPN."
+                },
+                "vpn_name": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Which VPN (shown in the reachability hint)."
+                },
+                "vpn_url": {
+                  "type": [
+                    "string",
+                    "null"
+                  ],
+                  "description": "Where to connect that VPN (shown in the hint)."
+                },
+                "raw_options": {
+                  "type": "object",
+                  "additionalProperties": {
+                    "type": [
+                      "string",
+                      "integer"
+                    ]
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  },
+  "additionalProperties": false
+}
