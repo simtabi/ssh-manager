@@ -1,0 +1,8 @@
+{{ managed_header }}
+Include profiles/*/config
+
+Host *
+{% for key, value in global_options.items() %}
+    {{ key }} {{ value }}
+{% endfor %}
+{{ managed_end }}
