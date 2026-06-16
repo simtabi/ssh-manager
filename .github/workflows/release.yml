@@ -22,8 +22,11 @@ jobs:
       fail-fast: false
       matrix:
         include:
+          # macOS is Apple-Silicon-only for now: the bundled Python engine's C
+          # extensions ship arm64-only, so a universal2 (Intel+ARM) engine can't
+          # be frozen, and dedicated Intel (macos-13) runners are scarce. Intel
+          # mac returns once the pure-Go port lets us lipo a universal binary.
           - { runner: macos-14, goos: darwin, goarch: arm64 }
-          - { runner: macos-13, goos: darwin, goarch: amd64 }
           - { runner: ubuntu-24.04, goos: linux, goarch: amd64 }
           - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64 }
           - { runner: windows-latest, goos: windows, goarch: amd64 }
