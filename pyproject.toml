@@ -28,7 +28,7 @@ classifiers = [
 ]
 dependencies = [
     "typer>=0.12",
-    "rich>=13",
+    "rich>=15.0.0",
     "questionary>=2",
     "pydantic>=2",
     "python-dotenv>=1",
