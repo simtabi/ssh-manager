@@ -18,7 +18,7 @@ var v1Verbs = []struct{ verb, short string }{
 	{"doctor", "Diagnose deps, perms, agent, known_hosts, drift"},
 	{"reconcile", "Build ~/.ssh from the manifest"},
 	{"keygen", "Generate a profile's or host's keys"},
-	{"config", "Render, check, or show the SSH config"},
+	// "config" is now native Go (see config.go), not a passthrough.
 	{"import", "Onboard an existing ~/.ssh into the manifest"},
 	{"diff", "Preview manifest vs. on-disk reality"},
 	{"list", "Filterable tree across profiles"},
