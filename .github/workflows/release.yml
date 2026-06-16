@@ -1,5 +1,11 @@
 name: Release
 
+# A v* tag builds a self-contained binary per OS/arch (Go front-end + embedded,
+# PyInstaller-frozen engine) and publishes them, with checksums and a cosign
+# signature, to a GitHub Release. CPython cannot cross-compile, so each target is
+# built on a matching native runner. Homebrew cask / Scoop / Linux packages are a
+# follow-on (they need the simtabi/homebrew-tap + simtabi/scoop-bucket repos and a
+# TAP_GITHUB_TOKEN).
 on:
   push:
     tags: ["v*"]
@@ -8,40 +14,95 @@ permissions:
   contents: read
 
 jobs:
-  release:
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
-    permissions:
-      # A job-level permissions block REPLACES the workflow-level one; contents:write
-      # is needed to create the GitHub Release and upload artifacts.
-      contents: write
+  build:
+    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { runner: macos-14, goos: darwin, goarch: arm64 }
+          - { runner: macos-13, goos: darwin, goarch: amd64 }
+          - { runner: ubuntu-24.04, goos: linux, goarch: amd64 }
+          - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64 }
+          - { runner: windows-latest, goos: windows, goarch: amd64 }
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
           persist-credentials: false
+      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
+        with:
+          go-version: stable
       - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
         with:
           python-version: "3.12"
-      - name: Verify tag matches package version
+      - name: Freeze the engine for this OS/arch
+        shell: bash
         run: |
-          TAG="${GITHUB_REF_NAME#v}"
-          VER="$(python -c 'import tomllib,pathlib; \
-            d=tomllib.loads(pathlib.Path("pyproject.toml").read_text()); \
-            import re; \
-            p=d["tool"]["hatch"]["version"]["path"]; \
-            print(re.search(r"__version__\s*=\s*[\"\x27]([^\"\x27]+)", pathlib.Path(p).read_text()).group(1))')"
-          echo "tag=$TAG package=$VER"
-          test "$TAG" = "$VER" || { echo "::error::tag v$TAG != package version $VER"; exit 1; }
-      - name: Build
+          python -m pip install --upgrade pip pyinstaller
+          python -m pip install -e .
+          PYTHON=python .build/freeze-engine.sh
+      - name: Build self-contained binary + archive
+        shell: bash
+        env:
+          GOOS: ${{ matrix.goos }}
+          GOARCH: ${{ matrix.goarch }}
+          CGO_ENABLED: "0"
         run: |
-          python -m pip install --upgrade pip build
-          python -m build
-      - name: Checksums
-        run: cd dist && sha256sum *.whl *.tar.gz > SHA256SUMS
-      - name: Create GitHub Release
+          VER="${GITHUB_REF_NAME#v}"
+          LD="-s -w -X github.com/simtabi/ssh-manager/internal/version.Version=${VER}"
+          NAME="ssh-manager_${VER}_${GOOS}_${GOARCH}"
+          mkdir -p out
+          BIN=sshmgr
+          [ "$GOOS" = windows ] && BIN=sshmgr.exe
+          go build -tags bundled -trimpath -ldflags "$LD" -o "$BIN" ./cmd/sshmgr
+          tar czf "out/${NAME}.tar.gz" "$BIN" LICENSE README.md
+          (cd out && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
+          path: out/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    permissions:
+      contents: write # create the GitHub Release
+      id-token: write # cosign keyless signing
+    steps:
+      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+        with:
+          fetch-depth: 0 # release notes from history
+          persist-credentials: false
+      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          pattern: dist-*
+          path: dist
+          merge-multiple: true
+      - name: Combine checksums
+        shell: bash
+        run: |
+          cd dist
+          cat *.tar.gz.sha256 > SHA256SUMS
+          rm -f *.tar.gz.sha256
+      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
+      - name: Sign the checksums (keyless)
+        shell: bash
+        run: |
+          cd dist
+          cosign sign-blob --yes \
+            --output-signature SHA256SUMS.sig \
+            --output-certificate SHA256SUMS.pem \
+            SHA256SUMS
+      - name: Create the GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
-        run: >
-          gh release create "$GITHUB_REF_NAME"
-          dist/*.whl dist/*.tar.gz dist/SHA256SUMS
-          --title "$GITHUB_REF_NAME" --generate-notes
+        shell: bash
+        run: |
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --repo "${{ github.repository }}" \
+            --title "$GITHUB_REF_NAME" \
+            --generate-notes
