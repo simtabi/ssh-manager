@@ -54,3 +54,6 @@ cleaned/
 /sshmgr.exe
 *.test
 /vendor/
+
+# Build-generated frozen engine (PyInstaller output embedded by -tags bundled)
+internal/engine/embed/engine
