@@ -31,7 +31,7 @@ dependencies = [
     "rich>=13",
     "questionary>=2",
     "pydantic>=2",
-    "python-dotenv>=1",
+    "python-dotenv>=1.2.2",
     "jinja2>=3",
 ]
 
