@@ -230,6 +230,6 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
   **questionary**, the CLI is **typer** - one toolkit per concern.
 - CI runs the suite on macOS / Linux (Python 3.11-3.13) and the platform layer on
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
-  publish to PyPI via OIDC trusted publishing on a `v*` tag.
+  build and attach artifacts to a GitHub Release on a `v*` tag.
 
 [Unreleased]: https://github.com/simtabi/ssh-manager/commits/main

@@ -12,7 +12,7 @@ owner-only ACLs, `schtasks`, PowerShell toast, plus a real reconcile/perms e2e).
 ## Install
 
 ```sh
-pip install ssh-manager      # or: pipx install ssh-manager
+pip install git+https://github.com/simtabi/ssh-manager.git   # or: pipx install git+https://github.com/simtabi/ssh-manager.git
 sshmgr doctor           # verify deps, perms, agent, known_hosts, drift
 ```
 

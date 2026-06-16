@@ -10,7 +10,7 @@
 ## Install
 
 ```sh
-pip install ssh-manager        # or: pipx install ssh-manager
+pip install git+https://github.com/simtabi/ssh-manager.git   # or pipx
 ```
 
 ## From the repo (development)
