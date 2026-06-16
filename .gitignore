@@ -48,3 +48,9 @@ docs/shipping-checklist.md
 reports/
 cleaned/
 *.bak
+
+# Go
+/sshmgr
+/sshmgr.exe
+*.test
+/vendor/
