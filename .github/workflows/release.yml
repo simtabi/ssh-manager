@@ -102,7 +102,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         shell: bash
         run: |
+          # A pre-release identifier in the tag (e.g. -rc.1, -beta) marks it as a
+          # GitHub pre-release.
+          PRERELEASE=
+          case "$GITHUB_REF_NAME" in *-*) PRERELEASE=--prerelease ;; esac
           gh release create "$GITHUB_REF_NAME" dist/* \
             --repo "${{ github.repository }}" \
             --title "$GITHUB_REF_NAME" \
-            --generate-notes
+            --generate-notes $PRERELEASE
