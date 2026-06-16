@@ -36,7 +36,7 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
-dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.5", "pre-commit>=3"]
+dev = ["pytest>=8", "mypy>=1.10", "ruff>=0.5", "pre-commit>=4.6.0"]
 
 [project.urls]
 Homepage = "https://opensource.simtabi.com/products/ssh-manager"
