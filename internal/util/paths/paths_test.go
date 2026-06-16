@@ -43,7 +43,7 @@ func TestConfigDirOverride(t *testing.T) {
 		want string
 	}{
 		{map[string]string{"SSH_MANAGER_HOME": abs}, abs},
-		{map[string]string{"SSH_MANAGER_CONFIG_DIR": abs}, abs}, // alias
+		{map[string]string{"SSH_MANAGER_CONFIG_DIR": abs}, abs},                   // alias
 		{map[string]string{"SSH_MANAGER_HOME": "rel"}, filepath.Join(cwd, "rel")}, // relative absolutized
 	}
 	for _, c := range cases {
