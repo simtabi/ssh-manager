@@ -27,33 +27,41 @@ func TestConfigDirDefaults(t *testing.T) {
 	}
 }
 
+// absPath builds an OS-absolute path (drive-letter rooted on Windows).
+func absPath(parts ...string) string {
+	if runtime.GOOS == "windows" {
+		return filepath.Join(append([]string{`C:\`}, parts...)...)
+	}
+	return filepath.Join(append([]string{"/"}, parts...)...)
+}
+
 func TestConfigDirOverride(t *testing.T) {
-	abs := filepath.Join(string(filepath.Separator)+"abs", "home")
+	abs := absPath("abs", "home")
+	cwd := absPath("cwd")
 	cases := []struct {
 		env  map[string]string
-		cwd  string
 		want string
 	}{
-		{map[string]string{"SSH_MANAGER_HOME": abs}, "/cwd", abs},
-		{map[string]string{"SSH_MANAGER_CONFIG_DIR": abs}, "/cwd", abs}, // alias
-		{map[string]string{"SSH_MANAGER_HOME": "rel"}, string(filepath.Separator) + "cwd",
-			filepath.Join(string(filepath.Separator)+"cwd", "rel")}, // relative absolutized
+		{map[string]string{"SSH_MANAGER_HOME": abs}, abs},
+		{map[string]string{"SSH_MANAGER_CONFIG_DIR": abs}, abs}, // alias
+		{map[string]string{"SSH_MANAGER_HOME": "rel"}, filepath.Join(cwd, "rel")}, // relative absolutized
 	}
 	for _, c := range cases {
-		if got := ConfigDir(env(c.env), c.cwd); got != c.want {
+		if got := ConfigDir(env(c.env), cwd); got != c.want {
 			t.Errorf("ConfigDir(%v) = %q, want %q", c.env, got, c.want)
 		}
 	}
 	// An empty override falls through to the OS default (not treated as set).
-	got := ConfigDir(env(map[string]string{"SSH_MANAGER_HOME": "", "HOME": "/tmp/h", "APPDATA": `C:\A`}), "/cwd")
+	got := ConfigDir(env(map[string]string{"SSH_MANAGER_HOME": "", "HOME": "/tmp/h", "APPDATA": `C:\A`}), cwd)
 	if filepath.Base(got) != "ssh-manager" {
 		t.Errorf("empty override should fall through to default, got %q", got)
 	}
 }
 
 func TestPathsLayout(t *testing.T) {
-	h := filepath.Join(string(filepath.Separator)+"home", "x")
-	p := Resolve(env(map[string]string{"SSH_MANAGER_HOME": h}), "/cwd", "/ssh")
+	h := absPath("home", "x")
+	ssh := absPath("ssh")
+	p := Resolve(env(map[string]string{"SSH_MANAGER_HOME": h}), absPath("cwd"), ssh)
 	checks := map[string]string{
 		"home":        p.Home(),
 		"manifest":    p.Manifest(),
@@ -77,7 +85,7 @@ func TestPathsLayout(t *testing.T) {
 			t.Errorf("%s = %q, want %q", k, checks[k], want[k])
 		}
 	}
-	if p.SSHDir != "/ssh" {
-		t.Errorf("SSHDir = %q, want /ssh", p.SSHDir)
+	if p.SSHDir != ssh {
+		t.Errorf("SSHDir = %q, want %q", p.SSHDir, ssh)
 	}
 }
