@@ -40,21 +40,71 @@ var DefaultGlobalOptions = map[string]string{
 	"IdentitiesOnly": "yes", "ServerAliveInterval": "60",
 }
 
-// optionMap stringifies JSON option values (numbers, bools) like Python's str().
-type optionMap map[string]string
+// OrderedOptions is an SSH-option map that preserves JSON key order (the renderer
+// emits options in that order) and stringifies values like Python's str().
+type OrderedOptions struct {
+	keys []string
+	vals map[string]string
+}
 
-func (m *optionMap) UnmarshalJSON(b []byte) error {
-	raw := map[string]json.RawMessage{}
-	if err := json.Unmarshal(b, &raw); err != nil {
+func (o *OrderedOptions) UnmarshalJSON(b []byte) error {
+	o.keys = nil
+	o.vals = map[string]string{}
+	dec := json.NewDecoder(bytes.NewReader(b))
+	t, err := dec.Token()
+	if err != nil {
 		return err
 	}
-	out := make(map[string]string, len(raw))
-	for k, v := range raw {
-		out[k] = stringifyJSON(v)
+	if t == nil {
+		return nil // null -> empty
 	}
-	*m = out
-	return nil
+	if d, ok := t.(json.Delim); !ok || d != '{' {
+		return fmt.Errorf("options must be a JSON object")
+	}
+	for dec.More() {
+		kt, err := dec.Token()
+		if err != nil {
+			return err
+		}
+		k := kt.(string)
+		var raw json.RawMessage
+		if err := dec.Decode(&raw); err != nil {
+			return err
+		}
+		if _, seen := o.vals[k]; !seen {
+			o.keys = append(o.keys, k)
+		}
+		o.vals[k] = stringifyJSON(raw)
+	}
+	_, err = dec.Token() // consume '}'
+	return err
 }
+
+// MarshalJSON emits the options in their preserved order.
+func (o OrderedOptions) MarshalJSON() ([]byte, error) {
+	if len(o.keys) == 0 {
+		return []byte("{}"), nil
+	}
+	var buf bytes.Buffer
+	buf.WriteByte('{')
+	for i, k := range o.keys {
+		if i > 0 {
+			buf.WriteByte(',')
+		}
+		kb, _ := json.Marshal(k)
+		vb, _ := json.Marshal(o.vals[k])
+		buf.Write(kb)
+		buf.WriteByte(':')
+		buf.Write(vb)
+	}
+	buf.WriteByte('}')
+	return buf.Bytes(), nil
+}
+
+// Len, Keys, and Get expose the options in order.
+func (o OrderedOptions) Len() int            { return len(o.keys) }
+func (o OrderedOptions) Keys() []string      { return o.keys }
+func (o OrderedOptions) Get(k string) string { return o.vals[k] }
 
 func stringifyJSON(raw json.RawMessage) string {
 	s := strings.TrimSpace(string(raw))
@@ -76,18 +126,18 @@ func stringifyJSON(raw json.RawMessage) string {
 
 // Host is a single SSH host entry.
 type Host struct {
-	Alias       string    `json:"alias"`
-	Hostname    string    `json:"hostname"`
-	User        string    `json:"user"`
-	Port        int       `json:"port"`
-	Provider    *string   `json:"provider,omitempty"`
-	TokenEnv    *string   `json:"token_env,omitempty"`
-	KeyName     *string   `json:"key_name,omitempty"`
-	Tags        []string  `json:"tags,omitempty"`
-	RequiresVPN bool      `json:"requires_vpn"`
-	VPNName     *string   `json:"vpn_name,omitempty"`
-	VPNURL      *string   `json:"vpn_url,omitempty"`
-	RawOptions  optionMap `json:"raw_options,omitempty"`
+	Alias       string         `json:"alias"`
+	Hostname    string         `json:"hostname"`
+	User        string         `json:"user"`
+	Port        int            `json:"port"`
+	Provider    *string        `json:"provider,omitempty"`
+	TokenEnv    *string        `json:"token_env,omitempty"`
+	KeyName     *string        `json:"key_name,omitempty"`
+	Tags        []string       `json:"tags,omitempty"`
+	RequiresVPN bool           `json:"requires_vpn"`
+	VPNName     *string        `json:"vpn_name,omitempty"`
+	VPNURL      *string        `json:"vpn_url,omitempty"`
+	RawOptions  OrderedOptions `json:"raw_options,omitempty"`
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -140,19 +190,19 @@ func (e *ExpiryCheck) UnmarshalJSON(b []byte) error {
 
 // Defaults are manifest-wide defaults.
 type Defaults struct {
-	KeyType         string      `json:"key_type"`
-	KeyScope        string      `json:"key_scope"`
-	RotateAfterDays int         `json:"rotate_after_days"`
-	WarnBeforeDays  []int       `json:"warn_before_days"`
-	ExpiryCheck     ExpiryCheck `json:"expiry_check"`
-	GlobalOptions   optionMap   `json:"global_options"`
+	KeyType         string         `json:"key_type"`
+	KeyScope        string         `json:"key_scope"`
+	RotateAfterDays int            `json:"rotate_after_days"`
+	WarnBeforeDays  []int          `json:"warn_before_days"`
+	ExpiryCheck     ExpiryCheck    `json:"expiry_check"`
+	GlobalOptions   OrderedOptions `json:"global_options"`
 }
 
 func newDefaults() Defaults {
 	return Defaults{
 		KeyType: "ed25519", KeyScope: "per_service", RotateAfterDays: 365,
 		WarnBeforeDays: []int{30, 14, 7, 1}, ExpiryCheck: newExpiryCheck(),
-		GlobalOptions: optionMap{},
+		GlobalOptions: OrderedOptions{},
 	}
 }
 
@@ -243,8 +293,9 @@ func safeValue(field, value string) error {
 	return nil
 }
 
-func checkOptions(field string, opts map[string]string) error {
-	for k, v := range opts {
+func checkOptions(field string, opts OrderedOptions) error {
+	for _, k := range opts.keys {
+		v := opts.vals[k]
 		if err := rejectControl(fmt.Sprintf("%s key %q", field, k), k); err != nil {
 			return err
 		}

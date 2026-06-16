@@ -25,7 +25,7 @@ func TestLoadRealManifest(t *testing.T) {
 		t.Fatalf("defaults wrong: version=%d key_type=%q", m.Version, m.Defaults.KeyType)
 	}
 	// JSON number coerced to string, matching Python str(60).
-	if got := m.Defaults.GlobalOptions["ServerAliveInterval"]; got != "60" {
+	if got := m.Defaults.GlobalOptions.Get("ServerAliveInterval"); got != "60" {
 		t.Fatalf("ServerAliveInterval = %q, want \"60\"", got)
 	}
 	if !m.Defaults.ExpiryCheck.Enabled || m.Defaults.ExpiryCheck.DebounceHours != 24 {
