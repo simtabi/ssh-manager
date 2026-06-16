@@ -1,0 +1,103 @@
+# GoReleaser config for ssh-manager v2. One `v*` tag builds binaries for every
+# OS/arch and publishes to GitHub Releases, a Homebrew tap, a Scoop bucket, and
+# Linux packages. Validate locally with:
+#   goreleaser check
+#   goreleaser release --snapshot --clean --skip=publish,sign
+version: 2
+
+project_name: ssh-manager
+
+before:
+  hooks:
+    - go mod tidy
+
+builds:
+  - id: sshmgr
+    main: ./cmd/sshmgr
+    binary: sshmgr
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/simtabi/ssh-manager/internal/version.Version={{.Version}}
+
+archives:
+  - id: sshmgr
+    ids: [sshmgr]
+    name_template: "{{ .ProjectName }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+
+checksum:
+  name_template: "checksums.txt"
+
+sboms:
+  - artifacts: archive
+
+# Keyless signing via the GitHub Actions OIDC token (cosign). Skipped on snapshot.
+signs:
+  - cmd: cosign
+    certificate: "${artifact}.pem"
+    args:
+      - sign-blob
+      - "--output-certificate=${certificate}"
+      - "--output-signature=${signature}"
+      - "${artifact}"
+      - "--yes"
+    artifacts: checksum
+    output: true
+
+nfpms:
+  - id: sshmgr
+    ids: [sshmgr]
+    package_name: ssh-manager
+    vendor: Simtabi LLC
+    homepage: https://opensource.simtabi.com/products/ssh-manager
+    maintainer: Imani Manyara <19682005+imanimanyara@users.noreply.github.com>
+    description: Profile-based SSH key & config lifecycle manager.
+    license: MIT
+    formats: [deb, rpm, apk]
+
+homebrew_casks:
+  - name: ssh-manager
+    ids: [sshmgr]
+    repository:
+      owner: simtabi
+      name: homebrew-tap
+    homepage: https://opensource.simtabi.com/products/ssh-manager
+    description: Profile-based SSH key & config lifecycle manager.
+    commit_author:
+      name: Imani Manyara
+      email: 19682005+imanimanyara@users.noreply.github.com
+
+scoops:
+  - name: ssh-manager
+    ids: [sshmgr]
+    repository:
+      owner: simtabi
+      name: scoop-bucket
+    homepage: https://opensource.simtabi.com/products/ssh-manager
+    description: Profile-based SSH key & config lifecycle manager.
+    license: MIT
+    commit_author:
+      name: Imani Manyara
+      email: 19682005+imanimanyara@users.noreply.github.com
+
+release:
+  github:
+    owner: simtabi
+    name: ssh-manager
+
+changelog:
+  use: github
+  sort: asc
+  filters:
+    exclude:
+      - "^docs:"
+      - "^test:"
+      - "^chore:"
