@@ -34,7 +34,7 @@ var v1Verbs = []struct{ verb, short string }{
 	{"rollback", "Restore the previous key"},
 	{"bundle", "Encrypted backup of keys + state"},
 	{"restore", "Decrypt and lay keys back"},
-	{"snapshots", "List/restore/prune local ~/.ssh backups"},
+	// "snapshots" is now native Go (see snapshots.go), not a passthrough.
 	{"recover", "Break-glass recovery snippet / fixkeys tool"},
 	{"notify", "Manage the scheduled expiry notifier"},
 	{"profile", "Manage a profile (add/edit/delete)"},
