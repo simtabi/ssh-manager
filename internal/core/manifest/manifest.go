@@ -229,6 +229,11 @@ type Manifest struct {
 	Version  int                `json:"version"`
 	Defaults Defaults           `json:"defaults"`
 	Profiles map[string]Profile `json:"profiles"`
+
+	// profileOrder is the JSON insertion order of profile keys. The renderer
+	// emits in name order, but the read views (query.groups) iterate the manifest
+	// in file order, so we preserve it to match v1's list/view output order.
+	profileOrder []string
 }
 
 func (m *Manifest) UnmarshalJSON(b []byte) error {
@@ -238,7 +243,48 @@ func (m *Manifest) UnmarshalJSON(b []byte) error {
 		return err
 	}
 	*m = Manifest(aux)
+	var top map[string]json.RawMessage
+	if json.Unmarshal(b, &top) == nil {
+		if pr, ok := top["profiles"]; ok {
+			m.profileOrder = objectKeyOrder(pr)
+		}
+	}
 	return nil
+}
+
+// objectKeyOrder returns a JSON object's keys in their textual order (nil if raw
+// is not an object), the same token-stream technique OrderedOptions uses.
+func objectKeyOrder(raw json.RawMessage) []string {
+	dec := json.NewDecoder(bytes.NewReader(raw))
+	t, err := dec.Token()
+	if err != nil {
+		return nil
+	}
+	if d, ok := t.(json.Delim); !ok || d != '{' {
+		return nil
+	}
+	var keys []string
+	for dec.More() {
+		kt, err := dec.Token()
+		if err != nil {
+			return keys
+		}
+		keys = append(keys, kt.(string))
+		var skip json.RawMessage
+		if dec.Decode(&skip) != nil {
+			return keys
+		}
+	}
+	return keys
+}
+
+// ProfileNames returns profile names in manifest (file) order. Falls back to
+// name order for a programmatically built manifest with no captured order.
+func (m *Manifest) ProfileNames() []string {
+	if len(m.profileOrder) == len(m.Profiles) {
+		return m.profileOrder
+	}
+	return m.sortedProfileNames()
 }
 
 // decodeStrict decodes with DisallowUnknownFields (pydantic extra="forbid").
