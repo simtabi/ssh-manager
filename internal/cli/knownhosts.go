@@ -13,9 +13,11 @@ import (
 
 // snapshotBeforeMutation is the native mutation guard: sweep crash residue, then
 // snapshot ~/.ssh so the change is reversible (mirrors the Facade's _mutating).
-func snapshotBeforeMutation(p paths.Paths) {
+// Returns the snapshot path ("" if none was made).
+func snapshotBeforeMutation(p paths.Paths) string {
 	snapshots.CleanTempArtifacts(p.SSHDir)
-	_, _ = snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain, "")
+	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain, "")
+	return snap
 }
 
 func newKnownHostsCmd() *cobra.Command {

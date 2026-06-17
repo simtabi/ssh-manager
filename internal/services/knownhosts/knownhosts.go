@@ -361,6 +361,70 @@ func (s *Service) Init(m *manifest.Manifest, profile string, allProfiles, user, 
 	return report, nil
 }
 
+// autoPinDisabled is true when SSH_MANAGER_AUTO_PIN is set to a falsy string.
+func autoPinDisabled(getenv func(string) string) bool {
+	switch strings.ToLower(strings.TrimSpace(getenv("SSH_MANAGER_AUTO_PIN"))) {
+	case "0", "false", "no", "off":
+		return true
+	default:
+		return false
+	}
+}
+
+// AutoPin creates/updates each profile's known_hosts with its hosts' keys so a
+// freshly minted profile works without a separate pin. Trust-on-first-use only
+// (never overrides an already-pinned host), skips unreachable hosts (short 2s
+// probe, since the caller holds the lock), and is disabled by SSH_MANAGER_AUTO_PIN
+// =0/false/no/off. Returns {profile: keys added}. Mirrors facade._auto_pin.
+func (s *Service) AutoPin(m *manifest.Manifest, profiles map[string]bool, getenv func(string) string) map[string]int {
+	if autoPinDisabled(getenv) {
+		return map[string]int{}
+	}
+	if _, err := exec.LookPath("ssh-keyscan"); err != nil {
+		return map[string]int{}
+	}
+	rks, err := m.IterResolved()
+	if err != nil {
+		return map[string]int{}
+	}
+	added := map[string]int{}
+	seen := map[string]bool{}
+	for _, rk := range rks {
+		if profiles != nil && !profiles[rk.Profile] {
+			continue
+		}
+		h := rk.Host
+		key := fmt.Sprintf("%s\x00%s\x00%d", rk.Profile, h.Hostname, h.Port)
+		if seen[key] {
+			continue
+		}
+		seen[key] = true
+		kh := s.PathFor(rk.Profile)
+		token := h.Hostname
+		if h.Port != 22 {
+			token = fmt.Sprintf("[%s]:%d", h.Hostname, h.Port)
+		}
+		if HostInKnownHosts(kh, token) {
+			continue // already trusted - never override
+		}
+		if !netcheck.TCPReachable(h.Hostname, h.Port, 2*time.Second) {
+			continue // unreachable/VPN-gated - pin later
+		}
+		scanned := s.Scan(h.Hostname, h.Port)
+		if len(scanned) == 0 {
+			continue
+		}
+		lines := make([]string, len(scanned))
+		for i, sk := range scanned {
+			lines[i] = sk.Line
+		}
+		if n, _ := s.Add(lines, rk.Profile); n > 0 {
+			added[rk.Profile] += n
+		}
+	}
+	return added
+}
+
 func (s *Service) initOne(profile, alias, hostname string, port int, force bool) HostPinResult {
 	label := profile
 	if label == "" {

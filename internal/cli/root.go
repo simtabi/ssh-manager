@@ -27,6 +27,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newNetCmd())        // native Go
 	root.AddCommand(newSnapshotsCmd())  // native Go
 	root.AddCommand(newKnownHostsCmd()) // native Go
+	root.AddCommand(newReconcileCmd())  // native Go
 	addPassthroughCommands(root)
 	return root
 }

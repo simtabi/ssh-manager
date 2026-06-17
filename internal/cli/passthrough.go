@@ -16,7 +16,7 @@ var v1Verbs = []struct{ verb, short string }{
 	{"init", "Create/converge the per-user home"},
 	{"migrate", "Move a legacy home to the standard location"},
 	// "doctor" is now native Go (see doctor.go), not a passthrough.
-	{"reconcile", "Build ~/.ssh from the manifest"},
+	// "reconcile" is now native Go (see reconcile.go), not a passthrough.
 	{"keygen", "Generate a profile's or host's keys"},
 	// "config" is now native Go (see config.go), not a passthrough.
 	{"import", "Onboard an existing ~/.ssh into the manifest"},

@@ -96,3 +96,28 @@ func TestTargetsDedup(t *testing.T) {
 		t.Errorf("ProfileOfAlias(b)=%q want work", ProfileOfAlias(&m, "b"))
 	}
 }
+
+func TestAutoPinDisabledAndAlreadyTrusted(t *testing.T) {
+	const mj = `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "work":{"key_scope":"per_service","hosts":[{"alias":"gh","hostname":"github.com","user":"git"}]}}}`
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(mj), &m); err != nil {
+		t.Fatal(err)
+	}
+	ssh := t.TempDir()
+	s := New(ssh)
+
+	// Disabled via env -> no pins, no network touched.
+	off := func(string) string { return "0" }
+	if got := s.AutoPin(&m, nil, off); len(got) != 0 {
+		t.Errorf("disabled AutoPin added %v want none", got)
+	}
+
+	// Enabled but the host is already trusted -> skipped (no network needed).
+	os.MkdirAll(filepath.Join(ssh, "profiles", "work"), 0o700)
+	os.WriteFile(s.PathFor("work"), []byte("github.com ssh-ed25519 AAAA\n"), 0o644)
+	on := func(string) string { return "" }
+	if got := s.AutoPin(&m, nil, on); len(got) != 0 {
+		t.Errorf("already-trusted host should not be re-pinned, got %v", got)
+	}
+}
