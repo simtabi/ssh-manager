@@ -36,6 +36,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newInitCmd())       // native Go
 	root.AddCommand(newImportCmd())     // native Go
 	root.AddCommand(newMigrateCmd())    // native Go
+	root.AddCommand(newRecoverCmd())    // native Go
 	addPassthroughCommands(root)
 	return root
 }
