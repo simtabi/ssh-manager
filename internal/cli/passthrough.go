@@ -19,7 +19,7 @@ var v1Verbs = []struct{ verb, short string }{
 	// "reconcile" is now native Go (see reconcile.go), not a passthrough.
 	// "keygen" is now native Go (see keygen.go), not a passthrough.
 	// "config" is now native Go (see config.go), not a passthrough.
-	{"import", "Onboard an existing ~/.ssh into the manifest"},
+	// "import" is now native Go (see import.go), not a passthrough.
 	// "diff" is now native Go (see diff.go), not a passthrough.
 	{"list", "Filterable tree across profiles"},
 	{"view", "Resolved host config + key + deployment status"},

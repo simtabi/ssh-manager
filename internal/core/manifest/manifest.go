@@ -32,6 +32,10 @@ var dangerousOptions = map[string]bool{
 	"knownhostscommand": true, "pkcs11provider": true, "securitykeyprovider": true,
 }
 
+// IsDangerousOption reports whether an SSH option key can execute commands / pull
+// in config (dropped on import, rejected by validation). Case-insensitive.
+func IsDangerousOption(key string) bool { return dangerousOptions[strings.ToLower(key)] }
+
 var keyScopes = map[string]bool{"per_service": true, "shared": true}
 
 // DefaultGlobalOptions are the canonical Host* defaults used by Starter.
