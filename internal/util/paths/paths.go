@@ -110,3 +110,28 @@ func (p Paths) StateDir() string     { return filepath.Join(p.ConfigDir, ".state
 func (p Paths) LockFile() string     { return filepath.Join(p.StateDir(), ".lock") }
 func (p Paths) ExpiryCache() string  { return filepath.Join(p.StateDir(), "expiry-cache.json") }
 func (p Paths) NotifyCache() string  { return filepath.Join(p.StateDir(), "notify-cache.json") }
+
+// LegacyHomes are pre-rename / pre-XDG home locations in priority order: the
+// "sshmgr" sibling of the standard home (pre-rename OS-standard dir) and the
+// original dot-home ~/.sshmgr. Mirrors facade._legacy_homes.
+func (p Paths) LegacyHomes() []string {
+	home, _ := os.UserHomeDir()
+	return []string{
+		filepath.Join(filepath.Dir(p.ConfigDir), "sshmgr"),
+		filepath.Join(home, ".sshmgr"),
+	}
+}
+
+// FirstLegacyHome returns the first real legacy dir worth migrating (a directory,
+// not a symlink, not the standard home), or "". Mirrors facade._first_legacy_home.
+func (p Paths) FirstLegacyHome() string {
+	for _, cand := range p.LegacyHomes() {
+		if cand == p.ConfigDir {
+			continue
+		}
+		if fi, err := os.Lstat(cand); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
+			return cand
+		}
+	}
+	return ""
+}

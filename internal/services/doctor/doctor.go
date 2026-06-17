@@ -219,7 +219,7 @@ func (s *Service) Run() Report {
 		ConfigInSync:    true,
 		OldKeys:         map[string]int{},
 	}
-	if legacy := s.firstLegacyHome(); legacy != "" && fs.Exists(s.p.ConfigDir) {
+	if legacy := s.p.FirstLegacyHome(); legacy != "" && fs.Exists(s.p.ConfigDir) {
 		rep.StrandedLegacyHome = legacy
 	}
 	ssh := s.p.SSHDir
@@ -244,26 +244,6 @@ func (s *Service) providersSource() string {
 		return "user file"
 	}
 	return "shipped default"
-}
-
-// firstLegacyHome returns the first real pre-rename/pre-XDG home worth migrating
-// (the "sshmgr" sibling of the new home, or ~/.sshmgr), else "".
-func (s *Service) firstLegacyHome() string {
-	home, _ := os.UserHomeDir()
-	cands := []string{
-		filepath.Join(filepath.Dir(s.p.ConfigDir), "sshmgr"),
-		filepath.Join(home, ".sshmgr"),
-	}
-	for _, c := range cands {
-		if c == s.p.ConfigDir {
-			continue
-		}
-		fi, err := os.Lstat(c)
-		if err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
-			return c
-		}
-	}
-	return ""
 }
 
 func permIssues(ssh string) []string {
