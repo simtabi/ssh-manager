@@ -8,13 +8,24 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/snapshots"
+	"github.com/simtabi/ssh-manager/internal/util/lock"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
-// snapshotBeforeMutation is the native mutation guard: sweep crash residue, then
-// snapshot ~/.ssh so the change is reversible (mirrors the Facade's _mutating).
-// Returns the snapshot path ("" if none was made).
+// heldLock keeps the acquired advisory lock alive for the rest of the process so
+// the OS doesn't release it (and GC doesn't close the fd) before the mutation
+// finishes; a short-lived CLI command releases it on exit.
+var heldLock func()
+
+// snapshotBeforeMutation is the native mutation guard (mirrors the Facade's
+// _mutating): take the advisory lock so concurrent commands serialize, sweep crash
+// residue, then snapshot ~/.ssh so the change is reversible. The lock is best-
+// effort - a failure to acquire doesn't block the operation. Returns the snapshot
+// path ("" if none was made).
 func snapshotBeforeMutation(p paths.Paths) string {
+	if rel, err := lock.Acquire(p.LockFile()); err == nil {
+		heldLock = rel
+	}
 	snapshots.CleanTempArtifacts(p.SSHDir)
 	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain, "")
 	return snap
