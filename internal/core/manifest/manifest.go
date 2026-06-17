@@ -462,10 +462,13 @@ func (m *Manifest) KnownHostsFile(profileName string) string {
 	return sshToken + "/profiles/" + profileName + "/known_hosts"
 }
 
-// IterResolved returns every host with its resolved key, in profile-name order.
+// IterResolved returns every host with its resolved key, in manifest (file)
+// order - matching Python's iter_resolved (which iterates profiles.items()). Order
+// is observable in order-preserving consumers like doctor's unpinned-host list;
+// the rendered config is order-independent (the root config uses Include).
 func (m *Manifest) IterResolved() ([]ResolvedKey, error) {
 	var out []ResolvedKey
-	for _, pname := range m.sortedProfileNames() {
+	for _, pname := range m.ProfileNames() {
 		for _, h := range m.Profiles[pname].Hosts {
 			kname, err := m.ResolvedKeyName(pname, h)
 			if err != nil {
@@ -480,10 +483,11 @@ func (m *Manifest) IterResolved() ([]ResolvedKey, error) {
 	return out, nil
 }
 
-// NonEmptyProfiles lists profiles that have at least one host (name order).
+// NonEmptyProfiles lists profiles that have at least one host, in manifest (file)
+// order - matching Python's non_empty_profiles (profiles.items()).
 func (m *Manifest) NonEmptyProfiles() []string {
 	var out []string
-	for _, n := range m.sortedProfileNames() {
+	for _, n := range m.ProfileNames() {
 		if len(m.Profiles[n].Hosts) > 0 {
 			out = append(out, n)
 		}
