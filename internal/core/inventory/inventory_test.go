@@ -1,10 +1,40 @@
 package inventory
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
+
+// TestRecordSerializationMatchesPydantic locks in the byte-for-byte serialization
+// parity with pydantic's model_dump(mode="json"): unset pointer fields emit null
+// (not omitted), and an empty deployments list emits [] (not null/omitted).
+func TestRecordSerializationMatchesPydantic(t *testing.T) {
+	b, err := json.Marshal(KeyRecord{Profile: "p", Path: "~/.ssh/profiles/p/k", Type: "ed25519", RotateAfterDays: 365})
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := string(b)
+	for _, want := range []string{
+		`"comment":null`, `"created":null`, `"expires_on":null`, `"deployments":[]`,
+	} {
+		if !strings.Contains(got, want) {
+			t.Errorf("record JSON missing %s\n got: %s", want, got)
+		}
+	}
+	// Field order matches the pydantic model declaration order.
+	wantOrder := []string{"profile", "path", "type", "comment", "created", "rotate_after_days", "expires_on", "deployments"}
+	last := -1
+	for _, f := range wantOrder {
+		i := strings.Index(got, `"`+f+`"`)
+		if i <= last {
+			t.Errorf("field %q out of order in %s", f, got)
+		}
+		last = i
+	}
+}
 
 func TestLoadMissingIsEmpty(t *testing.T) {
 	inv, err := Load(filepath.Join(t.TempDir(), "nope.json"))

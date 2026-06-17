@@ -9,6 +9,12 @@ import (
 	"path/filepath"
 )
 
+// Exists reports whether path exists (following symlinks).
+func Exists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 // EnsureDir creates path (and parents) and forces mode (MkdirAll is umask-masked,
 // so chmod afterwards to guarantee no group/other bits on a secrets dir).
 func EnsureDir(path string, mode os.FileMode) error {

@@ -26,7 +26,7 @@ func decodeStrict(b []byte, v any) error {
 type Deployment struct {
 	Target   string  `json:"target"`
 	Method   string  `json:"method"` // ssh-copy-id | web-panel | manual | <adapter>
-	Date     *string `json:"date,omitempty"`
+	Date     *string `json:"date"`
 	Verified bool    `json:"verified"` // false == needs-redeploy
 }
 
@@ -40,16 +40,18 @@ func (d *Deployment) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// KeyRecord is one managed key and where it is deployed.
+// KeyRecord is one managed key and where it is deployed. All fields serialize
+// unconditionally (null for an unset pointer, [] for no deployments) to match
+// pydantic's model_dump(mode="json") byte-for-byte.
 type KeyRecord struct {
 	Profile         string       `json:"profile"`
 	Path            string       `json:"path"`
 	Type            string       `json:"type"`
-	Comment         *string      `json:"comment,omitempty"`
-	Created         *string      `json:"created,omitempty"`
+	Comment         *string      `json:"comment"`
+	Created         *string      `json:"created"`
 	RotateAfterDays int          `json:"rotate_after_days"`
-	ExpiresOn       *string      `json:"expires_on,omitempty"`
-	Deployments     []Deployment `json:"deployments,omitempty"`
+	ExpiresOn       *string      `json:"expires_on"`
+	Deployments     []Deployment `json:"deployments"`
 }
 
 func (r *KeyRecord) UnmarshalJSON(b []byte) error {
@@ -60,6 +62,17 @@ func (r *KeyRecord) UnmarshalJSON(b []byte) error {
 	}
 	*r = KeyRecord(aux)
 	return nil
+}
+
+// MarshalJSON emits a nil Deployments slice as [] (not null), matching pydantic's
+// default_factory=list. The pointer fields already emit null when unset.
+func (r KeyRecord) MarshalJSON() ([]byte, error) {
+	type alias KeyRecord
+	a := alias(r)
+	if a.Deployments == nil {
+		a.Deployments = []Deployment{}
+	}
+	return json.Marshal(a)
 }
 
 // NeedsRedeploy is true when no deployment is verified (e.g. a fresh key).
