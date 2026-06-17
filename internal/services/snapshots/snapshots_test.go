@@ -3,6 +3,7 @@ package snapshots
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -32,8 +33,11 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	if err != nil || tarball == "" {
 		t.Fatalf("snapshot: %v (%q)", err, tarball)
 	}
-	if fi, err := os.Stat(tarball); err != nil || fi.Mode().Perm() != 0o600 {
-		t.Errorf("snapshot should be 0600: %v", err)
+	// File modes are POSIX-only; Windows chmod just toggles the read-only bit.
+	if runtime.GOOS != "windows" {
+		if fi, err := os.Stat(tarball); err != nil || fi.Mode().Perm() != 0o600 {
+			t.Errorf("snapshot should be 0600: %v", err)
+		}
 	}
 
 	// Mutate the tree, then restore and confirm the original is back.
