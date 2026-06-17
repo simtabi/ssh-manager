@@ -3,6 +3,7 @@ package lock
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"testing"
 )
 
@@ -25,7 +26,10 @@ func TestAcquireReleaseReacquire(t *testing.T) {
 	}
 	rel2()
 
-	// The parent dir is owner-only (POSIX).
+	// The parent dir is owner-only (POSIX; Windows uses ACLs, not Unix mode bits).
+	if runtime.GOOS == "windows" {
+		return
+	}
 	if fi, err := os.Stat(filepath.Dir(lp)); err == nil && fi.Mode().Perm()&0o077 != 0 {
 		t.Errorf("lock dir should be 0700, got %o", fi.Mode().Perm())
 	}
