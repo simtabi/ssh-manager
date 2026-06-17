@@ -21,15 +21,15 @@ var v1Verbs = []struct{ verb, short string }{
 	// "config" is now native Go (see config.go), not a passthrough.
 	// "import" is now native Go (see import.go), not a passthrough.
 	// "diff" is now native Go (see diff.go), not a passthrough.
-	{"list", "Filterable tree across profiles"},
-	{"view", "Resolved host config + key + deployment status"},
+	// "list" is now native Go (see list.go), not a passthrough.
+	// "view" is now native Go (see view.go), not a passthrough.
 	// "validate" is now native Go (see validate.go), not a passthrough.
 	// "providers" is now native Go (see providers.go), not a passthrough.
 	// "net" is now native Go (see net.go), not a passthrough.
 	// "deploy" is now native Go (see deploy.go), not a passthrough.
 	// "load" is now native Go (see load.go), not a passthrough.
-	{"audit", "Deployment, expiry, and hygiene report"},
-	{"expiry", "Per-key rotation-age table"},
+	// "audit" is now native Go (see audit.go), not a passthrough.
+	// "expiry" is now native Go (see expiry.go), not a passthrough.
 	// "rotate" is now native Go (see rotate.go), not a passthrough.
 	// "rollback" is now native Go (see rotate.go), not a passthrough.
 	// "bundle" is now native Go (see bundle.go), not a passthrough.
