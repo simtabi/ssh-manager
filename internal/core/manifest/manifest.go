@@ -150,6 +150,35 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON emits every field in declaration order (null for unset pointers, []
+// for no tags), matching pydantic model_dump(mode="json"). raw_options serializes
+// {} when empty via OrderedOptions.
+func (h Host) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		Alias       string         `json:"alias"`
+		Hostname    string         `json:"hostname"`
+		User        string         `json:"user"`
+		Port        int            `json:"port"`
+		Provider    *string        `json:"provider"`
+		TokenEnv    *string        `json:"token_env"`
+		KeyName     *string        `json:"key_name"`
+		Tags        []string       `json:"tags"`
+		RequiresVPN bool           `json:"requires_vpn"`
+		VPNName     *string        `json:"vpn_name"`
+		VPNURL      *string        `json:"vpn_url"`
+		RawOptions  OrderedOptions `json:"raw_options"`
+	}
+	tags := h.Tags
+	if tags == nil {
+		tags = []string{}
+	}
+	return json.Marshal(wire{
+		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
+		Provider: h.Provider, TokenEnv: h.TokenEnv, KeyName: h.KeyName, Tags: tags,
+		RequiresVPN: h.RequiresVPN, VPNName: h.VPNName, VPNURL: h.VPNURL, RawOptions: h.RawOptions,
+	})
+}
+
 // Profile groups hosts that share an identity.
 type Profile struct {
 	KeyScope string  `json:"key_scope"`
@@ -165,6 +194,21 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 	}
 	*p = Profile(aux)
 	return nil
+}
+
+// MarshalJSON emits key_scope, key_name (null when unset), and hosts ([] when
+// none) in declaration order, matching pydantic.
+func (p Profile) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		KeyScope string  `json:"key_scope"`
+		KeyName  *string `json:"key_name"`
+		Hosts    []Host  `json:"hosts"`
+	}
+	hosts := p.Hosts
+	if hosts == nil {
+		hosts = []Host{}
+	}
+	return json.Marshal(wire{KeyScope: p.KeyScope, KeyName: p.KeyName, Hosts: hosts})
 }
 
 // ExpiryCheck is the notifier policy.
@@ -216,6 +260,27 @@ func (d *Defaults) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON emits warn_before_days as [] when empty (not null) and global_options
+// as {} via OrderedOptions, in declaration order.
+func (d Defaults) MarshalJSON() ([]byte, error) {
+	type wire struct {
+		KeyType         string         `json:"key_type"`
+		KeyScope        string         `json:"key_scope"`
+		RotateAfterDays int            `json:"rotate_after_days"`
+		WarnBeforeDays  []int          `json:"warn_before_days"`
+		ExpiryCheck     ExpiryCheck    `json:"expiry_check"`
+		GlobalOptions   OrderedOptions `json:"global_options"`
+	}
+	warn := d.WarnBeforeDays
+	if warn == nil {
+		warn = []int{}
+	}
+	return json.Marshal(wire{
+		KeyType: d.KeyType, KeyScope: d.KeyScope, RotateAfterDays: d.RotateAfterDays,
+		WarnBeforeDays: warn, ExpiryCheck: d.ExpiryCheck, GlobalOptions: d.GlobalOptions,
+	})
+}
+
 // ResolvedKey pairs a host with its resolved key name + IdentityFile path.
 type ResolvedKey struct {
 	Profile      string
@@ -252,6 +317,41 @@ func (m *Manifest) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
+// MarshalJSON emits {version, defaults, profiles} with profiles in manifest (file)
+// order - a Go map would otherwise marshal its keys sorted. Compact output;
+// Save re-indents it to match pydantic's json.dump(indent=2).
+func (m Manifest) MarshalJSON() ([]byte, error) {
+	var b bytes.Buffer
+	b.WriteString(`{"version":`)
+	vb, err := json.Marshal(m.Version)
+	if err != nil {
+		return nil, err
+	}
+	b.Write(vb)
+	b.WriteString(`,"defaults":`)
+	db, err := json.Marshal(m.Defaults)
+	if err != nil {
+		return nil, err
+	}
+	b.Write(db)
+	b.WriteString(`,"profiles":{`)
+	for i, name := range m.ProfileNames() {
+		if i > 0 {
+			b.WriteByte(',')
+		}
+		kb, _ := json.Marshal(name)
+		b.Write(kb)
+		b.WriteByte(':')
+		pb, err := json.Marshal(m.Profiles[name])
+		if err != nil {
+			return nil, err
+		}
+		b.Write(pb)
+	}
+	b.WriteString("}}")
+	return b.Bytes(), nil
+}
+
 // objectKeyOrder returns a JSON object's keys in their textual order (nil if raw
 // is not an object), the same token-stream technique OrderedOptions uses.
 func objectKeyOrder(raw json.RawMessage) []string {
@@ -286,6 +386,32 @@ func (m *Manifest) ProfileNames() []string {
 	}
 	return m.sortedProfileNames()
 }
+
+// SetProfile adds or replaces a profile, preserving file order (a new profile is
+// appended, like Python's dict insertion).
+func (m *Manifest) SetProfile(name string, p Profile) {
+	if _, ok := m.Profiles[name]; !ok {
+		m.profileOrder = append(m.profileOrder, name)
+	}
+	if m.Profiles == nil {
+		m.Profiles = map[string]Profile{}
+	}
+	m.Profiles[name] = p
+}
+
+// DeleteProfile removes a profile and its order entry.
+func (m *Manifest) DeleteProfile(name string) {
+	delete(m.Profiles, name)
+	for i, n := range m.profileOrder {
+		if n == name {
+			m.profileOrder = append(m.profileOrder[:i], m.profileOrder[i+1:]...)
+			break
+		}
+	}
+}
+
+// Validate re-runs the manifest validators (so a bad edit can't be persisted).
+func (m *Manifest) Validate() error { return m.validate() }
 
 // decodeStrict decodes with DisallowUnknownFields (pydantic extra="forbid").
 func decodeStrict(b []byte, v any) error {

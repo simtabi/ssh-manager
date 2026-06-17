@@ -98,3 +98,52 @@ func TestSharedAndPerServiceResolution(t *testing.T) {
 		t.Errorf("derived key = %q, want work_sc-its-unc-edu-ed25519", r2[0].KeyName)
 	}
 }
+
+// TestSerializationEmitsAllFieldsInFileOrder locks the byte-parity contract with
+// pydantic model_dump: unset pointers -> null, no tags -> [], raw_options -> {},
+// and profiles in manifest (file) order, not sorted.
+func TestSerializationEmitsAllFieldsInFileOrder(t *testing.T) {
+	// "work" before "alpha" - a Go map would sort these the other way.
+	m, err := loadJSON(t, `{
+	  "version": 1,
+	  "profiles": {
+	    "work": {"key_scope": "per_service", "hosts": [
+	      {"alias": "gh", "hostname": "github.com", "user": "git"}
+	    ]},
+	    "alpha": {"key_scope": "shared", "key_name": "id_a", "hosts": []}
+	  }
+	}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out := filepath.Join(t.TempDir(), "out.json")
+	if err := m.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(out)
+	s := string(b)
+	for _, want := range []string{
+		`"provider": null`, `"token_env": null`, `"tags": []`, `"raw_options": {}`,
+		`"vpn_name": null`, `"key_name": null`,
+	} {
+		if !contains(s, want) {
+			t.Errorf("serialized manifest missing %s", want)
+		}
+	}
+	// Profiles must appear in file order: "work" before "alpha".
+	wi, ai := index(s, `"work"`), index(s, `"alpha"`)
+	if wi < 0 || ai < 0 || wi > ai {
+		t.Errorf("profiles not in file order (work before alpha): work@%d alpha@%d", wi, ai)
+	}
+}
+
+func contains(s, sub string) bool { return index(s, sub) >= 0 }
+
+func index(s, sub string) int {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return i
+		}
+	}
+	return -1
+}

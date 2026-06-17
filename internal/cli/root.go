@@ -31,6 +31,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newKeygenCmd())     // native Go
 	root.AddCommand(newLoadCmd())       // native Go
 	root.AddCommand(newDiffCmd())       // native Go
+	root.AddCommand(newProfileCmd())    // native Go
+	root.AddCommand(newHostCmd())       // native Go
 	addPassthroughCommands(root)
 	return root
 }

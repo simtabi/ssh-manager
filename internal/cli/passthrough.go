@@ -37,8 +37,8 @@ var v1Verbs = []struct{ verb, short string }{
 	// "snapshots" is now native Go (see snapshots.go), not a passthrough.
 	{"recover", "Break-glass recovery snippet / fixkeys tool"},
 	{"notify", "Manage the scheduled expiry notifier"},
-	{"profile", "Manage a profile (add/edit/delete)"},
-	{"host", "Manage a host within a profile (add/edit/delete)"},
+	// "profile" is now native Go (see profile.go), not a passthrough.
+	// "host" is now native Go (see host.go), not a passthrough.
 	// "knownhosts" is now native Go (see knownhosts.go), not a passthrough.
 }
 
