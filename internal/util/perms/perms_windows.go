@@ -38,3 +38,11 @@ func SetPerms(path string, _ os.FileMode) error {
 	}
 	return nil
 }
+
+// PermsOK treats any existing file as ok: Windows perms are ACLs, not POSIX mode
+// bits (a synthetic st_mode would flag every file), and they are enforced via
+// icacls on write. Mirrors platforms.windows.perms_ok.
+func PermsOK(path string, _ os.FileMode) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}

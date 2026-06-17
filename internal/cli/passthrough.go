@@ -23,7 +23,7 @@ var v1Verbs = []struct{ verb, short string }{
 	{"diff", "Preview manifest vs. on-disk reality"},
 	{"list", "Filterable tree across profiles"},
 	{"view", "Resolved host config + key + deployment status"},
-	{"validate", "Check keypairs parse, match, and have safe perms"},
+	// "validate" is now native Go (see validate.go), not a passthrough.
 	{"providers", "List the active provider catalog + credential state"},
 	{"net", "Per-host connection status + VPN indicator"},
 	{"deploy", "Install a public key on its target"},

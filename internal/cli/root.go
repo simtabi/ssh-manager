@@ -20,7 +20,8 @@ func newRootCmd() *cobra.Command {
 		SilenceErrors: true,
 	}
 	root.AddCommand(newVersionCmd())
-	root.AddCommand(newConfigCmd()) // native Go (first verb off the engine)
+	root.AddCommand(newConfigCmd())   // native Go (first verb off the engine)
+	root.AddCommand(newValidateCmd()) // native Go
 	addPassthroughCommands(root)
 	return root
 }
