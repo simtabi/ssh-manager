@@ -39,7 +39,7 @@ var v1Verbs = []struct{ verb, short string }{
 	{"notify", "Manage the scheduled expiry notifier"},
 	{"profile", "Manage a profile (add/edit/delete)"},
 	{"host", "Manage a host within a profile (add/edit/delete)"},
-	{"knownhosts", "Initialize/pin per-profile known_hosts"},
+	// "knownhosts" is now native Go (see knownhosts.go), not a passthrough.
 }
 
 // newPassthroughCmd builds a command that forwards the whole invocation to the

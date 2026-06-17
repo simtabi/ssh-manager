@@ -16,6 +16,7 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
+	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/preflight"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -450,7 +451,7 @@ func (s *Service) unpinnedHosts(ssh string) []string {
 		if h.Port != 22 {
 			token = fmt.Sprintf("[%s]:%d", h.Hostname, h.Port)
 		}
-		if !hostInKnownHosts(kh, token) {
+		if !knownhosts.HostInKnownHosts(kh, token) {
 			out = append(out, fmt.Sprintf("%s (%s)", h.Alias, h.Hostname))
 		}
 	}
@@ -477,39 +478,6 @@ func aliasCollisions(m *manifest.Manifest) []string {
 		}
 	}
 	return out
-}
-
-// hostInKnownHosts reports whether token (a hostname or [host]:port) is a pinned
-// host in path. Mirrors facade._host_in_known_hosts.
-func hostInKnownHosts(path, token string) bool {
-	fi, err := os.Stat(path)
-	if err != nil || fi.IsDir() {
-		return false
-	}
-	data, err := os.ReadFile(path)
-	if err != nil {
-		return false
-	}
-	for _, raw := range strings.Split(string(data), "\n") {
-		line := strings.TrimSpace(raw)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		fields := strings.Fields(line)
-		if len(fields) == 0 {
-			continue
-		}
-		hostField := fields[0]
-		if strings.HasPrefix(fields[0], "@") && len(fields) > 1 {
-			hostField = fields[1] // @cert-authority/@revoked shifts the host right
-		}
-		for _, h := range strings.Split(hostField, ",") {
-			if h == token {
-				return true
-			}
-		}
-	}
-	return false
 }
 
 func sortedUnique(xs []string) []string {
