@@ -27,7 +27,7 @@ var v1Verbs = []struct{ verb, short string }{
 	// "providers" is now native Go (see providers.go), not a passthrough.
 	// "net" is now native Go (see net.go), not a passthrough.
 	{"deploy", "Install a public key on its target"},
-	{"load", "Add a profile's keys to the agent"},
+	// "load" is now native Go (see load.go), not a passthrough.
 	{"audit", "Deployment, expiry, and hygiene report"},
 	{"expiry", "Per-key rotation-age table"},
 	{"rotate", "Zero-downtime staged key rotation"},
