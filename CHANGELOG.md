@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-06-17
+
+ssh-manager is **rewritten in Go** as a single self-contained binary - no Python
+runtime to install. Behavior is unchanged: the same `manifest.json` /
+`inventory.json` / `providers.json` formats, the same `~/.ssh` layout and
+managed-block markers, the same `sshmgr` command surface and `SSH_MANAGER_*`
+environment variables. A v1 home works as-is.
+
+### Changed
+
+- **Pure Go, no Python.** Every verb (init, import, migrate, reconcile, keygen,
+  config, diff, validate, doctor, profile, host, providers, net, knownhosts,
+  snapshots, bundle, restore, recover, load, deploy, rotate, rollback, list,
+  view, expiry, audit, notify, tui) is native Go. The binary is a ~10 MB static
+  executable with no embedded interpreter (was ~30-50 MB with a frozen CPython).
+- **More platforms.** Cross-compiles to macOS (Apple Silicon **and Intel**),
+  Linux (amd64/arm64), and Windows (amd64) from a single build - Intel mac, which
+  the bundled-CPython build couldn't ship, is supported again.
+- Provider key management (GitHub `gh`, GitLab `glab`, DigitalOcean / Vultr /
+  Hetzner / Linode / Scaleway REST, and a config-driven generic REST), the age
+  bundle/restore, the desktop notifier, and the scheduled job (launchd / systemd /
+  cron / schtasks) are all reimplemented natively. Bundles and `~/.ssh` snapshots
+  remain interoperable with v1.
+
+### Notes
+
+- The list/view/expiry views now print plain text rather than the v1 `rich`
+  tables; the data shown is the same.
+- The v1 Python implementation remains available at the `v0.1.0` tag and as the
+  parity reference in `src/`.
+
+## [0.1.0] - 2026-06-16
+
 First public release. ssh-manager manages SSH keys and `~/.ssh/config` from a single
 manifest - reproducible output, profile-based isolation, and safety guarantees
 (atomic writes, advisory locking, snapshot-before-mutate, load-bearing perms).
@@ -232,4 +265,6 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
   build and attach artifacts to a GitHub Release on a `v*` tag.
 
-[Unreleased]: https://github.com/simtabi/ssh-manager/commits/main
+[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/simtabi/ssh-manager/compare/v0.1.0...v2.0.0
+[0.1.0]: https://github.com/simtabi/ssh-manager/releases/tag/v0.1.0
