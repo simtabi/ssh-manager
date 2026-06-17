@@ -54,7 +54,7 @@ func (r *CheckResult) InSync() bool {
 // Format renders a human report.
 func (r *CheckResult) Format() string {
 	if r.InSync() && len(r.SSHErrors) == 0 {
-		return "config: in sync with the manifest"
+		return "config: in sync with the manifest ✓"
 	}
 	var b strings.Builder
 	for _, rel := range r.Missing {
@@ -136,7 +136,10 @@ func (s *Service) Check(validateSSH bool) (*CheckResult, error) {
 		return nil, err
 	}
 	res := &CheckResult{FileDiffs: map[string]string{}, SSHErrors: map[string]string{}}
-	for _, rel := range sortedKeys(rendered) {
+	// Iterate in the manifest's render order (root config, then profiles in file
+	// order) - the same order Python's rendered.items() yields - so the Missing
+	// list matches v1 byte-for-byte, not a sorted reordering.
+	for _, rel := range s.renderedOrder(rendered) {
 		content := rendered[rel]
 		dest := filepath.Join(s.sshDir, filepath.FromSlash(rel))
 		current, exists := readFile(dest)
@@ -221,6 +224,22 @@ func (s *Service) validateAliases() map[string]string {
 		}
 	}
 	return errs
+}
+
+// renderedOrder returns the rendered relpaths in manifest render order: the root
+// config first, then each non-empty profile's config in manifest (file) order.
+func (s *Service) renderedOrder(rendered map[string]string) []string {
+	order := make([]string, 0, len(rendered))
+	if _, ok := rendered[renderer.RootConfig]; ok {
+		order = append(order, renderer.RootConfig)
+	}
+	for _, p := range s.manifest.NonEmptyProfiles() {
+		rel := "profiles/" + p + "/config"
+		if _, ok := rendered[rel]; ok {
+			order = append(order, rel)
+		}
+	}
+	return order
 }
 
 func readFile(path string) (content string, exists bool) {

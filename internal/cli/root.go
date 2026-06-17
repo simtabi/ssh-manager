@@ -30,6 +30,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newReconcileCmd())  // native Go
 	root.AddCommand(newKeygenCmd())     // native Go
 	root.AddCommand(newLoadCmd())       // native Go
+	root.AddCommand(newDiffCmd())       // native Go
 	addPassthroughCommands(root)
 	return root
 }
