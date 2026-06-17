@@ -105,8 +105,8 @@ jobs:
         run: gitleaks detect --source . --redact --no-banner --exit-code 1
 
   go:
-    # The v2 Go front-end. Default (non-bundled) build: the engine embed is a
-    # release-time step, so CI builds/tests the Go without it.
+    # The v2 binary - pure Go, every verb native (no Python engine). Build, vet,
+    # test, and gofmt across the three first-class OSes.
     runs-on: ${{ matrix.os }}
     timeout-minutes: 15
     strategy:

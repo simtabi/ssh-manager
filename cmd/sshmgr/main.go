@@ -1,6 +1,6 @@
 // Command sshmgr is the ssh-manager binary: a profile-based SSH key and config
-// lifecycle manager. v2 is a Go front-end over the ssh-manager engine, migrating
-// to pure Go over the v2.x line.
+// lifecycle manager. As of v2 it is a single self-contained Go program with no
+// Python runtime - every verb is native Go.
 package main
 
 import "github.com/simtabi/ssh-manager/internal/cli"

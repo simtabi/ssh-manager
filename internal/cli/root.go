@@ -1,5 +1,6 @@
 // Package cli is the cobra command surface for ssh-manager. The command name
-// stays "sshmgr" (the v1 console script); the verb set mirrors v1's cli.py.
+// stays "sshmgr" (the v1 console script); the verb set mirrors v1's cli.py and is
+// now entirely native Go - there is no longer a Python engine behind any verb.
 package cli
 
 import (
@@ -48,7 +49,6 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newAuditCmd())      // native Go
 	root.AddCommand(newNotifyCmd())     // native Go
 	root.AddCommand(newTuiCmd())        // native Go
-	addPassthroughCommands(root)
 	return root
 }
 

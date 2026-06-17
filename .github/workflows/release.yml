@@ -1,11 +1,10 @@
 name: Release
 
-# A v* tag builds a self-contained binary per OS/arch (Go front-end + embedded,
-# PyInstaller-frozen engine) and publishes them, with checksums and a cosign
-# signature, to a GitHub Release. CPython cannot cross-compile, so each target is
-# built on a matching native runner. Homebrew cask / Scoop / Linux packages are a
-# follow-on (they need the simtabi/homebrew-tap + simtabi/scoop-bucket repos and a
-# TAP_GITHUB_TOKEN).
+# A v* tag cross-compiles the self-contained pure-Go binary for every OS/arch from
+# a single runner (no CPython to freeze any more), and publishes the archives with
+# checksums and a cosign signature to a GitHub Release. Homebrew cask / Scoop /
+# Linux packages are a follow-on (they need the simtabi/homebrew-tap +
+# simtabi/scoop-bucket repos and a TAP_GITHUB_TOKEN).
 on:
   push:
     tags: ["v*"]
@@ -16,20 +15,19 @@ permissions:
 jobs:
   build:
     name: build ${{ matrix.goos }}/${{ matrix.goarch }}
-    runs-on: ${{ matrix.runner }}
-    timeout-minutes: 30
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         include:
-          # macOS is Apple-Silicon-only for now: the bundled Python engine's C
-          # extensions ship arm64-only, so a universal2 (Intel+ARM) engine can't
-          # be frozen, and dedicated Intel (macos-13) runners are scarce. Intel
-          # mac returns once the pure-Go port lets us lipo a universal binary.
-          - { runner: macos-14, goos: darwin, goarch: arm64 }
-          - { runner: ubuntu-24.04, goos: linux, goarch: amd64 }
-          - { runner: ubuntu-24.04-arm, goos: linux, goarch: arm64 }
-          - { runner: windows-latest, goos: windows, goarch: amd64 }
+          # Pure Go cross-compiles trivially, so every target builds on one runner -
+          # including Intel mac (darwin/amd64), which the bundled-CPython era couldn't.
+          - { goos: darwin, goarch: arm64 }
+          - { goos: darwin, goarch: amd64 }
+          - { goos: linux, goarch: amd64 }
+          - { goos: linux, goarch: arm64 }
+          - { goos: windows, goarch: amd64 }
     steps:
       - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
         with:
@@ -37,16 +35,7 @@ jobs:
       - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
         with:
           go-version: stable
-      - uses: actions/setup-python@a309ff8b426b58ec0e2a45f0f869d46889d02405 # v6.2.0
-        with:
-          python-version: "3.12"
-      - name: Freeze the engine for this OS/arch
-        shell: bash
-        run: |
-          python -m pip install --upgrade pip pyinstaller
-          python -m pip install -e .
-          PYTHON=python .build/freeze-engine.sh
-      - name: Build self-contained binary + archive
+      - name: Build binary + archive
         shell: bash
         env:
           GOOS: ${{ matrix.goos }}
@@ -56,18 +45,12 @@ jobs:
           VER="${GITHUB_REF_NAME#v}"
           LD="-s -w -X github.com/simtabi/ssh-manager/internal/version.Version=${VER}"
           NAME="ssh-manager_${VER}_${GOOS}_${GOARCH}"
-          mkdir -p out
           BIN=sshmgr
           [ "$GOOS" = windows ] && BIN=sshmgr.exe
-          go build -tags bundled -trimpath -ldflags "$LD" -o "$BIN" ./cmd/sshmgr
+          go build -trimpath -ldflags "$LD" -o "$BIN" ./cmd/sshmgr
+          mkdir -p out
           tar czf "out/${NAME}.tar.gz" "$BIN" LICENSE README.md
-          # sha256sum is GNU-only (Linux, git-bash); macOS ships `shasum -a 256`.
-          cd out
-          if command -v sha256sum >/dev/null 2>&1; then
-            sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
-          else
-            shasum -a 256 "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256"
-          fi
+          (cd out && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
