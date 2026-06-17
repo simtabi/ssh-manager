@@ -24,6 +24,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newValidateCmd())  // native Go
 	root.AddCommand(newDoctorCmd())    // native Go
 	root.AddCommand(newProvidersCmd()) // native Go
+	root.AddCommand(newNetCmd())       // native Go
 	addPassthroughCommands(root)
 	return root
 }
