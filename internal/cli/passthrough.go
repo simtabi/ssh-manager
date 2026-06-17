@@ -30,8 +30,8 @@ var v1Verbs = []struct{ verb, short string }{
 	// "load" is now native Go (see load.go), not a passthrough.
 	{"audit", "Deployment, expiry, and hygiene report"},
 	{"expiry", "Per-key rotation-age table"},
-	{"rotate", "Zero-downtime staged key rotation"},
-	{"rollback", "Restore the previous key"},
+	// "rotate" is now native Go (see rotate.go), not a passthrough.
+	// "rollback" is now native Go (see rotate.go), not a passthrough.
 	// "bundle" is now native Go (see bundle.go), not a passthrough.
 	// "restore" is now native Go (see bundle.go), not a passthrough.
 	// "snapshots" is now native Go (see snapshots.go), not a passthrough.
