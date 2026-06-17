@@ -32,8 +32,8 @@ var v1Verbs = []struct{ verb, short string }{
 	{"expiry", "Per-key rotation-age table"},
 	{"rotate", "Zero-downtime staged key rotation"},
 	{"rollback", "Restore the previous key"},
-	{"bundle", "Encrypted backup of keys + state"},
-	{"restore", "Decrypt and lay keys back"},
+	// "bundle" is now native Go (see bundle.go), not a passthrough.
+	// "restore" is now native Go (see bundle.go), not a passthrough.
 	// "snapshots" is now native Go (see snapshots.go), not a passthrough.
 	// "recover" is now native Go (see recover.go), not a passthrough.
 	{"notify", "Manage the scheduled expiry notifier"},
