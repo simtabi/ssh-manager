@@ -29,79 +29,82 @@ func newAuditCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			inv, err := inventory.Load(p.Inventory())
+			report, err := auditReport(p, m, time.Now(), notify)
 			if err != nil {
 				return err
 			}
-			now := time.Now()
-			var lines []string
-
-			lines = append(lines, "=== deployments ===")
-			if len(inv.Keys) == 0 {
-				lines = append(lines, "  (inventory empty - run reconcile, then deploy)")
-			}
-			for _, fp := range sortedByPath(inv) {
-				rec := inv.Keys[fp]
-				status := "deployed"
-				if rec.NeedsRedeploy() {
-					status = "needs-redeploy"
-				}
-				lines = append(lines, fmt.Sprintf("%s  [%s]", rec.Path, status))
-				lines = append(lines, "    "+fp)
-				for _, d := range rec.Deployments {
-					flag := "unverified"
-					if d.Verified {
-						flag = "verified"
-					}
-					date := ""
-					if d.Date != nil {
-						date = *d.Date
-					}
-					lines = append(lines, strings.TrimRight(fmt.Sprintf("    - %s via %s (%s) %s", d.Target, d.Method, flag, date), " "))
-				}
-			}
-
-			lines = append(lines, "", "=== expiry ===")
-			states, err := notifier.New(p, m.Defaults).States(now)
-			if err != nil {
-				return err
-			}
-			if len(states) == 0 {
-				lines = append(lines, "  (nothing tracked)")
-			}
-			for _, s := range states {
-				days := "?"
-				if s.DaysRemaining != nil {
-					days = fmt.Sprintf("%dd", *s.DaysRemaining)
-				}
-				expires := "?"
-				if s.ExpiresOn != nil {
-					expires = *s.ExpiresOn
-				}
-				lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", s.KeyName, s.State, expires, days))
-			}
-
-			lines = append(lines, "", "=== recent activity ===")
-			if recent := recentAudit(p.AuditLog(), 10); len(recent) > 0 {
-				lines = append(lines, recent...)
-			} else {
-				lines = append(lines, "  (no audit log yet)")
-			}
-
-			if notify {
-				fired := notifier.New(p, m.Defaults).Notify(now, false)
-				status := "not sent (not due, disabled, or no notifier backend)"
-				if fired {
-					status = "sent"
-				}
-				lines = append(lines, "", "desktop notification: "+status)
-			}
-			fmt.Fprintln(c.OutOrStdout(), strings.Join(lines, "\n"))
+			fmt.Fprintln(c.OutOrStdout(), report)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&notify, "notify", false, "also fire the cadence-gated desktop alert")
 	return cmd
+}
+
+// auditReport builds the deployments + expiry + recent-activity report (mirrors
+// facade.audit). With notify it also fires the cadence-gated desktop alert.
+func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool) (string, error) {
+	inv, err := inventory.Load(p.Inventory())
+	if err != nil {
+		return "", err
+	}
+	var lines []string
+	lines = append(lines, "=== deployments ===")
+	if len(inv.Keys) == 0 {
+		lines = append(lines, "  (inventory empty - run reconcile, then deploy)")
+	}
+	for _, fp := range sortedByPath(inv) {
+		rec := inv.Keys[fp]
+		status := "deployed"
+		if rec.NeedsRedeploy() {
+			status = "needs-redeploy"
+		}
+		lines = append(lines, fmt.Sprintf("%s  [%s]", rec.Path, status), "    "+fp)
+		for _, d := range rec.Deployments {
+			flag := "unverified"
+			if d.Verified {
+				flag = "verified"
+			}
+			date := ""
+			if d.Date != nil {
+				date = *d.Date
+			}
+			lines = append(lines, strings.TrimRight(fmt.Sprintf("    - %s via %s (%s) %s", d.Target, d.Method, flag, date), " "))
+		}
+	}
+	lines = append(lines, "", "=== expiry ===")
+	states, err := notifier.New(p, m.Defaults).States(now)
+	if err != nil {
+		return "", err
+	}
+	if len(states) == 0 {
+		lines = append(lines, "  (nothing tracked)")
+	}
+	for _, s := range states {
+		days := "?"
+		if s.DaysRemaining != nil {
+			days = fmt.Sprintf("%dd", *s.DaysRemaining)
+		}
+		expires := "?"
+		if s.ExpiresOn != nil {
+			expires = *s.ExpiresOn
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", s.KeyName, s.State, expires, days))
+	}
+	lines = append(lines, "", "=== recent activity ===")
+	if recent := recentAudit(p.AuditLog(), 10); len(recent) > 0 {
+		lines = append(lines, recent...)
+	} else {
+		lines = append(lines, "  (no audit log yet)")
+	}
+	if notify {
+		status := "not sent (not due, disabled, or no notifier backend)"
+		if notifier.New(p, m.Defaults).Notify(now, false) {
+			status = "sent"
+		}
+		lines = append(lines, "", "desktop notification: "+status)
+	}
+	return strings.Join(lines, "\n"), nil
 }
 
 // sortedByPath returns inventory fingerprints ordered by (path, fingerprint) for
