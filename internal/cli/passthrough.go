@@ -36,7 +36,7 @@ var v1Verbs = []struct{ verb, short string }{
 	// "restore" is now native Go (see bundle.go), not a passthrough.
 	// "snapshots" is now native Go (see snapshots.go), not a passthrough.
 	// "recover" is now native Go (see recover.go), not a passthrough.
-	{"notify", "Manage the scheduled expiry notifier"},
+	// "notify" is now native Go (see notify.go), not a passthrough.
 	// "profile" is now native Go (see profile.go), not a passthrough.
 	// "host" is now native Go (see host.go), not a passthrough.
 	// "knownhosts" is now native Go (see knownhosts.go), not a passthrough.
