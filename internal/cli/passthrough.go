@@ -26,7 +26,7 @@ var v1Verbs = []struct{ verb, short string }{
 	// "validate" is now native Go (see validate.go), not a passthrough.
 	// "providers" is now native Go (see providers.go), not a passthrough.
 	// "net" is now native Go (see net.go), not a passthrough.
-	{"deploy", "Install a public key on its target"},
+	// "deploy" is now native Go (see deploy.go), not a passthrough.
 	// "load" is now native Go (see load.go), not a passthrough.
 	{"audit", "Deployment, expiry, and hygiene report"},
 	{"expiry", "Per-key rotation-age table"},
