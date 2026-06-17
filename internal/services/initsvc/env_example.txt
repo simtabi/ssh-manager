@@ -1,0 +1,51 @@
+# ============================================================================
+# ssh-manager environment - TEMPLATE (committed). Generates the real, gitignored .env.
+#
+# Generate the production .env (created 0600, never committed):
+#     sshmgr init                 # seeds .env from this file
+#     # or:  cp .env-example .env && chmod 600 .env
+#     make perms                  # re-asserts 0600 on secrets at any time
+#
+# Rules:
+#   - This file documents SHAPE ONLY - keep values empty here.
+#   - Prefer REFERENCES (1Password item, age recipient) over plaintext secrets.
+#   - .env is gitignored and must stay mode 0600 (no group/other access).
+# ============================================================================
+
+# core
+# Override the ssh-manager home. Default: the OS config dir (~/.config/ssh-manager on
+# Linux/macOS, %APPDATA%\ssh-manager on Windows). $SSH_MANAGER_CONFIG_DIR is an alias.
+SSH_MANAGER_HOME=
+# How many ~/.ssh snapshots to retain (local reversible backups). Default 10.
+SSH_MANAGER_SNAPSHOT_RETAIN=10
+
+# backup / restore (age)
+# Public age recipient the encrypted bundle is encrypted TO (safe to share/commit).
+#   e.g. age1ql3z7hjy54pw3hyww5ayyfg7z... or an age-plugin-yubikey recipient.
+SSH_MANAGER_AGE_RECIPIENT=
+# Path to the age IDENTITY used to DECRYPT on restore (gitignored; keep 0600).
+# Pass it with `sshmgr restore --identity`, or set it here. If you keep the
+# identity in a password manager, write it to a file first and point here at it.
+SSH_MANAGER_AGE_IDENTITY_FILE=
+
+# provider credentials (per-host token_env; deploy)
+# Any token below may be a literal value OR a `cmd:<command>` indirection that
+# fetches it at use-time from a secret manager (keeps it out of this file):
+#   GH_TOKEN=cmd:op read op://Private/GitHub/token   |   cmd:keyring get ssh-manager gh
+# Personal GitHub identity: push public keys via gh/API (needs `admin:public_key`).
+GH_TOKEN=
+# Simtabi GitHub identity - the `simtabi` host's token_env keeps it separate.
+GH_TOKEN_SIMTABI=
+# GitHub Enterprise (github-enterprise provider): token for your GHE host.
+GHE_TOKEN=
+# GitLab (incl. self-hosted) personal access token, if you deploy to GitLab.
+GLAB_TOKEN=
+
+# cloud VPS account-key tokens (manage dashboard SSH keys via REST)
+DIGITALOCEAN_TOKEN=        # DigitalOcean: Apps & API > Tokens (read+write)
+VULTR_API_KEY=            # Vultr: Account > API > Personal Access Token
+HCLOUD_TOKEN=             # Hetzner Cloud: Project > Security > API Tokens (read+write)
+LINODE_TOKEN=            # Linode: Profile > API Tokens (SSH Keys read/write)
+SCW_SECRET_KEY=          # Scaleway: a secret key (IAM)
+SCW_PROJECT_ID=          # Scaleway: the project these keys belong to
+# EXAMPLE_TOKEN=         # for the `example-rest` template provider (kind: rest)

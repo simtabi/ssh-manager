@@ -19,6 +19,7 @@ import (
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/preflight"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
+	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
@@ -53,12 +54,6 @@ func (r Report) OK() bool {
 	}
 	return true
 }
-
-// secret modes for the config home (mirrors facade SECRET_DIR/FILE_MODE).
-const (
-	secretDirMode  os.FileMode = 0o700
-	secretFileMode os.FileMode = 0o600
-)
 
 // Format renders the human-readable report (mirrors DoctorReport.format; the
 // preflight block carries the Go runtime line in place of the Python version).
@@ -193,37 +188,13 @@ func (s *Service) FixPerms() []string {
 			changed = append(changed, fmt.Sprintf("%s -> %o", mp.Path, uint32(mp.Mode.Perm())))
 		}
 	}
-	for _, sp := range s.secretPerms() {
+	for _, sp := range homeperms.SecretPerms(s.p) {
 		if fs.Exists(sp.Path) && !perms.PermsOK(sp.Path, sp.Mode) {
 			_ = perms.SetPerms(sp.Path, sp.Mode)
 			changed = append(changed, fmt.Sprintf("%s -> %o", sp.Path, uint32(sp.Mode.Perm())))
 		}
 	}
 	return changed
-}
-
-func (s *Service) secretPerms() []perms.ManagedPath {
-	p := s.p
-	items := []perms.ManagedPath{
-		{Path: p.ConfigDir, Mode: secretDirMode}, {Path: p.LogDir(), Mode: secretDirMode},
-		{Path: p.StateDir(), Mode: secretDirMode}, {Path: p.SnapshotsDir(), Mode: secretDirMode},
-		{Path: p.DistDir(), Mode: secretDirMode}, {Path: p.EnvFile(), Mode: secretFileMode},
-		{Path: p.AgeIdentity(), Mode: secretFileMode}, {Path: p.AuditLog(), Mode: secretFileMode},
-		{Path: p.LockFile(), Mode: secretFileMode},
-	}
-	for _, pat := range []string{
-		filepath.Join(p.DistDir(), "*.age"),
-		filepath.Join(p.ConfigDir, "*.age"),
-		filepath.Join(p.ConfigDir, "*-identity.txt"),
-		filepath.Join(p.SnapshotsDir(), "ssh-*.tar.gz"),
-	} {
-		matches, _ := filepath.Glob(pat)
-		sort.Strings(matches)
-		for _, m := range matches {
-			items = append(items, perms.ManagedPath{Path: m, Mode: secretFileMode})
-		}
-	}
-	return items
 }
 
 // Service runs doctor over a resolved home + (optional) manifest.

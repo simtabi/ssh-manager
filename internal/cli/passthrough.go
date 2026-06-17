@@ -13,7 +13,7 @@ import (
 // v1 exactly. As a verb is ported, it moves out of this list to a native Go
 // command. `version` is already native; `tui` becomes native in the TUI wave.
 var v1Verbs = []struct{ verb, short string }{
-	{"init", "Create/converge the per-user home"},
+	// "init" is now native Go (see init.go), not a passthrough.
 	{"migrate", "Move a legacy home to the standard location"},
 	// "doctor" is now native Go (see doctor.go), not a passthrough.
 	// "reconcile" is now native Go (see reconcile.go), not a passthrough.

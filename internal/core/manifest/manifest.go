@@ -101,6 +101,19 @@ func (o OrderedOptions) MarshalJSON() ([]byte, error) {
 	return buf.Bytes(), nil
 }
 
+// NewOrderedOptions builds an OrderedOptions from ordered key/value pairs (later
+// duplicates overwrite the value but keep the first position).
+func NewOrderedOptions(pairs [][2]string) OrderedOptions {
+	o := OrderedOptions{vals: map[string]string{}}
+	for _, p := range pairs {
+		if _, seen := o.vals[p[0]]; !seen {
+			o.keys = append(o.keys, p[0])
+		}
+		o.vals[p[0]] = p[1]
+	}
+	return o
+}
+
 // Len, Keys, and Get expose the options in order.
 func (o OrderedOptions) Len() int            { return len(o.keys) }
 func (o OrderedOptions) Keys() []string      { return o.keys }
@@ -622,6 +635,34 @@ func (m *Manifest) NonEmptyProfiles() []string {
 }
 
 // --- repository ------------------------------------------------------------
+
+// defaultGlobalOptions is the starter SSH global-options block (declaration order
+// matters - it is the rendered order). Mirrors manifest.DEFAULT_GLOBAL_OPTIONS.
+var defaultGlobalOptions = [][2]string{
+	{"AddKeysToAgent", "yes"},
+	{"IgnoreUnknown", "UseKeychain"},
+	{"UseKeychain", "yes"},
+	{"IdentitiesOnly", "yes"},
+	{"ServerAliveInterval", "60"},
+}
+
+// Starter returns a minimal valid manifest for `sshmgr init` - defaults and no
+// profiles. Off macOS, the UseKeychain option is dropped. Mirrors Manifest.starter.
+func Starter(emitUseKeychain bool) *Manifest {
+	pairs := defaultGlobalOptions
+	if !emitUseKeychain {
+		filtered := make([][2]string, 0, len(pairs))
+		for _, p := range pairs {
+			if p[0] != "UseKeychain" {
+				filtered = append(filtered, p)
+			}
+		}
+		pairs = filtered
+	}
+	d := newDefaults()
+	d.GlobalOptions = NewOrderedOptions(pairs)
+	return &Manifest{Version: schemaVersion, Defaults: d, Profiles: map[string]Profile{}}
+}
 
 // Load reads and validates a manifest from path.
 func Load(path string) (*Manifest, error) {
