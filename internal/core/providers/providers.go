@@ -10,6 +10,7 @@ import (
 	_ "embed"
 	"encoding/json"
 	"os"
+	"sort"
 	"strings"
 )
 
@@ -124,6 +125,37 @@ func AllSpecs(providersFile string) map[string]Spec {
 	}
 	return specs
 }
+
+// Info is a configured provider and whether its credential is present right now.
+// Mirrors facade.ProviderInfo.
+type Info struct {
+	Name         string
+	Kind         string
+	Category     string
+	TokenEnv     string
+	TokenPresent bool
+}
+
+// List returns every configured provider, sorted by name, with live credential
+// presence resolved via getenv (pass os.Getenv). Mirrors facade.list_providers.
+func List(providersFile string, getenv func(string) string) []Info {
+	specs := AllSpecs(providersFile)
+	names := make([]string, 0, len(specs))
+	for n := range specs {
+		names = append(names, n)
+	}
+	sort.Strings(names)
+	out := make([]Info, 0, len(names))
+	for _, n := range names {
+		s := specs[n]
+		present := s.TokenEnv != "" && getenv(s.TokenEnv) != ""
+		out = append(out, Info{Name: n, Kind: s.Kind, Category: s.Category, TokenEnv: s.TokenEnv, TokenPresent: present})
+	}
+	return out
+}
+
+// DefaultCatalog returns the embedded shipped catalog bytes (for `providers --export`).
+func DefaultCatalog() []byte { return defaultCatalog }
 
 // CategoryOf maps a provider name to its category. An empty or unknown name falls
 // back to "server" - the generic-SSH category, matching registry.resolve().

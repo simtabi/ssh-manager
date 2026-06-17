@@ -60,6 +60,46 @@ func TestResolvedKeysURL(t *testing.T) {
 	}
 }
 
+// TestListAndCredentialPresence covers sorting, category/kind, and live token
+// presence via an injected getenv.
+func TestListAndCredentialPresence(t *testing.T) {
+	env := map[string]string{"GH_TOKEN": "x", "GLAB_TOKEN": ""} // set / empty / unset
+	getenv := func(k string) string { return env[k] }
+	infos := List("", getenv)
+
+	if len(infos) == 0 {
+		t.Fatal("no providers listed")
+	}
+	// Sorted by name.
+	for i := 1; i < len(infos); i++ {
+		if infos[i-1].Name > infos[i].Name {
+			t.Fatalf("not sorted at %d: %q > %q", i, infos[i-1].Name, infos[i].Name)
+		}
+	}
+	by := map[string]Info{}
+	for _, i := range infos {
+		by[i.Name] = i
+	}
+	if g := by["github"]; g.Category != "vcs" || g.TokenEnv != "GH_TOKEN" || !g.TokenPresent {
+		t.Errorf("github: %+v (want vcs/GH_TOKEN/present)", g)
+	}
+	if g := by["gitlab"]; g.TokenPresent { // env value is empty -> not present
+		t.Errorf("gitlab credential should be absent (empty env): %+v", g)
+	}
+	if d := by["digitalocean"]; d.TokenPresent { // unset -> not present
+		t.Errorf("digitalocean credential should be absent (unset env): %+v", d)
+	}
+	if m := by["manual"]; m.TokenEnv != "" || m.TokenPresent { // no token at all
+		t.Errorf("manual should have no token: %+v", m)
+	}
+}
+
+func TestDefaultCatalogIsEmbedded(t *testing.T) {
+	if string(DefaultCatalog()) != string(defaultCatalog) {
+		t.Error("DefaultCatalog should return the embedded bytes")
+	}
+}
+
 // TestUserFileOverridesAndTolerance: a user providers.json overrides built-ins and
 // adds entries; a malformed entry is skipped, not fatal.
 func TestUserFileOverridesAndTolerance(t *testing.T) {

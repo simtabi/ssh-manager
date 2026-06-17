@@ -24,7 +24,7 @@ var v1Verbs = []struct{ verb, short string }{
 	{"list", "Filterable tree across profiles"},
 	{"view", "Resolved host config + key + deployment status"},
 	// "validate" is now native Go (see validate.go), not a passthrough.
-	{"providers", "List the active provider catalog + credential state"},
+	// "providers" is now native Go (see providers.go), not a passthrough.
 	{"net", "Per-host connection status + VPN indicator"},
 	{"deploy", "Install a public key on its target"},
 	{"load", "Add a profile's keys to the agent"},
