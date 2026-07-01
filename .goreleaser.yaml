@@ -1,0 +1,177 @@
+version: 2
+project_name: sshmgr
+
+# Keep all build tooling under a single build/ folder: inputs (targets.txt) at
+# build/ root, generated artifacts under build/dist/ (gitignored).
+dist: build/dist
+
+before:
+  hooks:
+    - go mod tidy
+
+# One pure-Go binary cross-compiled to the full OS/arch matrix. CGO is disabled
+# so every target is a static, portable binary; -trimpath makes builds
+# reproducible and -s -w strips debug info for smaller artifacts.
+builds:
+  - id: sshmgr
+    main: ./cmd/sshmgr
+    binary: sshmgr
+    env:
+      - CGO_ENABLED=0
+    flags:
+      - -trimpath
+    goos:
+      - linux
+      - darwin
+      - windows
+    goarch:
+      - amd64 # 64-bit x86
+      - arm64 # 64-bit ARM (Apple silicon, Graviton, RPi 64-bit)
+      - arm # 32-bit ARM (RPi, etc.)
+      - "386" # 32-bit x86
+    goarm:
+      - "6"
+      - "7"
+    ignore:
+      # macOS ships only amd64 + arm64.
+      - { goos: darwin, goarch: arm }
+      - { goos: darwin, goarch: "386" }
+      # 32-bit ARM is uncommon / unsupported on Windows.
+      - { goos: windows, goarch: arm }
+    mod_timestamp: "{{ .CommitTimestamp }}"
+    ldflags:
+      - -s -w
+      - -X github.com/simtabi/ssh-manager/internal/version.Version={{ .Version }}
+      - -X github.com/simtabi/ssh-manager/internal/version.Commit={{ .Commit }}
+      - -X github.com/simtabi/ssh-manager/internal/version.Date={{ .CommitDate }}
+
+# A single macOS universal binary (amd64 + arm64) alongside the per-arch ones.
+universal_binaries:
+  - id: sshmgr
+    ids: [sshmgr]
+    name_template: sshmgr
+    replace: false
+
+# All artifacts use one flat, versionless, Go-style naming scheme:
+#   sshmgr_<os>_<arch>[.ext]  with darwin → macos, e.g.
+#   sshmgr_macos_arm64, sshmgr_linux_amd64, sshmgr_windows_386.exe,
+#   sshmgr_macos_universal, sshmgr_linux_armv7.
+# The release tag carries the version. install scripts reconstruct these names.
+archives:
+  - id: binary
+    ids: [sshmgr]
+    formats: [binary]
+    name_template: &name >-
+      sshmgr_{{- if eq .Os "darwin" }}macos{{ else }}{{ .Os }}{{ end }}_
+      {{- if eq .Arch "all" }}universal{{ else if eq .Arch "arm" }}armv{{ .Arm }}{{ else }}{{ .Arch }}{{ end }}
+
+  - id: archive
+    ids: [sshmgr]
+    name_template: *name
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files:
+      - LICENSE
+      - README.md
+      - CHANGELOG.md
+
+# Native Linux packages (nfpm operates on the Linux builds only).
+nfpms:
+  - id: sshmgr
+    ids: [sshmgr]
+    package_name: sshmgr
+    vendor: Simtabi LLC
+    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    maintainer: "Imani Manyara <imani@simtabi.com>"
+    description: "Profile-based SSH key and config lifecycle manager."
+    license: MIT
+    formats: [deb, rpm, apk]
+    bindir: /usr/bin
+    file_name_template: 'sshmgr_linux_{{ if eq .Arch "arm" }}armv{{ .Arm }}{{ else }}{{ .Arch }}{{ end }}'
+
+checksum:
+  name_template: "checksums.txt"
+  algorithm: sha256
+
+# Reproducible source tarball, uploaded as a first-class release asset next to
+# GitHub's auto-generated "Source code" links, so every release ships the exact
+# code as well as the binaries.
+source:
+  enabled: true
+  name_template: "{{ .ProjectName }}_{{ .Version }}_source"
+
+# One SBOM per archive (syft, SPDX-JSON), attached as release assets so
+# consumers can audit the supply chain of what they download.
+sboms:
+  - id: archive
+    artifacts: archive
+
+homebrew_casks:
+  - name: sshmgr
+    ids: [archive]
+    repository:
+      owner: simtabi
+      name: homebrew-tap
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    description: "Profile-based SSH key and config lifecycle manager."
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr",
+              args: ["-dr", "com.apple.quarantine", "#{staged_path}/sshmgr"],
+              sudo: false
+          end
+
+scoops:
+  - name: sshmgr
+    ids: [archive]
+    repository:
+      owner: simtabi
+      name: scoop-bucket
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+    directory: bucket
+    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    description: "Profile-based SSH key and config lifecycle manager."
+    license: MIT
+    skip_upload: '{{ envOrDefault "SKIP_WINDOWS_PKGS" "true" }}'
+
+# Winget (Microsoft's default Windows package manager). Publishes a manifest to
+# a simtabi/winget-pkgs fork and opens a PR to microsoft/winget-pkgs. Package id
+# is Simtabi.sshmgr. Gated behind SKIP_WINDOWS_PKGS until the fork exists.
+winget:
+  - name: sshmgr
+    publisher: Simtabi
+    ids: [archive]
+    license: MIT
+    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    short_description: "Profile-based SSH key and config lifecycle manager."
+    description: "Profile-based SSH key and config lifecycle manager."
+    publisher_url: "https://simtabi.com"
+    release_notes_url: "https://github.com/simtabi/ssh-manager/releases/tag/{{ .Tag }}"
+    repository:
+      owner: simtabi
+      name: winget-pkgs
+      branch: "sshmgr-{{ .Version }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      pull_request:
+        enabled: true
+        draft: false
+        base:
+          owner: microsoft
+          name: winget-pkgs
+          branch: master
+    skip_upload: '{{ envOrDefault "SKIP_WINDOWS_PKGS" "true" }}'
+
+release:
+  github:
+    owner: simtabi
+    name: ssh-manager
+  draft: false
+  prerelease: auto
+
+changelog:
+  disable: true # release body comes from CHANGELOG.md via --release-notes

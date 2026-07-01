@@ -31,7 +31,6 @@ venv/
 .coverage
 htmlcov/
 dist/
-build/
 *.pyc
 
 # os / editor / tooling
@@ -54,6 +53,10 @@ cleaned/
 /sshmgr.exe
 *.test
 /vendor/
+
+# Go release build outputs (build/targets.txt is tracked; build/dist/ is generated
+# by GoReleaser and scripts/build-all.sh).
+/build/dist/
 
 # Build-generated frozen engine (PyInstaller output embedded by -tags bundled)
 internal/engine/embed/engine

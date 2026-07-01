@@ -1,102 +1,66 @@
 name: Release
 
-# A v* tag cross-compiles the self-contained pure-Go binary for every OS/arch from
-# a single runner (no CPython to freeze any more), and publishes the archives with
-# checksums and a cosign signature to a GitHub Release. Homebrew cask / Scoop /
-# Linux packages are a follow-on (they need the simtabi/homebrew-tap +
-# simtabi/scoop-bucket repos and a TAP_GITHUB_TOKEN).
+# Every release is tag-driven and publishes BOTH the source code and the
+# binaries: GoReleaser cross-compiles the full matrix, builds the archives,
+# packages, and a reproducible source tarball, generates SBOMs and checksums,
+# creates the GitHub Release (body from the tagged CHANGELOG section), and
+# updates the Homebrew/Scoop/Winget manifests. A build-provenance attestation is
+# then signed for every artifact via the checksums file.
 on:
   push:
     tags: ["v*"]
+
+# Releases must never be cancelled mid-publish by a newer tag.
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false
 
 permissions:
   contents: read
 
 jobs:
-  build:
-    name: build ${{ matrix.goos }}/${{ matrix.goarch }}
+  goreleaser:
+    # Linux cross-compiles every target (pure Go) and builds the native
+    # deb/rpm/apk packages, so one ubuntu runner produces the full matrix.
     runs-on: ubuntu-latest
-    timeout-minutes: 20
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # Pure Go cross-compiles trivially, so every target builds on one runner -
-          # including Intel mac (darwin/amd64), which the bundled-CPython era couldn't.
-          - { goos: darwin, goarch: arm64 }
-          - { goos: darwin, goarch: amd64 }
-          - { goos: linux, goarch: amd64 }
-          - { goos: linux, goarch: arm64 }
-          - { goos: windows, goarch: amd64 }
-    steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
-        with:
-          persist-credentials: false
-      - uses: actions/setup-go@4a3601121dd01d1626a1e23e37211e3254c1c06c # v6.4.0
-        with:
-          go-version: stable
-      - name: Build binary + archive
-        shell: bash
-        env:
-          GOOS: ${{ matrix.goos }}
-          GOARCH: ${{ matrix.goarch }}
-          CGO_ENABLED: "0"
-        run: |
-          VER="${GITHUB_REF_NAME#v}"
-          LD="-s -w -X github.com/simtabi/ssh-manager/internal/version.Version=${VER}"
-          NAME="ssh-manager_${VER}_${GOOS}_${GOARCH}"
-          BIN=sshmgr
-          [ "$GOOS" = windows ] && BIN=sshmgr.exe
-          go build -trimpath -ldflags "$LD" -o "$BIN" ./cmd/sshmgr
-          mkdir -p out
-          tar czf "out/${NAME}.tar.gz" "$BIN" LICENSE README.md
-          (cd out && sha256sum "${NAME}.tar.gz" > "${NAME}.tar.gz.sha256")
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
-        with:
-          name: dist-${{ matrix.goos }}-${{ matrix.goarch }}
-          path: out/*
-          if-no-files-found: error
-
-  release:
-    needs: build
-    runs-on: ubuntu-latest
-    timeout-minutes: 15
+    environment: release
+    timeout-minutes: 30
     permissions:
-      contents: write # create the GitHub Release
-      id-token: write # cosign keyless signing
+      contents: write # create the release and upload assets
+      id-token: write # keyless signing for the provenance attestation
+      attestations: write # write the build-provenance attestation
     steps:
-      - uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6.0.3
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
         with:
-          fetch-depth: 0 # release notes from history
-          persist-credentials: false
-      - uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+          fetch-depth: 0 # full history + tags for GoReleaser
+
+      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
         with:
-          pattern: dist-*
-          path: dist
-          merge-multiple: true
-      - name: Combine checksums
-        shell: bash
-        run: |
-          cd dist
-          cat *.tar.gz.sha256 > SHA256SUMS
-          rm -f *.tar.gz.sha256
-      - uses: sigstore/cosign-installer@6f9f17788090df1f26f669e9d70d6ae9567deba6 # v4.1.2
-      - name: Sign the checksums (keyless)
-        shell: bash
-        run: |
-          # cosign v4: signature + certificate go in one Sigstore bundle.
-          cd dist
-          cosign sign-blob --yes --bundle SHA256SUMS.cosign.bundle SHA256SUMS
-      - name: Create the GitHub Release
+          go-version-file: go.mod
+          cache: true
+
+      # syft powers GoReleaser's SBOM generation.
+      - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+
+      - name: Extract CHANGELOG section for this tag
+        run: ./scripts/extract-changelog.sh "${GITHUB_REF_NAME}" > release_notes.md
+
+      - name: Run GoReleaser
+        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        with:
+          version: latest
+          args: release --clean --release-notes=release_notes.md
         env:
-          GH_TOKEN: ${{ github.token }}
-        shell: bash
-        run: |
-          # A pre-release identifier in the tag (e.g. -rc.1, -beta) marks it as a
-          # GitHub pre-release.
-          PRERELEASE=
-          case "$GITHUB_REF_NAME" in *-*) PRERELEASE=--prerelease ;; esac
-          gh release create "$GITHUB_REF_NAME" dist/* \
-            --repo "${{ github.repository }}" \
-            --title "$GITHUB_REF_NAME" \
-            --generate-notes $PRERELEASE
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
+          # Scoop/Winget publishing is skipped until the bucket/fork exist. Set
+          # repo variable SKIP_WINDOWS_PKGS to "false" to enable it.
+          SKIP_WINDOWS_PKGS: ${{ vars.SKIP_WINDOWS_PKGS || 'true' }}
+
+      # Sign a build-provenance attestation for every released artifact. The
+      # checksums file lists them all, so `gh attestation verify <file>
+      # --repo <owner>/<repo>` works for any downloaded binary or archive.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        with:
+          subject-checksums: build/dist/checksums.txt
