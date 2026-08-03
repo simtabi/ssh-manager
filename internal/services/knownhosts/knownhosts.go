@@ -26,7 +26,10 @@ import (
 // profile string everywhere else denotes that same user store.
 const UserStore = "(user)"
 
-const knownHostsMode os.FileMode = 0o644
+// knownHostsMode is owner-only. A trust store is not a public key file: it is the
+// list of every host the user connects to, and hashing the names only helps if the
+// file is not readable by other local accounts in the first place.
+const knownHostsMode = perms.KnownHostsMode
 
 // ScannedKey is one host key returned by ssh-keyscan, with its fingerprint.
 type ScannedKey struct {
@@ -96,22 +99,50 @@ func (s *Service) Ensure(profile string) (bool, error) {
 }
 
 // Add appends confirmed host-key lines to a trust store, deduped, atomically.
-// Returns the count added.
+// Host names are hashed on the way in. Returns the count added.
+//
+// Dedup cannot be string equality any more. Every hashed line carries a fresh
+// random salt, so re-pinning the same host produces different bytes each time and
+// a naive comparison would append a duplicate on every run. Membership is decided
+// on (host name, key type, key) instead, computing each existing entry's HMAC
+// under its own salt.
 func (s *Service) Add(lines []string, profile string) (int, error) {
 	path := s.PathFor(profile)
 	var existing []string
 	if b, err := os.ReadFile(path); err == nil {
 		existing = splitNonEmptyTrailing(string(b))
 	}
-	seen := map[string]bool{}
+	pinned := parseAll(existing)
+	verbatim := map[string]bool{}
 	for _, ln := range existing {
-		seen[ln] = true
+		verbatim[strings.TrimSpace(ln)] = true
 	}
+
 	var fresh []string
-	for _, ln := range lines {
-		if !seen[ln] {
-			fresh = append(fresh, ln)
-			seen[ln] = true
+	for _, raw := range lines {
+		parsed, ok := parseKHLine(raw)
+		if !ok || !hashable(parsed.marker, parsed.field) {
+			// Patterns, markers and anything unparseable are kept as-is, since
+			// hashing a wildcard would leave it matching nothing at all.
+			if trimmed := strings.TrimSpace(raw); trimmed != "" && !verbatim[trimmed] {
+				fresh = append(fresh, trimmed)
+				verbatim[trimmed] = true
+			}
+			continue
+		}
+		// A plaintext "host,ip" field becomes one line per name: a hashed field
+		// holds a single hash and cannot express a list.
+		for _, token := range parsed.tokens() {
+			if isPinned(pinned, token, parsed.keytype, parsed.key) {
+				continue
+			}
+			field, err := hashHostFresh(token)
+			if err != nil {
+				return 0, err
+			}
+			line := field + " " + parsed.keytype + " " + parsed.key
+			fresh = append(fresh, line)
+			pinned = append(pinned, khLine{field: field, keytype: parsed.keytype, key: parsed.key})
 		}
 	}
 	if len(fresh) == 0 {
@@ -125,6 +156,26 @@ func (s *Service) Add(lines []string, profile string) (int, error) {
 		return 0, err
 	}
 	return len(fresh), nil
+}
+
+func parseAll(lines []string) []khLine {
+	var out []khLine
+	for _, raw := range lines {
+		if parsed, ok := parseKHLine(raw); ok {
+			out = append(out, parsed)
+		}
+	}
+	return out
+}
+
+// isPinned reports whether this exact host key is already trusted for token.
+func isPinned(pinned []khLine, token, keytype, key string) bool {
+	for _, p := range pinned {
+		if p.keytype == keytype && p.key == key && hostFieldMatches(p.field, token) {
+			return true
+		}
+	}
+	return false
 }
 
 func fingerprint(line string) string {
@@ -155,7 +206,11 @@ func splitNonEmptyTrailing(text string) []string {
 }
 
 // HostInKnownHosts reports whether token (a hostname or [host]:port) is a pinned
-// host in path. Mirrors facade._host_in_known_hosts; shared with doctor.
+// host in path. Shared with doctor.
+//
+// It has to understand hashed entries as well as plaintext ones. Comparing host
+// fields as strings would report every host this tool pinned as unpinned, which
+// would send doctor and auto-pin into re-pinning hosts forever.
 func HostInKnownHosts(path, token string) bool {
 	fi, err := os.Stat(path)
 	if err != nil || fi.IsDir() {
@@ -178,10 +233,8 @@ func HostInKnownHosts(path, token string) bool {
 		if strings.HasPrefix(fields[0], "@") && len(fields) > 1 {
 			hostField = fields[1] // @cert-authority/@revoked shifts the host right
 		}
-		for _, h := range strings.Split(hostField, ",") {
-			if h == token {
-				return true
-			}
+		if hostFieldMatches(hostField, token) {
+			return true
 		}
 	}
 	return false

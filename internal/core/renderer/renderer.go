@@ -53,14 +53,36 @@ func RenderRootConfig(globalOptions manifest.OrderedOptions, emitUseKeychain boo
 	b.WriteString(ManagedHeader + "\n")
 	b.WriteString("Include profiles/*/config\n\n")
 	b.WriteString("Host *\n")
+	b.WriteString("    HashKnownHosts " + hashKnownHosts(globalOptions) + "\n")
 	for _, k := range globalOptions.Keys() {
 		if k == "UseKeychain" && !emitUseKeychain {
 			continue
+		}
+		if strings.EqualFold(k, hashKnownHostsKey) {
+			continue // already emitted above
 		}
 		b.WriteString("    " + k + " " + globalOptions.Get(k) + "\n")
 	}
 	b.WriteString(ManagedEnd + "\n")
 	return b.String()
+}
+
+const hashKnownHostsKey = "HashKnownHosts"
+
+// hashKnownHosts is the value for hashing host names ssh pins by itself.
+//
+// sshmgr hashes the names it writes, but ssh appends its own entry whenever the
+// user accepts an unknown host at the prompt, and it writes plaintext unless told
+// otherwise. Without this the trust store drifts back to a readable inventory one
+// accepted host at a time. An explicit value in global_options wins, so this is a
+// default rather than an override.
+func hashKnownHosts(opts manifest.OrderedOptions) string {
+	for _, k := range opts.Keys() {
+		if strings.EqualFold(k, hashKnownHostsKey) {
+			return opts.Get(k)
+		}
+	}
+	return "yes"
 }
 
 const identitiesOnlyKey = "IdentitiesOnly"

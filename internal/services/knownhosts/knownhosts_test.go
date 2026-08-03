@@ -42,8 +42,13 @@ func TestEnsureAndAddDedup(t *testing.T) {
 		t.Errorf("dedup add n=%d want 1", n)
 	}
 	body, _ := os.ReadFile(s.PathFor("work"))
-	if strings.Count(string(body), "github.com ssh-ed25519 AAAA") != 1 {
-		t.Errorf("duplicate line written:\n%s", body)
+	// Names are hashed on the way in, so the store is checked by matching rather
+	// than by grepping for the plaintext host.
+	if strings.Contains(string(body), "github.com") {
+		t.Errorf("host names should be hashed, not stored in the clear:\n%s", body)
+	}
+	if n := strings.Count(string(body), "ssh-ed25519 AAAA"); n != 1 {
+		t.Errorf("the same key was pinned %d times:\n%s", n, body)
 	}
 	if !strings.HasSuffix(string(body), "\n") {
 		t.Error("known_hosts should end with a newline")

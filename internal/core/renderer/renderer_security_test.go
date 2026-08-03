@@ -55,6 +55,27 @@ func TestExplicitIdentitiesOnlyIsNotDuplicated(t *testing.T) {
 
 // The directive is bound to the key it constrains, so a reader can see the pair
 // together.
+// sshmgr hashes the names it writes, but ssh appends plaintext entries of its own
+// whenever the user accepts an unknown host, so the store drifts back to a
+// readable inventory unless the rendered config says otherwise.
+func TestHostStarAlwaysHashesKnownHosts(t *testing.T) {
+	got := RenderRootConfig(opts(t, `{"AddKeysToAgent":"yes"}`), false)
+	if !strings.Contains(got, "HashKnownHosts yes") {
+		t.Errorf("Host * should pin HashKnownHosts:\n%s", got)
+	}
+}
+
+// An explicit value is a deliberate choice and must be honoured, not duplicated.
+func TestExplicitHashKnownHostsIsNotDuplicated(t *testing.T) {
+	got := RenderRootConfig(opts(t, `{"HashKnownHosts":"no"}`), false)
+	if n := strings.Count(got, "HashKnownHosts"); n != 1 {
+		t.Errorf("expected one HashKnownHosts line, got %d:\n%s", n, got)
+	}
+	if !strings.Contains(got, "HashKnownHosts no") {
+		t.Errorf("the explicit value should win:\n%s", got)
+	}
+}
+
 func TestIdentitiesOnlyFollowsIdentityFile(t *testing.T) {
 	out := RenderProfileConfig([]RenderHost{host(t, "{}")})
 	identity := strings.Index(out, "IdentityFile ")

@@ -18,6 +18,10 @@ const (
 	PrivateKeyMode os.FileMode = 0o600
 	ConfigMode     os.FileMode = 0o600
 	PublicKeyMode  os.FileMode = 0o644
+	// KnownHostsMode is owner-only, not 0644. ssh has never needed the trust
+	// store to be world-readable, and its contents are an inventory of every host
+	// the user connects to - which is why the names are hashed as well.
+	KnownHostsMode os.FileMode = 0o600
 )
 
 // ManagedPath is a tool-managed path and the canonical mode it should carry.
@@ -35,7 +39,9 @@ func ModeFor(path string, isDir bool) os.FileMode {
 	switch {
 	case name == "config":
 		return ConfigMode
-	case strings.HasSuffix(name, ".pub") || name == "known_hosts":
+	case name == "known_hosts":
+		return KnownHostsMode
+	case strings.HasSuffix(name, ".pub"):
 		return PublicKeyMode // host public keys - not secret
 	default:
 		return PrivateKeyMode
@@ -43,9 +49,9 @@ func ModeFor(path string, isDir bool) os.FileMode {
 }
 
 // IterManagedPaths returns (path, canonical mode) for every tool-managed path
-// under sshDir: ~/.ssh itself, the root config, and the whole profiles/ subtree.
-// It deliberately excludes unrelated user files (id_rsa, top-level known_hosts,
-// agent sockets), skips symlinks, and skips dot-prefixed cruft it did not create
+// under sshDir: ~/.ssh itself, the root config, the trust store, and the whole
+// profiles/ subtree. It deliberately excludes unrelated user files (id_rsa, agent
+// sockets), skips symlinks, and skips dot-prefixed cruft it did not create
 // (.DS_Store and friends). This is the single enumeration both reconcile (the
 // fixer) and doctor (the checker) walk, so they can't disagree.
 func IterManagedPaths(sshDir string) []ManagedPath {
@@ -54,9 +60,15 @@ func IterManagedPaths(sshDir string) []ManagedPath {
 		return nil
 	}
 	out := []ManagedPath{{sshDir, DirMode}}
-	rootConfig := filepath.Join(sshDir, "config")
-	if li, err := os.Lstat(rootConfig); err == nil && li.Mode()&os.ModeSymlink == 0 {
-		out = append(out, ManagedPath{rootConfig, ConfigMode})
+	for _, f := range []ManagedPath{
+		{filepath.Join(sshDir, "config"), ConfigMode},
+		// The top-level trust store is managed now that it is the single store,
+		// so its 0600 is actually asserted rather than merely intended.
+		{filepath.Join(sshDir, "known_hosts"), KnownHostsMode},
+	} {
+		if li, err := os.Lstat(f.Path); err == nil && li.Mode()&os.ModeSymlink == 0 {
+			out = append(out, f)
+		}
 	}
 	profiles := filepath.Join(sshDir, "profiles")
 	pfi, err := os.Lstat(profiles)

@@ -8,10 +8,11 @@ import (
 )
 
 // Expected output for the shipped config/manifest.json (emit_use_keychain=True).
-// Host blocks additionally carry IdentitiesOnly, which the Python renderer left
-// to defaults.global_options.
+// Host blocks carry IdentitiesOnly and Host * carries HashKnownHosts, both pinned
+// by the renderer rather than left to defaults.global_options.
 const wantRoot = "# Managed by ssh-manager - do not edit (run: sshmgr config render)\n" +
 	"Include profiles/*/config\n\nHost *\n" +
+	"    HashKnownHosts yes\n" +
 	"    AddKeysToAgent yes\n    IgnoreUnknown UseKeychain\n    UseKeychain yes\n" +
 	"    IdentitiesOnly yes\n    ServerAliveInterval 60\n" +
 	"# End of ssh-manager-managed block - content outside it is preserved\n"
