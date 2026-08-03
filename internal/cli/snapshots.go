@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -13,7 +14,23 @@ import (
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
-const snapshotRetain = 10
+const defaultSnapshotRetain = 10
+
+// snapshotRetain is how many ~/.ssh snapshots to keep. $SSH_MANAGER_SNAPSHOT_RETAIN
+// overrides it - the variable was documented but never actually read. A value of 0
+// or less is rejected rather than honoured, since "keep none" would silently
+// disable the rollback safety net for every subsequent command.
+func snapshotRetain() int {
+	raw := os.Getenv("SSH_MANAGER_SNAPSHOT_RETAIN")
+	if raw == "" {
+		return defaultSnapshotRetain
+	}
+	n, err := strconv.Atoi(strings.TrimSpace(raw))
+	if err != nil || n < 1 {
+		return defaultSnapshotRetain
+	}
+	return n
+}
 
 // newSnapshotsCmd is the native snapshots verb group: list/restore/prune the local
 // ~/.ssh backups.
@@ -35,12 +52,25 @@ func newSnapshotsCmd() *cobra.Command {
 				fmt.Fprintln(out, "no snapshots yet")
 				return nil
 			}
+			legacy := 0
 			for _, s := range snaps {
 				size := int64(0)
 				if fi, err := os.Stat(s); err == nil {
 					size = fi.Size()
 				}
-				fmt.Fprintf(out, "%s\t%8d bytes\n", filepath.Base(s), size)
+				note := ""
+				if snapshots.HoldsKeyMaterial(s) {
+					note = "\tholds private keys"
+					legacy++
+				}
+				fmt.Fprintf(out, "%s\t%8d bytes%s\n", filepath.Base(s), size, note)
+			}
+			// Snapshots written by older versions archived the whole tree. They are
+			// not deleted automatically - they may be the only copy of something -
+			// but the user should know what is sitting there.
+			if legacy > 0 {
+				fmt.Fprintf(out, "\n%d snapshot(s) predate key exclusion and contain unencrypted private keys.\n"+
+					"Remove them once you no longer need them: sshmgr snapshots prune --keep 0\n", legacy)
 			}
 			return nil
 		},
@@ -65,7 +95,7 @@ func newSnapshotsCmd() *cobra.Command {
 				id = args[0]
 			}
 			p := paths.Resolve(nil, "", "")
-			chosen, err := snapshots.RestoreByID(p.SSHDir, p.SnapshotsDir(), snapshotRetain, id)
+			chosen, err := snapshots.RestoreByID(p.SSHDir, p.SnapshotsDir(), snapshotRetain(), id)
 			if err != nil {
 				return err
 			}
@@ -88,7 +118,7 @@ func newSnapshotsCmd() *cobra.Command {
 			return nil
 		},
 	}
-	prune.Flags().IntVar(&keep, "keep", snapshotRetain, "how many to retain")
+	prune.Flags().IntVar(&keep, "keep", snapshotRetain(), "how many to retain")
 	cmd.AddCommand(prune)
 
 	return cmd

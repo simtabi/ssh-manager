@@ -17,6 +17,7 @@ import (
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
+	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/log"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 	"github.com/simtabi/ssh-manager/internal/util/perms"
@@ -299,10 +300,21 @@ func (r *Reconciler) mintOne(rk manifest.ResolvedKey, passphrase string, overwri
 	return MintedKey{KeyName: rk.KeyName, Profile: rk.Profile, Fingerprint: gen.Fingerprint, Path: priv}, nil
 }
 
+// fixPerms tightens both the ~/.ssh tree and the config home. Reconcile used to
+// cover only ~/.ssh while `doctor --fix` covered both, so reconciling left the
+// manifest and providers.json at whatever mode the umask produced and a following
+// doctor run reported perm issues it had just been asked to prevent.
 func (r *Reconciler) fixPerms() int {
 	count := 0
 	for _, mp := range perms.IterManagedPaths(r.p.SSHDir) {
 		_ = perms.SetPerms(mp.Path, mp.Mode)
+		count++
+	}
+	for _, sp := range homeperms.SecretPerms(r.p) {
+		if !fs.Exists(sp.Path) {
+			continue
+		}
+		_ = perms.SetPerms(sp.Path, sp.Mode)
 		count++
 	}
 	return count

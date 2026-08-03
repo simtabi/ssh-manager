@@ -45,9 +45,9 @@ func ModeFor(path string, isDir bool) os.FileMode {
 // IterManagedPaths returns (path, canonical mode) for every tool-managed path
 // under sshDir: ~/.ssh itself, the root config, and the whole profiles/ subtree.
 // It deliberately excludes unrelated user files (id_rsa, top-level known_hosts,
-// agent sockets), skips symlinks, and skips dot-prefixed cruft (.DS_Store,
-// .staging). Mirrors perms.iter_managed_paths; this is the single enumeration both
-// reconcile (the fixer) and doctor (the checker) walk, so they can't disagree.
+// agent sockets), skips symlinks, and skips dot-prefixed cruft it did not create
+// (.DS_Store and friends). This is the single enumeration both reconcile (the
+// fixer) and doctor (the checker) walk, so they can't disagree.
 func IterManagedPaths(sshDir string) []ManagedPath {
 	fi, err := os.Lstat(sshDir)
 	if err != nil || fi.Mode()&os.ModeSymlink != 0 {
@@ -79,17 +79,26 @@ func IterManagedPaths(sshDir string) []ManagedPath {
 			continue
 		}
 		rel, _ := filepath.Rel(profiles, p)
-		if hasDotPart(rel) {
-			continue // OS cruft / transient dirs - not ours to chmod
+		if hasForeignDotPart(rel) {
+			continue // OS cruft - not ours to chmod
 		}
 		out = append(out, ManagedPath{p, ModeFor(p, li.IsDir())})
 	}
 	return out
 }
 
-func hasDotPart(rel string) bool {
+// ourDotDir reports whether a dot-prefixed component is a transient dir this tool
+// creates - where rotation and minting stage a key pair before moving it into
+// place. Both hold private keys, so a crash leaves real key material behind and
+// they have to be locked down like anything else. They were previously lumped in
+// with OS cruft and skipped.
+func ourDotDir(part string) bool {
+	return part == ".staging" || strings.HasPrefix(part, ".mint-")
+}
+
+func hasForeignDotPart(rel string) bool {
 	for _, part := range strings.Split(rel, string(filepath.Separator)) {
-		if strings.HasPrefix(part, ".") {
+		if strings.HasPrefix(part, ".") && !ourDotDir(part) {
 			return true
 		}
 	}

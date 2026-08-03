@@ -383,7 +383,7 @@ func (t *tui) snapshots() {
 	if !t.pr.Confirm(fmt.Sprintf("Restore %s? (current tree snapshotted first)", choice)) {
 		return
 	}
-	chosen, err := snapshots.RestoreByID(t.p.SSHDir, t.p.SnapshotsDir(), snapshotRetain, choice)
+	chosen, err := snapshots.RestoreByID(t.p.SSHDir, t.p.SnapshotsDir(), snapshotRetain(), choice)
 	if err != nil {
 		t.print("error: " + err.Error())
 		return

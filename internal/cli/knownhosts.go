@@ -27,7 +27,7 @@ func snapshotBeforeMutation(p paths.Paths) string {
 		heldLock = rel
 	}
 	snapshots.CleanTempArtifacts(p.SSHDir)
-	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain, "")
+	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain(), "")
 	return snap
 }
 

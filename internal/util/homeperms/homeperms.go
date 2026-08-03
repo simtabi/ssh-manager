@@ -19,6 +19,12 @@ const (
 )
 
 // SecretPerms returns every config-home secret path with its canonical mode.
+//
+// "Secret" is read broadly. The state models are not key material, but the
+// manifest maps every hostname and login the user talks to, providers.json can
+// hold API tokens for the deployment backends, and a bundle's .contents sidecar
+// names every key in the archive. None of that should be readable by other local
+// accounts.
 func SecretPerms(p paths.Paths) []perms.ManagedPath {
 	items := []perms.ManagedPath{
 		{Path: p.ConfigDir, Mode: DirMode},
@@ -30,12 +36,20 @@ func SecretPerms(p paths.Paths) []perms.ManagedPath {
 		{Path: p.AgeIdentity(), Mode: FileMode},
 		{Path: p.AuditLog(), Mode: FileMode},
 		{Path: p.LockFile(), Mode: FileMode},
+		{Path: p.Manifest(), Mode: FileMode},
+		{Path: p.Inventory(), Mode: FileMode},
+		{Path: p.Providers(), Mode: FileMode},
+		{Path: p.ExpiryCache(), Mode: FileMode},
+		{Path: p.NotifyCache(), Mode: FileMode},
 	}
 	for _, pat := range []string{
 		filepath.Join(p.DistDir(), "*.age"),
+		filepath.Join(p.DistDir(), "*.age.*"),
 		filepath.Join(p.ConfigDir, "*.age"),
+		filepath.Join(p.ConfigDir, "*.age.*"),
 		filepath.Join(p.ConfigDir, "*-identity.txt"),
 		filepath.Join(p.SnapshotsDir(), "ssh-*.tar.gz"),
+		filepath.Join(p.LogDir(), "audit.log.*"),
 	} {
 		matches, _ := filepath.Glob(pat)
 		sort.Strings(matches)

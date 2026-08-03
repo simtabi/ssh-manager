@@ -223,7 +223,7 @@ func (s *Service) Run() Report {
 		rep.StrandedLegacyHome = legacy
 	}
 	ssh := s.p.SSHDir
-	rep.PermIssues = permIssues(ssh)
+	rep.PermIssues = permIssues(ssh, s.p)
 	rep.AgentStatus = agentStatus()
 	rep.KnownHosts = knownHostsPresent(ssh)
 	rep.OldKeys = oldKeyCounts(ssh)
@@ -246,18 +246,30 @@ func (s *Service) providersSource() string {
 	return "shipped default"
 }
 
-func permIssues(ssh string) []string {
+// permIssues walks exactly what FixPerms repairs, config home included. The two
+// used to disagree: FixPerms tightened the config home while the check only
+// looked at ~/.ssh, so a world-readable manifest or providers.json was silently
+// repaired but never reported, and doctor called it clean.
+func permIssues(ssh string, p paths.Paths) []string {
 	var issues []string
-	for _, mp := range perms.IterManagedPaths(ssh) {
+	report := func(mp perms.ManagedPath) {
 		if perms.PermsOK(mp.Path, mp.Mode) {
-			continue
+			return
 		}
 		fi, err := os.Lstat(mp.Path)
 		if err != nil {
-			continue
+			return
 		}
 		issues = append(issues, fmt.Sprintf("%s: %o (want %o)",
 			mp.Path, uint32(fi.Mode().Perm()), uint32(mp.Mode.Perm())))
+	}
+	for _, mp := range perms.IterManagedPaths(ssh) {
+		report(mp)
+	}
+	for _, mp := range homeperms.SecretPerms(p) {
+		if fs.Exists(mp.Path) {
+			report(mp)
+		}
 	}
 	return issues
 }
