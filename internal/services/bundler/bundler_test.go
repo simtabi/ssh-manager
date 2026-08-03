@@ -1,6 +1,7 @@
 package bundler
 
 import (
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -8,19 +9,17 @@ import (
 )
 
 // fakeCipher is an identity copy - lets the tar / lay-down / checksum logic be
-// tested without age installed (mirrors the Python tests' injected fake).
+// tested without age installed.
 type fakeCipher struct{}
 
-func (fakeCipher) Encrypt(src, dst, _ string) error { return cp(src, dst) }
-func (fakeCipher) Decrypt(src, dst, _, _ string) error {
-	return cp(src, dst)
+func (fakeCipher) Encrypt(dst io.Writer, src io.Reader, _ string) error {
+	_, err := io.Copy(dst, src)
+	return err
 }
-func cp(src, dst string) error {
-	b, err := os.ReadFile(src)
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(dst, b, 0o600)
+
+func (fakeCipher) Decrypt(dst io.Writer, src io.Reader, _ string) error {
+	_, err := io.Copy(dst, src)
+	return err
 }
 
 func fakeFP(path string) (string, error) { return "SHA256:fake-" + filepath.Base(path), nil }
@@ -79,7 +78,7 @@ func TestBundleContentsAndRoundTrip(t *testing.T) {
 	// Restore into a fresh home.
 	base2 := t.TempDir()
 	ssh2, cfg2 := filepath.Join(base2, ".ssh"), filepath.Join(base2, "cfg")
-	rr, err := New(ssh2, cfg2, fakeCipher{}).Restore(res.AgePath, "", "", fakeFP)
+	rr, err := New(ssh2, cfg2, fakeCipher{}).Restore(res.AgePath, "", fakeFP)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -114,7 +113,7 @@ func TestRestoreRefusesOnChecksumMismatch(t *testing.T) {
 	}
 	// Corrupt the bundle after the sidecar was written.
 	os.WriteFile(res.AgePath, []byte("tampered"), 0o600)
-	if _, err := New(ssh, cfg, fakeCipher{}).Restore(res.AgePath, "", "", fakeFP); err == nil ||
+	if _, err := New(ssh, cfg, fakeCipher{}).Restore(res.AgePath, "", fakeFP); err == nil ||
 		!strings.Contains(err.Error(), "checksum mismatch") {
 		t.Errorf("tampered bundle should fail checksum, got %v", err)
 	}

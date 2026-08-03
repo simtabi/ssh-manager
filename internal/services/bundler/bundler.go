@@ -1,9 +1,14 @@
-// Package bundler makes and restores an age-encrypted backup, ported from
-// services/bundler.py. bundle tars {private keys + manifest + inventory +
-// providers.json} (NEVER .env) and age-encrypts it with a SHA256 sidecar + a
-// contents list; restore decrypts and lays the SAME keys back (same fingerprint).
-// The cipher is behind a seam (Cipher) so tests inject a fake and the tar /
-// lay-down / fingerprint guarantees are verifiable without age installed.
+// Package bundler makes and restores an age-encrypted backup. bundle tars
+// {private keys + manifest + inventory + providers.json} (NEVER .env) and
+// age-encrypts it with a SHA256 sidecar + a contents list; restore decrypts and
+// lays the SAME keys back (same fingerprint). The cipher is behind a seam
+// (Cipher) so tests inject a fake and the tar / lay-down / fingerprint guarantees
+// are verifiable without age installed.
+//
+// Plaintext never touches the disk. The tar is piped straight into age and the
+// decrypted stream is read into memory and written to its final destination, so
+// there is no staging copy in $TMPDIR - which is world-traversable, often on a
+// different filesystem, and outlives a crash.
 package bundler
 
 import (
@@ -15,6 +20,7 @@ import (
 	"io"
 	"os"
 	"os/exec"
+	"path" // tar member names are always slash-separated
 	"path/filepath"
 	"sort"
 	"strings"
@@ -29,48 +35,40 @@ const (
 
 var configMembers = []string{"manifest.json", "inventory.json", "providers.json"}
 
-// Cipher encrypts/decrypts a file. Production uses AgeCipher; tests inject a fake.
+// Cipher transforms a stream. It is deliberately stream-shaped rather than
+// file-shaped: a file-based cipher forces the caller to stage plaintext on disk.
 type Cipher interface {
-	Encrypt(src, dst, recipient string) error
-	Decrypt(src, dst, identityFile, passphrase string) error
+	Encrypt(dst io.Writer, src io.Reader, recipient string) error
+	Decrypt(dst io.Writer, src io.Reader, identityFile string) error
 }
 
-// AgeCipher shells out to age (X25519 + ChaCha20-Poly1305), file-based.
+// AgeCipher shells out to age (X25519 + ChaCha20-Poly1305) over stdin/stdout.
 type AgeCipher struct{}
 
-func (AgeCipher) Encrypt(src, dst, recipient string) error {
-	if err := requireAge(); err != nil {
-		return err
-	}
-	return run("age", "-r", recipient, "-o", dst, src)
+func (AgeCipher) Encrypt(dst io.Writer, src io.Reader, recipient string) error {
+	return pipeThrough(dst, src, "-r", recipient)
 }
 
-func (AgeCipher) Decrypt(src, dst, identityFile, _ string) error {
-	if err := requireAge(); err != nil {
-		return err
-	}
-	args := []string{"-d", "-o", dst}
+func (AgeCipher) Decrypt(dst io.Writer, src io.Reader, identityFile string) error {
+	args := []string{"-d"}
 	if identityFile != "" {
 		args = append(args, "-i", identityFile)
 	}
-	args = append(args, src)
-	return run("age", args...)
+	return pipeThrough(dst, src, args...)
 }
 
-func requireAge() error {
+func pipeThrough(dst io.Writer, src io.Reader, args ...string) error {
 	if _, err := exec.LookPath("age"); err != nil {
 		return fmt.Errorf("age not found: %s", ageHint)
 	}
-	return nil
-}
-
-func run(name string, args ...string) error {
-	cmd := exec.Command(name, args...)
+	cmd := exec.Command("age", args...)
+	cmd.Stdin = src
+	cmd.Stdout = dst
 	var stderr strings.Builder
 	cmd.Stderr = &stderr
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
-			return fmt.Errorf("%s: %s", name, msg)
+			return fmt.Errorf("age: %s", msg)
 		}
 		return err
 	}
@@ -127,7 +125,8 @@ func New(sshDir, configDir string, cipher Cipher) *Bundler {
 }
 
 // Bundle tars the keys + config models, encrypts to dest/ssh-manager-<stamp>.age,
-// and writes the .sha256 + .contents sidecars. Mirrors Bundler.bundle.
+// and writes the .sha256 + .contents sidecars. The tar is piped directly into the
+// cipher, so the plaintext archive exists only in memory.
 func (b *Bundler) Bundle(recipient, destDir, stamp string) (BundleResult, error) {
 	if recipient == "" {
 		return BundleResult{}, fmt.Errorf("no age recipient - set SSH_MANAGER_AGE_RECIPIENT or pass --recipient")
@@ -135,18 +134,10 @@ func (b *Bundler) Bundle(recipient, destDir, stamp string) (BundleResult, error)
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
 		return BundleResult{}, err
 	}
-	tmp, err := os.MkdirTemp("", "sshmgr-bundle-")
-	if err != nil {
-		return BundleResult{}, err
-	}
-	defer os.RemoveAll(tmp)
-	tarPath := filepath.Join(tmp, "bundle.tar.gz")
-	contents, err := b.buildTar(tarPath)
-	if err != nil {
-		return BundleResult{}, err
-	}
 	agePath := filepath.Join(destDir, "ssh-manager-"+stamp+".age")
-	if err := b.cipher.Encrypt(tarPath, agePath, recipient); err != nil {
+	contents, err := b.encryptTo(agePath, recipient)
+	if err != nil {
+		_ = os.Remove(agePath) // never leave a half-written bundle to be trusted later
 		return BundleResult{}, err
 	}
 	sha, err := sha256File(agePath)
@@ -163,12 +154,48 @@ func (b *Bundler) Bundle(recipient, destDir, stamp string) (BundleResult, error)
 	return BundleResult{AgePath: agePath, SHA256: sha, Contents: contents}, nil
 }
 
-func (b *Bundler) buildTar(tarPath string) ([]string, error) {
-	f, err := os.OpenFile(tarPath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+// encryptTo streams a fresh tar through the cipher into agePath, returning the
+// member list. The two halves run concurrently over an io.Pipe, so nothing is
+// buffered to disk in between.
+func (b *Bundler) encryptTo(agePath, recipient string) ([]string, error) {
+	// Owner-only from creation: the cipher must never be handed a descriptor to a
+	// file that was briefly world-readable.
+	out, err := os.OpenFile(agePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return nil, err
 	}
-	gz := gzip.NewWriter(f)
+	defer out.Close()
+
+	type built struct {
+		members []string
+		err     error
+	}
+	pr, pw := io.Pipe()
+	done := make(chan built, 1)
+	go func() {
+		members, err := b.writeTarGz(pw)
+		// Closing with the error makes the cipher fail rather than encrypt and
+		// sign a truncated archive that would look restorable.
+		_ = pw.CloseWithError(err)
+		done <- built{members, err}
+	}()
+
+	encErr := b.cipher.Encrypt(out, pr, recipient)
+	// If the cipher died early the tar writer is still blocked on a write.
+	_ = pr.CloseWithError(encErr)
+	tar := <-done
+
+	if tar.err != nil {
+		return nil, tar.err // the upstream producer holds the root cause
+	}
+	if encErr != nil {
+		return nil, encErr
+	}
+	return tar.members, out.Close()
+}
+
+func (b *Bundler) writeTarGz(w io.Writer) ([]string, error) {
+	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
 	var members []string
 
@@ -190,7 +217,7 @@ func (b *Bundler) buildTar(tarPath string) ([]string, error) {
 			}
 			arc := sshPrefix + rel
 			if err := addFile(tw, p, arc); err != nil {
-				closeAll(tw, gz, f)
+				closeAll(tw, gz)
 				return nil, err
 			}
 			members = append(members, arc)
@@ -201,7 +228,7 @@ func (b *Bundler) buildTar(tarPath string) ([]string, error) {
 		if _, err := os.Stat(src); err == nil {
 			arc := configPrefix + name
 			if err := addFile(tw, src, arc); err != nil {
-				closeAll(tw, gz, f)
+				closeAll(tw, gz)
 				return nil, err
 			}
 			members = append(members, arc)
@@ -209,14 +236,9 @@ func (b *Bundler) buildTar(tarPath string) ([]string, error) {
 	}
 	if err := tw.Close(); err != nil {
 		_ = gz.Close()
-		_ = f.Close()
 		return nil, err
 	}
-	if err := gz.Close(); err != nil {
-		_ = f.Close()
-		return nil, err
-	}
-	return members, f.Close()
+	return members, gz.Close()
 }
 
 func hasStaging(rel string) bool {
@@ -250,86 +272,99 @@ func addFile(tw *tar.Writer, path, arc string) error {
 	return err
 }
 
-func closeAll(tw *tar.Writer, gz *gzip.Writer, f *os.File) {
+func closeAll(tw *tar.Writer, gz *gzip.Writer) {
 	_ = tw.Close()
 	_ = gz.Close()
-	_ = f.Close()
 }
 
 // Restore decrypts bundlePath and lays the same keys back down (verifying the
-// SHA256 sidecar first). fingerprintOf fingerprints each restored .pub. Mirrors
-// Bundler.restore.
-func (b *Bundler) Restore(bundlePath, identityFile, passphrase string, fingerprintOf func(string) (string, error)) (RestoreResult, error) {
+// SHA256 sidecar first). fingerprintOf fingerprints each restored .pub.
+//
+// The decrypted stream is read into memory and written straight to its final
+// destination. Reading it whole before writing anything also means a corrupt or
+// wrongly-keyed bundle is rejected before it has half-overwritten the tree.
+func (b *Bundler) Restore(bundlePath, identityFile string, fingerprintOf func(string) (string, error)) (RestoreResult, error) {
 	if _, err := os.Stat(bundlePath); err != nil {
 		return RestoreResult{}, fmt.Errorf("bundle not found: %s", bundlePath)
 	}
 	if err := verifyChecksum(bundlePath); err != nil {
 		return RestoreResult{}, err
 	}
-	tmp, err := os.MkdirTemp("", "sshmgr-restore-")
+	members, err := b.decrypt(bundlePath, identityFile)
 	if err != nil {
 		return RestoreResult{}, err
 	}
-	defer os.RemoveAll(tmp)
-	tarPath := filepath.Join(tmp, "bundle.tar.gz")
-	if err := b.cipher.Decrypt(bundlePath, tarPath, identityFile, passphrase); err != nil {
-		return RestoreResult{}, err
-	}
-	extract := filepath.Join(tmp, "x")
-	if err := extractTarGz(tarPath, extract); err != nil {
-		return RestoreResult{}, fmt.Errorf("bundle is corrupt or not a valid archive - check the identity/recipient: %w", err)
-	}
-	return b.layDown(extract, fingerprintOf)
+	return b.layDown(members, fingerprintOf)
 }
 
-func (b *Bundler) layDown(extract string, fingerprintOf func(string) (string, error)) (RestoreResult, error) {
-	res := RestoreResult{}
-	sshRoot := filepath.Join(extract, "ssh")
-	if fi, err := os.Stat(sshRoot); err == nil && fi.IsDir() {
-		var paths []string
-		_ = filepath.WalkDir(sshRoot, func(p string, d os.DirEntry, err error) error {
-			if err == nil && !d.IsDir() {
-				paths = append(paths, p)
-			}
-			return nil
-		})
-		sort.Strings(paths)
-		for _, p := range paths {
-			rel, _ := filepath.Rel(sshRoot, p)
-			dest := filepath.Join(b.sshDir, rel)
-			b2, err := os.ReadFile(p)
-			if err != nil {
-				return res, err
-			}
-			if err := writeBytesAtomic(dest, b2); err != nil {
-				return res, err
-			}
-			res.Restored = append(res.Restored, filepath.ToSlash(rel))
-			if strings.HasSuffix(dest, ".pub") {
-				if fp, err := fingerprintOf(dest); err == nil {
-					res.Fingerprints = append(res.Fingerprints, FP{Name: stem(filepath.Base(dest)), Fingerprint: fp})
-				}
-			}
-		}
+// decrypt streams bundlePath through the cipher and returns the archive members.
+func (b *Bundler) decrypt(bundlePath, identityFile string) ([]member, error) {
+	f, err := os.Open(bundlePath)
+	if err != nil {
+		return nil, err
 	}
-	cfgRoot := filepath.Join(extract, "config")
-	if entries, err := os.ReadDir(cfgRoot); err == nil {
-		names := make([]string, 0, len(entries))
-		for _, e := range entries {
-			if !e.IsDir() {
-				names = append(names, e.Name())
+	defer f.Close()
+
+	pr, pw := io.Pipe()
+	done := make(chan error, 1)
+	go func() {
+		err := b.cipher.Decrypt(pw, f, identityFile)
+		_ = pw.CloseWithError(err)
+		done <- err
+	}()
+
+	members, readErr := readTarGz(pr)
+	if readErr != nil {
+		// The cipher is still writing into a pipe nobody will read again.
+		_ = pr.CloseWithError(readErr)
+	} else {
+		// Drain any trailing bytes so the cipher can finish and exit.
+		_, _ = io.Copy(io.Discard, pr)
+	}
+	if err := <-done; err != nil {
+		return nil, err // a bad identity surfaces here, not as a corrupt archive
+	}
+	if readErr != nil {
+		return nil, fmt.Errorf("bundle is corrupt or not a valid archive - check the identity/recipient: %w", readErr)
+	}
+	return members, nil
+}
+
+func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, error)) (RestoreResult, error) {
+	res := RestoreResult{}
+	sorted := append([]member(nil), members...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].name < sorted[j].name })
+	for _, m := range sorted {
+		var dest, label string
+		switch {
+		case strings.HasPrefix(m.name, sshPrefix):
+			rel := strings.TrimPrefix(m.name, sshPrefix)
+			dest = filepath.Join(b.sshDir, filepath.FromSlash(rel))
+			if !within(b.sshDir, dest) {
+				return res, fmt.Errorf("refusing path traversal in bundle: %s", m.name)
 			}
+			label = rel
+		case strings.HasPrefix(m.name, configPrefix):
+			// Flat by construction, and pinning the base name keeps a crafted
+			// member from escaping the config dir.
+			name := path.Base(m.name)
+			dest = filepath.Join(b.configDir, name)
+			label = configPrefix + name
+		default:
+			// A bundle only ever holds those two roots. Anything else means the
+			// archive was tampered with - including a traversal like
+			// "ssh/../../x", which path.Clean has already stripped the prefix
+			// from. Refusing beats silently skipping part of a restore.
+			return res, fmt.Errorf("refusing unexpected member in bundle: %s", m.name)
 		}
-		sort.Strings(names)
-		for _, n := range names {
-			b2, err := os.ReadFile(filepath.Join(cfgRoot, n))
-			if err != nil {
-				return res, err
+		if err := writeBytesAtomic(dest, m.data); err != nil {
+			return res, err
+		}
+		res.Restored = append(res.Restored, label)
+		if strings.HasSuffix(dest, ".pub") {
+			if fp, err := fingerprintOf(dest); err == nil {
+				res.Fingerprints = append(res.Fingerprints, FP{Name: stem(filepath.Base(dest)), Fingerprint: fp})
 			}
-			if err := writeBytesAtomic(filepath.Join(b.configDir, n), b2); err != nil {
-				return res, err
-			}
-			res.Restored = append(res.Restored, "config/"+n)
 		}
 	}
 	return res, nil
@@ -356,52 +391,52 @@ func verifyChecksum(bundlePath string) error {
 	return nil
 }
 
-func extractTarGz(tarball, destParent string) error {
-	f, err := os.Open(tarball)
+// member is one decrypted archive entry, held in memory rather than staged on
+// disk. Bundles are keys and small JSON models, so the whole thing fits easily.
+type member struct {
+	name string
+	data []byte
+}
+
+// maxBundleBytes bounds what a bundle can expand to, so a malicious or corrupt
+// archive cannot exhaust memory during the read-it-all-first step.
+const maxBundleBytes = 64 << 20
+
+func readTarGz(r io.Reader) ([]member, error) {
+	gz, err := gzip.NewReader(r)
 	if err != nil {
-		return err
-	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return err
+		return nil, err
 	}
 	defer gz.Close()
-	tr := tar.NewReader(gz)
-	cleanParent := filepath.Clean(destParent) + string(os.PathSeparator)
+	tr := tar.NewReader(io.LimitReader(gz, maxBundleBytes))
+	var members []member
 	for {
 		hdr, err := tr.Next()
 		if err == io.EOF {
-			break
+			return members, nil
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
-		dest := filepath.Join(destParent, filepath.FromSlash(hdr.Name))
-		if !strings.HasPrefix(filepath.Clean(dest)+string(os.PathSeparator), cleanParent) {
-			return fmt.Errorf("refusing path traversal in archive: %s", hdr.Name)
+		if hdr.Typeflag != tar.TypeReg {
+			continue
 		}
-		switch hdr.Typeflag {
-		case tar.TypeDir:
-			if err := os.MkdirAll(dest, 0o700); err != nil {
-				return err
-			}
-		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-				return err
-			}
-			out, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, os.FileMode(hdr.Mode).Perm())
-			if err != nil {
-				return err
-			}
-			if _, err := io.Copy(out, tr); err != nil {
-				out.Close()
-				return err
-			}
-			out.Close()
+		data, err := io.ReadAll(tr)
+		if err != nil {
+			return nil, err
 		}
+		members = append(members, member{name: path.Clean(hdr.Name), data: data})
 	}
-	return nil
+}
+
+// within reports whether dest stays inside root, so a crafted member name cannot
+// write outside the tree it claims to belong to.
+func within(root, dest string) bool {
+	rel, err := filepath.Rel(root, dest)
+	if err != nil {
+		return false
+	}
+	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
 }
 
 func writeBytesAtomic(path string, data []byte) error {

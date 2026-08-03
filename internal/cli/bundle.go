@@ -67,7 +67,7 @@ func newRestoreCmd() *cobra.Command {
 			}
 			snapshotBeforeMutation(p)
 			ks := keystore.New()
-			res, err := bundler.New(p.SSHDir, p.ConfigDir, bundler.AgeCipher{}).Restore(args[0], ident, "", ks.Fingerprint)
+			res, err := bundler.New(p.SSHDir, p.ConfigDir, bundler.AgeCipher{}).Restore(args[0], ident, ks.Fingerprint)
 			if err != nil {
 				return err
 			}
