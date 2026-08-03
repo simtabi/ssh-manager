@@ -57,7 +57,7 @@ func TestTuiReadVerbs(t *testing.T) {
 		"no keys tracked",     // expiry with empty inventory
 		"=== deployments ===", // audit
 		"=== expiry ===",      // audit
-		"Include profiles",    // show rendered config (root config includes profiles)
+		"# --- profile: work", // show rendered config (hosts render inline now)
 	} {
 		if !strings.Contains(out, want) {
 			t.Errorf("TUI output missing %q\n%s", want, out)

@@ -25,26 +25,20 @@ func TestInSyncFormatHasCheck(t *testing.T) {
 	}
 }
 
-func TestCheckMissingInRenderOrder(t *testing.T) {
+func TestCheckMissingSingleFile(t *testing.T) {
 	var m manifest.Manifest
 	if err := json.Unmarshal([]byte(manifestJSON), &m); err != nil {
 		t.Fatal(err)
 	}
-	// Empty ~/.ssh -> every rendered file is missing, reported in render order
-	// (root config first, then profiles in file order: work, alpha).
+	// Empty ~/.ssh -> the one rendered file (everything is inline now) is missing.
 	svc := New(t.TempDir(), &m, false)
 	res, err := svc.Check(false)
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []string{"config", "profiles/work/config", "profiles/alpha/config"}
-	if len(res.Missing) != len(want) {
+	want := []string{"config"}
+	if len(res.Missing) != len(want) || res.Missing[0] != want[0] {
 		t.Fatalf("missing=%v want %v", res.Missing, want)
-	}
-	for i := range want {
-		if res.Missing[i] != want[i] {
-			t.Fatalf("missing order=%v want %v (file order, not sorted)", res.Missing, want)
-		}
 	}
 	if res.InSync() {
 		t.Error("empty tree must not be in sync")

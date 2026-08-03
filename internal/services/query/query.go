@@ -212,7 +212,7 @@ func (q *Query) hostDetail(pname string, host manifest.Host) (*HostDetail, error
 	}
 	return &HostDetail{
 		Profile: pname, Alias: host.Alias, Hostname: host.Hostname, User: host.User,
-		Port: host.Port, IdentityFile: ident, KnownHosts: q.m.KnownHostsFile(pname),
+		Port: host.Port, IdentityFile: ident, KnownHosts: q.m.KnownHostsFile(),
 		ProviderLabel: q.providerLabel(host), KeyName: kname, Status: status(rec, ok),
 		Fingerprint: fp, ExpiresOn: expiresOn, Tags: tagsOf(host), RawOptions: host.RawOptions,
 		Deployments: deps, RequiresVPN: host.RequiresVPN, VPNName: host.VPNName, VPNURL: host.VPNURL,

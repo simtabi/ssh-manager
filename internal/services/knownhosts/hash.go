@@ -95,6 +95,13 @@ func hashable(marker, field string) bool {
 		!strings.ContainsAny(field, "*?!")
 }
 
+// sshmgrTag marks a known_hosts line as one this tool wrote, in the trailing
+// comment field sshd(8) defines as free text after the key ("marker hostnames
+// keytype key comment"). Only tagged lines are ever candidates for pruning; a
+// line without this tag - however it got there - is the user's and is left
+// alone.
+const sshmgrTag = "sshmgr"
+
 // khLine is a parsed known_hosts line. keytype+key identify the host key itself,
 // independent of how the host name is written, which is what makes it possible to
 // tell "already pinned" from "new" once names are hashed and no longer compare
@@ -104,6 +111,7 @@ type khLine struct {
 	field   string
 	keytype string
 	key     string
+	comment string
 }
 
 func parseKHLine(raw string) (khLine, bool) {
@@ -119,7 +127,21 @@ func parseKHLine(raw string) (khLine, bool) {
 	if len(fields) < 3 {
 		return khLine{}, false
 	}
-	return khLine{marker: marker, field: fields[0], keytype: fields[1], key: fields[2]}, true
+	comment := ""
+	if len(fields) > 3 {
+		comment = strings.Join(fields[3:], " ")
+	}
+	return khLine{marker: marker, field: fields[0], keytype: fields[1], key: fields[2], comment: comment}, true
+}
+
+// tagged reports whether this line carries the sshmgr comment tag.
+func (l khLine) tagged() bool {
+	for _, w := range strings.Fields(l.comment) {
+		if w == sshmgrTag {
+			return true
+		}
+	}
+	return false
 }
 
 // tokens is the list of host names a line pins. Hashed fields hold exactly one,

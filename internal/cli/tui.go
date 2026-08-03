@@ -301,7 +301,7 @@ func (t *tui) knownhosts() {
 		return
 	}
 	snapshotBeforeMutation(t.p)
-	report, err := knownhosts.New(t.p.SSHDir).Init(m, "", true, false, false)
+	report, err := knownhosts.New(t.p.SSHDir).Init(m, "", true, false)
 	if err != nil {
 		t.print("error: " + err.Error())
 		return

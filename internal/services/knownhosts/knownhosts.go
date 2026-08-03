@@ -1,8 +1,16 @@
 // Package knownhosts pins host keys via ssh-keyscan, ported from
 // services/knownhosts.py + facade.{known_hosts_targets,init_known_hosts}. It scans
 // and fingerprints host keys (data; the surface confirms before trust) and appends
-// confirmed lines, deduped, with the right perms - per-profile trust stores plus
-// an optional aggregate user store.
+// confirmed lines, deduped, with the right perms - into the single, user-wide
+// ~/.ssh/known_hosts trust store every rendered host block points at.
+//
+// Every line sshmgr writes carries a trailing "sshmgr" comment tag (see
+// sshd(8)'s "marker hostnames keytype key comment" line format). That tag is
+// what makes cleanup safe: prune only removes tagged lines, and only once no
+// remaining manifest host resolves to that host:port, so deleting one profile
+// can never strand or unpin a host another profile still uses. Untagged lines
+// - anything the user or another tool pinned - are never touched unless
+// explicitly adopted.
 package knownhosts
 
 import (
@@ -22,10 +30,6 @@ import (
 	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
 
-// UserStore is the report label for the top-level ~/.ssh/known_hosts. An empty
-// profile string everywhere else denotes that same user store.
-const UserStore = "(user)"
-
 // knownHostsMode is owner-only. A trust store is not a public key file: it is the
 // list of every host the user connects to, and hashing the names only helps if the
 // file is not readable by other local accounts in the first place.
@@ -40,7 +44,7 @@ type ScannedKey struct {
 	Fingerprint string
 }
 
-// Service manages the per-profile and user known_hosts trust stores.
+// Service manages the single, user-wide known_hosts trust store.
 type Service struct {
 	sshDir string
 }
@@ -48,13 +52,9 @@ type Service struct {
 // New builds a known-hosts service over ~/.ssh.
 func New(sshDir string) *Service { return &Service{sshDir: sshDir} }
 
-// PathFor is the trust store for a profile, or the top-level user store when
-// profile is "".
-func (s *Service) PathFor(profile string) string {
-	if profile == "" {
-		return filepath.Join(s.sshDir, "known_hosts")
-	}
-	return filepath.Join(s.sshDir, "profiles", profile, "known_hosts")
+// Path is the one trust store every profile's hosts are pinned into.
+func (s *Service) Path() string {
+	return filepath.Join(s.sshDir, "known_hosts")
 }
 
 // Scan ssh-keyscans a host and fingerprints each key (no writes).
@@ -85,10 +85,10 @@ func (s *Service) Scan(host string, port int) []ScannedKey {
 	return keys
 }
 
-// Ensure creates the profile's known_hosts (empty, correct perms) if absent so the
-// path the rendered config references always exists. Returns true if created.
-func (s *Service) Ensure(profile string) (bool, error) {
-	path := s.PathFor(profile)
+// Ensure creates known_hosts (empty, correct perms) if absent so the path the
+// rendered config references always exists. Returns true if created.
+func (s *Service) Ensure() (bool, error) {
+	path := s.Path()
 	if fi, err := os.Stat(path); err == nil && fi.Mode().IsRegular() {
 		return false, nil
 	}
@@ -98,35 +98,56 @@ func (s *Service) Ensure(profile string) (bool, error) {
 	return true, perms.SetPerms(path, knownHostsMode)
 }
 
-// Add appends confirmed host-key lines to a trust store, deduped, atomically.
-// Host names are hashed on the way in. Returns the count added.
+// Add appends confirmed host-key lines to the trust store, deduped, atomically.
+// Host names are hashed on the way in and every line is tagged as sshmgr-owned.
+// Returns the count added.
 //
 // Dedup cannot be string equality any more. Every hashed line carries a fresh
 // random salt, so re-pinning the same host produces different bytes each time and
 // a naive comparison would append a duplicate on every run. Membership is decided
 // on (host name, key type, key) instead, computing each existing entry's HMAC
 // under its own salt.
-func (s *Service) Add(lines []string, profile string) (int, error) {
-	path := s.PathFor(profile)
+func (s *Service) Add(lines []string) (int, error) {
+	path := s.Path()
 	var existing []string
 	if b, err := os.ReadFile(path); err == nil {
 		existing = splitNonEmptyTrailing(string(b))
 	}
 	pinned := parseAll(existing)
-	verbatim := map[string]bool{}
+	// verbatimRaw catches exact-text duplicates (including comments); keyed
+	// dedups patterns/markers structurally, since a line re-submitted for
+	// tagging is byte-different from what is already on disk (it lacks the
+	// tag) but must still not be duplicated.
+	verbatimRaw := map[string]bool{}
+	keyed := map[string]bool{}
 	for _, ln := range existing {
-		verbatim[strings.TrimSpace(ln)] = true
+		trimmed := strings.TrimSpace(ln)
+		verbatimRaw[trimmed] = true
+		if p, ok := parseKHLine(trimmed); ok {
+			keyed[lineKey(p)] = true
+		}
 	}
 
 	var fresh []string
 	for _, raw := range lines {
 		parsed, ok := parseKHLine(raw)
 		if !ok || !hashable(parsed.marker, parsed.field) {
-			// Patterns, markers and anything unparseable are kept as-is, since
-			// hashing a wildcard would leave it matching nothing at all.
-			if trimmed := strings.TrimSpace(raw); trimmed != "" && !verbatim[trimmed] {
-				fresh = append(fresh, trimmed)
-				verbatim[trimmed] = true
+			// Patterns, markers and anything unparseable are kept as-is (hashing a
+			// wildcard would leave it matching nothing), but still tagged so they
+			// remain eligible for reference-counted pruning like every other line
+			// this call writes.
+			trimmed := strings.TrimSpace(raw)
+			if trimmed == "" || verbatimRaw[trimmed] || (ok && keyed[lineKey(parsed)]) {
+				continue
+			}
+			out := trimmed
+			if ok && !parsed.tagged() {
+				out = trimmed + " " + sshmgrTag
+			}
+			fresh = append(fresh, out)
+			verbatimRaw[out] = true
+			if ok {
+				keyed[lineKey(parsed)] = true
 			}
 			continue
 		}
@@ -140,7 +161,7 @@ func (s *Service) Add(lines []string, profile string) (int, error) {
 			if err != nil {
 				return 0, err
 			}
-			line := field + " " + parsed.keytype + " " + parsed.key
+			line := field + " " + parsed.keytype + " " + parsed.key + " " + sshmgrTag
 			fresh = append(fresh, line)
 			pinned = append(pinned, khLine{field: field, keytype: parsed.keytype, key: parsed.key})
 		}
@@ -166,6 +187,13 @@ func parseAll(lines []string) []khLine {
 		}
 	}
 	return out
+}
+
+// lineKey identifies a parsed line by its meaning (marker, host field, key
+// type, key) rather than by its exact bytes, so a candidate line differing
+// only by the trailing sshmgr tag is still recognized as the same entry.
+func lineKey(p khLine) string {
+	return p.marker + "\x00" + p.field + "\x00" + p.keytype + "\x00" + p.key
 }
 
 // isPinned reports whether this exact host key is already trusted for token.
@@ -348,9 +376,10 @@ func (r InitReport) Format() string {
 }
 
 // Init initializes known_hosts and pins reachable hosts (trust-on-first-use).
-// Scope: one profile or allProfiles, and/or the user store. Mirrors
+// Scope: one profile or allProfiles selects which manifest hosts to scan, not
+// which file to write - every host is pinned into the same store. Mirrors
 // facade.init_known_hosts. Caller handles the mutation guard (snapshot).
-func (s *Service) Init(m *manifest.Manifest, profile string, allProfiles, user, force bool) (InitReport, error) {
+func (s *Service) Init(m *manifest.Manifest, profile string, allProfiles, force bool) (InitReport, error) {
 	targets, err := Targets(m)
 	if err != nil {
 		return InitReport{}, err
@@ -371,44 +400,22 @@ func (s *Service) Init(m *manifest.Manifest, profile string, allProfiles, user, 
 			return InitReport{}, fmt.Errorf("unknown profile: %q", profile)
 		}
 		profs = []string{profile}
-	}
-	if len(profs) == 0 && !user {
-		return InitReport{}, fmt.Errorf("give a PROFILE, --all, or --user")
+	default:
+		return InitReport{}, fmt.Errorf("give a PROFILE or --all")
 	}
 	report := InitReport{Profiles: append([]string{}, profs...)}
-	if user {
-		report.Profiles = append(report.Profiles, UserStore)
-	}
 	inProfs := map[string]bool{}
 	for _, p := range profs {
 		inProfs[p] = true
 	}
-	for _, prof := range profs {
-		if created, err := s.Ensure(prof); err != nil {
-			return InitReport{}, err
-		} else if created {
-			report.Created = append(report.Created, "profiles/"+prof+"/known_hosts")
-		}
+	if created, err := s.Ensure(); err != nil {
+		return InitReport{}, err
+	} else if created {
+		report.Created = append(report.Created, "known_hosts")
 	}
 	for _, t := range targets {
 		if inProfs[t.Profile] {
 			report.Results = append(report.Results, s.initOne(t.Profile, t.Alias, t.Hostname, t.Port, force))
-		}
-	}
-	if user {
-		if created, err := s.Ensure(""); err != nil {
-			return InitReport{}, err
-		} else if created {
-			report.Created = append(report.Created, "known_hosts")
-		}
-		seen := map[string]bool{}
-		for _, t := range targets {
-			key := fmt.Sprintf("%s\x00%d", t.Hostname, t.Port)
-			if seen[key] {
-				continue
-			}
-			seen[key] = true
-			report.Results = append(report.Results, s.initOne("", t.Alias, t.Hostname, t.Port, force))
 		}
 	}
 	return report, nil
@@ -452,7 +459,7 @@ func (s *Service) AutoPin(m *manifest.Manifest, profiles map[string]bool, getenv
 			continue
 		}
 		seen[key] = true
-		kh := s.PathFor(rk.Profile)
+		kh := s.Path()
 		token := h.Hostname
 		if h.Port != 22 {
 			token = fmt.Sprintf("[%s]:%d", h.Hostname, h.Port)
@@ -471,7 +478,7 @@ func (s *Service) AutoPin(m *manifest.Manifest, profiles map[string]bool, getenv
 		for i, sk := range scanned {
 			lines[i] = sk.Line
 		}
-		if n, _ := s.Add(lines, rk.Profile); n > 0 {
+		if n, _ := s.Add(lines); n > 0 {
 			added[rk.Profile] += n
 		}
 	}
@@ -479,24 +486,20 @@ func (s *Service) AutoPin(m *manifest.Manifest, profiles map[string]bool, getenv
 }
 
 func (s *Service) initOne(profile, alias, hostname string, port int, force bool) HostPinResult {
-	label := profile
-	if label == "" {
-		label = UserStore
-	}
-	kh := s.PathFor(profile)
+	kh := s.Path()
 	token := hostname
 	if port != 22 {
 		token = fmt.Sprintf("[%s]:%d", hostname, port)
 	}
 	if !force && HostInKnownHosts(kh, token) {
-		return HostPinResult{Profile: label, Alias: alias, Hostname: hostname, Port: port, Status: "already-trusted"}
+		return HostPinResult{Profile: profile, Alias: alias, Hostname: hostname, Port: port, Status: "already-trusted"}
 	}
 	if !netcheck.TCPReachable(hostname, port, 4*time.Second) {
-		return HostPinResult{Profile: label, Alias: alias, Hostname: hostname, Port: port, Status: "unreachable"}
+		return HostPinResult{Profile: profile, Alias: alias, Hostname: hostname, Port: port, Status: "unreachable"}
 	}
 	scanned := s.Scan(hostname, port)
 	if len(scanned) == 0 {
-		return HostPinResult{Profile: label, Alias: alias, Hostname: hostname, Port: port, Status: "no-keys"}
+		return HostPinResult{Profile: profile, Alias: alias, Hostname: hostname, Port: port, Status: "no-keys"}
 	}
 	lines := make([]string, len(scanned))
 	fps := make([]string, len(scanned))
@@ -504,6 +507,119 @@ func (s *Service) initOne(profile, alias, hostname string, port int, force bool)
 		lines[i] = sk.Line
 		fps[i] = sk.Keytype + " " + sk.Fingerprint
 	}
-	_, _ = s.Add(lines, profile)
-	return HostPinResult{Profile: label, Alias: alias, Hostname: hostname, Port: port, Status: "pinned", Fingerprints: fps}
+	_, _ = s.Add(lines)
+	return HostPinResult{Profile: profile, Alias: alias, Hostname: hostname, Port: port, Status: "pinned", Fingerprints: fps}
+}
+
+// liveTokens is the set of host tokens (hostname, or [hostname]:port for a
+// non-default port) every manifest host currently resolves to.
+func liveTokens(m *manifest.Manifest) ([]string, error) {
+	resolved, err := m.IterResolved()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var tokens []string
+	for _, rk := range resolved {
+		token := rk.Host.Hostname
+		if rk.Host.Port != 0 && rk.Host.Port != 22 {
+			token = fmt.Sprintf("[%s]:%d", rk.Host.Hostname, rk.Host.Port)
+		}
+		if !seen[token] {
+			seen[token] = true
+			tokens = append(tokens, token)
+		}
+	}
+	return tokens, nil
+}
+
+// Prune removes sshmgr-tagged lines that no longer correspond to any manifest
+// host. A tagged line survives if any remaining host - in any profile - still
+// resolves to its host:port, so deleting one profile's hosts can never strand
+// or unpin a host another profile still uses. Untagged lines (the user's own
+// pins, or anything else in the file) are never touched. Returns the count
+// removed.
+func (s *Service) Prune(m *manifest.Manifest) (int, error) {
+	live, err := liveTokens(m)
+	if err != nil {
+		return 0, err
+	}
+	path := s.Path()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	lines := splitNonEmptyTrailing(string(data))
+	kept := make([]string, 0, len(lines))
+	removed := 0
+	for _, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		parsed, ok := parseKHLine(trimmed)
+		if !ok || !parsed.tagged() || tokenIsLive(parsed, live) {
+			kept = append(kept, raw)
+			continue
+		}
+		removed++
+	}
+	if removed == 0 {
+		return 0, nil
+	}
+	return removed, s.rewrite(path, kept)
+}
+
+// Adopt tags every untagged line matching a live manifest host, making it
+// eligible for future pruning. Opt-in: an untagged pin is presumed to be the
+// user's own until they explicitly ask for sshmgr to manage it. Returns the
+// count adopted.
+func (s *Service) Adopt(m *manifest.Manifest) (int, error) {
+	live, err := liveTokens(m)
+	if err != nil {
+		return 0, err
+	}
+	path := s.Path()
+	data, err := os.ReadFile(path)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	lines := splitNonEmptyTrailing(string(data))
+	adopted := 0
+	for i, raw := range lines {
+		trimmed := strings.TrimSpace(raw)
+		parsed, ok := parseKHLine(trimmed)
+		if !ok || parsed.tagged() || !tokenIsLive(parsed, live) {
+			continue
+		}
+		lines[i] = trimmed + " " + sshmgrTag
+		adopted++
+	}
+	if adopted == 0 {
+		return 0, nil
+	}
+	return adopted, s.rewrite(path, lines)
+}
+
+func tokenIsLive(parsed khLine, live []string) bool {
+	for _, token := range live {
+		if hostFieldMatches(parsed.field, token) {
+			return true
+		}
+	}
+	return false
+}
+
+func (s *Service) rewrite(path string, lines []string) error {
+	body := ""
+	if len(lines) > 0 {
+		body = strings.TrimSpace(strings.Join(lines, "\n")) + "\n"
+	}
+	if err := fs.WriteTextAtomic(path, body, knownHostsMode); err != nil {
+		return err
+	}
+	return perms.SetPerms(path, knownHostsMode)
 }

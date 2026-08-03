@@ -14,10 +14,10 @@ import (
 func addTo(t *testing.T, ssh string, lines ...string) (*Service, string) {
 	t.Helper()
 	s := New(ssh)
-	if _, err := s.Add(lines, ""); err != nil {
+	if _, err := s.Add(lines); err != nil {
 		t.Fatal(err)
 	}
-	return s, s.PathFor("")
+	return s, s.Path()
 }
 
 // A plaintext store is a readable inventory of every host the user reaches, which
@@ -68,7 +68,7 @@ func TestRepinningDoesNotAccumulate(t *testing.T) {
 	ssh := t.TempDir()
 	s := New(ssh)
 	for i := 0; i < 3; i++ {
-		n, err := s.Add([]string{"github.com ssh-ed25519 AAAA"}, "")
+		n, err := s.Add([]string{"github.com ssh-ed25519 AAAA"})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -79,7 +79,7 @@ func TestRepinningDoesNotAccumulate(t *testing.T) {
 			t.Errorf("re-pinning added %d duplicate line(s) on pass %d", n, i)
 		}
 	}
-	body, _ := os.ReadFile(s.PathFor(""))
+	body, _ := os.ReadFile(s.Path())
 	if n := strings.Count(strings.TrimSpace(string(body)), "\n"); n != 0 {
 		t.Errorf("expected exactly one line, got %d:\n%s", n+1, body)
 	}
@@ -119,7 +119,7 @@ func TestPatternsAndMarkersAreNotHashed(t *testing.T) {
 	}
 	// And they must still dedup, since they bypass the hash-aware path.
 	s := New(filepath.Dir(path))
-	if n, _ := s.Add([]string{"*.example.com ssh-ed25519 AAAA"}, ""); n != 0 {
+	if n, _ := s.Add([]string{"*.example.com ssh-ed25519 AAAA"}); n != 0 {
 		t.Errorf("a verbatim line was duplicated (added %d)", n)
 	}
 }
@@ -135,7 +135,7 @@ func TestPlaintextEntriesStillMatch(t *testing.T) {
 		t.Error("a pre-existing plaintext entry stopped matching")
 	}
 	// And a plaintext pin of the same key must not be re-added in hashed form.
-	if n, _ := New(dir).Add([]string{"gitlab.com ssh-ed25519 ZZZZ"}, ""); n != 0 {
+	if n, _ := New(dir).Add([]string{"gitlab.com ssh-ed25519 ZZZZ"}); n != 0 {
 		t.Errorf("an already-trusted host was pinned again (added %d)", n)
 	}
 }

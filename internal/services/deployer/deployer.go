@@ -100,7 +100,7 @@ func (d *Deployer) Deploy(selector, targetAlias string) (DeployReport, error) {
 	rec := d.inv.Keys[fpKey]
 
 	report := DeployReport{KeyName: keyName, Fingerprint: fp}
-	knownHosts := filepath.Join(d.p.SSHDir, "profiles", profile, "known_hosts")
+	knownHosts := filepath.Join(d.p.SSHDir, "known_hosts")
 	for _, host := range hosts {
 		provider := providers.Resolve(deref(host.Provider), d.p.Providers())
 		if provider.Category() == "server" {

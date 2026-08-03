@@ -129,7 +129,7 @@ func (r *Rotator) target(h manifest.Host, profile, pubPath, pubText, identPath s
 	return providers.Target{
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		PubkeyPath: pubPath, PubkeyText: pubText, TokenEnv: deref(h.TokenEnv),
-		IdentityPath: identPath, KnownHosts: filepath.Join(r.dir(profile), "known_hosts"),
+		IdentityPath: identPath, KnownHosts: filepath.Join(r.p.SSHDir, "known_hosts"),
 	}
 }
 

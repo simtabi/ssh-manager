@@ -316,11 +316,7 @@ func agentStatus() string {
 }
 
 func knownHostsPresent(ssh string) bool {
-	if fs.Exists(filepath.Join(ssh, "known_hosts")) {
-		return true
-	}
-	matches, _ := filepath.Glob(filepath.Join(ssh, "profiles", "*", "known_hosts"))
-	return len(matches) > 0
+	return fs.Exists(filepath.Join(ssh, "known_hosts"))
 }
 
 // DefaultOldKeyMaxAge is how long an archived predecessor is considered useful.
@@ -473,7 +469,7 @@ func (s *Service) unpinnedHosts(ssh string) []string {
 			continue
 		}
 		seen[key] = true
-		kh := filepath.Join(ssh, "profiles", rk.Profile, "known_hosts")
+		kh := filepath.Join(ssh, "known_hosts")
 		token := h.Hostname
 		if h.Port != 22 {
 			token = fmt.Sprintf("[%s]:%d", h.Hostname, h.Port)

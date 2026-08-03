@@ -674,9 +674,14 @@ func (m *Manifest) HostsForKey(ref KeyRef) ([]Host, error) {
 	return hosts, nil
 }
 
-// KnownHostsFile is the per-profile host-key trust store path.
-func (m *Manifest) KnownHostsFile(profileName string) string {
-	return sshToken + "/profiles/" + profileName + "/known_hosts"
+// KnownHostsFile is the single, user-wide host-key trust store path. Every
+// rendered host block points at this same file: splitting it per profile gave
+// up cross-profile duplicate detection for no isolation ssh itself enforces
+// (any profile's ssh invocation can read any other profile's known_hosts), so
+// there is exactly one store, tagged and reference-counted per line instead of
+// separated by directory.
+func (m *Manifest) KnownHostsFile() string {
+	return sshToken + "/known_hosts"
 }
 
 // IterResolved returns every host with its resolved key, in manifest (file)
