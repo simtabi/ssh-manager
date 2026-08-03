@@ -10,7 +10,9 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
+	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
 
 // Result is the outcome of a migrate run.
@@ -43,6 +45,7 @@ func Migrate(p paths.Paths, force bool, stamp string) (Result, error) {
 		if err := moveDir(legacy, home); err != nil {
 			return Result{}, err
 		}
+		tighten(p)
 		return Result{Moved: true, Legacy: legacy, Home: home, Message: fmt.Sprintf("migrated %s -> %s", legacy, home)}, nil
 	}
 	if !force {
@@ -56,10 +59,26 @@ func Migrate(p paths.Paths, force bool, stamp string) (Result, error) {
 	if err := moveDir(legacy, home); err != nil {
 		return Result{}, err
 	}
+	tighten(p)
 	return Result{
 		Moved: true, Legacy: legacy, Home: home, Backup: backup,
 		Message: fmt.Sprintf("migrated %s -> %s; previous home backed up to %s", legacy, home, backup),
 	}, nil
+}
+
+// tighten re-asserts the canonical modes on the freshly migrated home.
+//
+// Both move paths preserve the source's modes - os.Rename by definition, and
+// copyTree explicitly - so a legacy home created under a permissive umask, or one
+// that predates this tool enforcing anything, arrived at the new location still
+// group- and world-readable. Migrating is exactly the moment to fix that, since
+// the user has no reason to suspect the old modes came along.
+func tighten(p paths.Paths) {
+	for _, mp := range homeperms.SecretPerms(p) {
+		if exists(mp.Path) {
+			_ = perms.SetPerms(mp.Path, mp.Mode)
+		}
+	}
 }
 
 // moveDir renames src to dst, falling back to a copy+remove across filesystems

@@ -9,6 +9,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/providers"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
+	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
@@ -33,7 +34,10 @@ func newProvidersCmd() *cobra.Command {
 				if err := fs.EnsureDir(p.ConfigDir, perms.DirMode); err != nil {
 					return err
 				}
-				if err := fs.WriteTextAtomic(dest, string(providers.DefaultCatalog()), 0o644); err != nil {
+				// Owner-only: the catalog names every deployment endpoint and the
+				// env var each token lives in, which is reconnaissance for anyone
+				// else with a local account.
+				if err := fs.WriteTextAtomic(dest, string(providers.DefaultCatalog()), homeperms.FileMode); err != nil {
 					return err
 				}
 				fmt.Fprintf(out, "wrote provider catalog to %s - edit it to customize "+

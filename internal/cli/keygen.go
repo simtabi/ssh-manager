@@ -17,9 +17,9 @@ import (
 
 // newKeygenCmd is the native keygen verb: targeted key generation for a profile or
 // host alias. Missing keys are minted; existing keys are warned about and skipped
-// unless --force (which prompts per key; ~/.ssh is snapshotted first).
+// unless --force, which prompts per key and moves each replaced key to old/.
 func newKeygenCmd() *cobra.Command {
-	var force, noPin, passphrase, yes bool
+	var force, noPin, passphrase, yes, noKeyBackup bool
 	cmd := &cobra.Command{
 		Use:   "keygen <profile|alias>",
 		Short: "Generate a profile's or host's keys",
@@ -60,6 +60,13 @@ func newKeygenCmd() *cobra.Command {
 				}
 			}
 
+			// Overwriting displaces the current key into old/, which discards any
+			// predecessor already parked there.
+			if len(overwrite) > 0 {
+				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
+					return err
+				}
+			}
 			pw := ""
 			if passphrase {
 				secret, err := readPassphrase()
@@ -94,6 +101,8 @@ func newKeygenCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&noPin, "no-pin", false, "don't auto-pin reachable hosts' known_hosts")
 	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect newly minted keys (prompts without echo)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "answer yes to overwrite prompts")
+	cmd.Flags().BoolVar(&noKeyBackup, "no-key-backup", false,
+		"overwrite without writing an encrypted backup first (any earlier predecessor is lost)")
 	return cmd
 }
 

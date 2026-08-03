@@ -11,7 +11,9 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
@@ -33,6 +35,7 @@ type Report struct {
 	AgentStatus        string
 	KnownHosts         bool
 	OldKeys            map[string]int // key_name -> archived count
+	StaleOldKeys       []string       // archived predecessors past the retention window
 	ConfigInSync       bool
 	OrphanKeys         []string
 	DuplicateKeys      []string
@@ -113,6 +116,15 @@ func (r Report) Format() string {
 	if len(badOld) > 0 {
 		lines = append(lines, "WARNING: >1 archived predecessor (invariant <=1-old): "+strings.Join(badOld, ", "))
 	}
+	if len(r.StaleOldKeys) > 0 {
+		lines = append(lines, "archived predecessors past the retention window "+
+			"(unencrypted private keys nobody is using):")
+		for _, k := range r.StaleOldKeys {
+			lines = append(lines, "  "+k)
+		}
+		lines = append(lines, "  -> remove them once the rotation is confirmed good "+
+			"(keep them longer with SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS)")
+	}
 	if len(r.OrphanKeys) > 0 {
 		lines = append(lines, "orphaned keys (on disk, not in the manifest):")
 		for _, k := range r.OrphanKeys {
@@ -151,6 +163,7 @@ func (r Report) JSON() ([]byte, error) {
 		ConfigInSync       bool           `json:"config_in_sync"`
 		PermIssues         []string       `json:"perm_issues"`
 		OldKeys            map[string]int `json:"old_keys"`
+		StaleOldKeys       []string       `json:"stale_old_keys"`
 		OrphanKeys         []string       `json:"orphan_keys"`
 		DuplicateKeys      []string       `json:"duplicate_keys"`
 		UnpinnedHosts      []string       `json:"unpinned_hosts"`
@@ -171,7 +184,8 @@ func (r Report) JSON() ([]byte, error) {
 		OK: r.OK(), Home: strOrNil(r.Home), SSHDir: strOrNil(r.SSHDir),
 		ProvidersSource: r.ProvidersSource, PreflightOK: r.Preflight.OK(),
 		Agent: r.AgentStatus, KnownHosts: r.KnownHosts, ConfigInSync: r.ConfigInSync,
-		PermIssues: nz(r.PermIssues), OldKeys: old, OrphanKeys: nz(r.OrphanKeys),
+		PermIssues: nz(r.PermIssues), OldKeys: old, StaleOldKeys: nz(r.StaleOldKeys),
+		OrphanKeys:    nz(r.OrphanKeys),
 		DuplicateKeys: nz(r.DuplicateKeys), UnpinnedHosts: nz(r.UnpinnedHosts),
 		AliasCollisions: nz(r.AliasCollisions), StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
 	})
@@ -226,7 +240,7 @@ func (s *Service) Run() Report {
 	rep.PermIssues = permIssues(ssh, s.p)
 	rep.AgentStatus = agentStatus()
 	rep.KnownHosts = knownHostsPresent(ssh)
-	rep.OldKeys = oldKeyCounts(ssh)
+	rep.OldKeys, rep.StaleOldKeys = archivedKeys(ssh, OldKeyMaxAge(nil), time.Now())
 	if s.m != nil {
 		if chk, err := configsvc.New(ssh, s.m, s.emitUseKeychain).Check(false); err == nil {
 			rep.ConfigInSync = chk.InSync()
@@ -309,8 +323,39 @@ func knownHostsPresent(ssh string) bool {
 	return len(matches) > 0
 }
 
-func oldKeyCounts(ssh string) map[string]int {
+// DefaultOldKeyMaxAge is how long an archived predecessor is considered useful.
+// Past that, the rotation it belongs to has long since been verified in practice
+// and the file is just an unencrypted private key nobody is watching.
+const DefaultOldKeyMaxAge = 90 * 24 * time.Hour
+
+// OldKeyMaxAge is the staleness threshold, overridable with
+// $SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS. A value of 0 or less disables the check
+// rather than marking everything stale, so the escape hatch is not a footgun.
+func OldKeyMaxAge(get func(string) string) time.Duration {
+	if get == nil {
+		get = os.Getenv
+	}
+	raw := strings.TrimSpace(get("SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS"))
+	if raw == "" {
+		return DefaultOldKeyMaxAge
+	}
+	days, err := strconv.Atoi(raw)
+	if err != nil {
+		return DefaultOldKeyMaxAge
+	}
+	if days <= 0 {
+		return 0
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// archivedKeys walks profiles/*/old/ once and returns both the per-key archive
+// count and the entries older than maxAge. They share a walk so the count and the
+// staleness verdict can never describe different sets of files. maxAge 0 skips
+// the staleness pass. Paths are relative to ssh, for display.
+func archivedKeys(ssh string, maxAge time.Duration, now time.Time) (map[string]int, []string) {
 	counts := map[string]int{}
+	var stale []string
 	olds, _ := filepath.Glob(filepath.Join(ssh, "profiles", "*", "old"))
 	sort.Strings(olds)
 	for _, old := range olds {
@@ -327,9 +372,21 @@ func oldKeyCounts(ssh string) map[string]int {
 			// Counted per profile: merging same-named archives from two profiles
 			// would falsely trip the "more than one predecessor" check.
 			counts[profile+"/"+e.Name()]++
+			if maxAge <= 0 {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			if age := now.Sub(info.ModTime()); age > maxAge {
+				stale = append(stale, fmt.Sprintf("%s/old/%s (%d days old)",
+					profile, e.Name(), int(age.Hours()/24)))
+			}
 		}
 	}
-	return counts
+	sort.Strings(stale)
+	return counts, stale
 }
 
 func (s *Service) orphanKeys(ssh string) []string {

@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -59,6 +60,39 @@ func newBundleCmd() *cobra.Command {
 	cmd.Flags().StringVarP(&output, "output", "o", "", "destination dir (else config-dir/dist)")
 	cmd.Flags().IntVar(&keep, "keep", 0, "after bundling, keep only the newest N bundles (0 keeps all)")
 	return cmd
+}
+
+// backupKeysBeforeDestroying writes an age-encrypted bundle so an operation that
+// destroys key material stays recoverable.
+//
+// This used to be free: the pre-mutation snapshot tarred every private key, so
+// anything destroyed could be dug back out of it. Snapshots no longer carry keys
+// - deliberately, they were a rolling plaintext archive - which means the
+// destructive paths need a real backup of their own. An encrypted bundle is the
+// replacement, and no configured recipient is a hard stop rather than a shrug,
+// because the alternative is losing a key with no way back.
+func backupKeysBeforeDestroying(p paths.Paths, out io.Writer, skip bool) error {
+	recipient := os.Getenv("SSH_MANAGER_AGE_RECIPIENT")
+	if skip {
+		if recipient == "" {
+			fmt.Fprintln(out, "WARNING: proceeding without a key backup - anything this "+
+				"destroys is unrecoverable.")
+		}
+		return nil
+	}
+	if recipient == "" {
+		return fmt.Errorf("this destroys key material and there is no encrypted backup to fall " +
+			"back on.\nSet SSH_MANAGER_AGE_RECIPIENT to an age recipient (age-keygen -o " +
+			"<identity>) so a bundle can be written first, or pass --no-key-backup to accept " +
+			"that the replaced key is gone for good.")
+	}
+	res, err := bundler.New(p.SSHDir, p.ConfigDir, bundler.AgeCipher{}).
+		Bundle(recipient, p.DistDir(), time.Now().Format("20060102-150405"))
+	if err != nil {
+		return fmt.Errorf("could not back up keys before proceeding: %w", err)
+	}
+	fmt.Fprintf(out, "key backup: %s\n", res.AgePath)
+	return nil
 }
 
 // pruneBundles removes all but the newest keep bundles in dir, taking their
