@@ -27,8 +27,9 @@ func tmpArtifact(name string) bool {
 }
 
 // CleanTempArtifacts sweeps crash residue: leftover .<name>.*.tmp files anywhere
-// under sshDir and any stray profiles/<p>/.staging dir. Returns the relative paths
-// removed. Mirrors fs.clean_temp_artifacts.
+// under sshDir, plus any stray profiles/<p>/.staging or profiles/<p>/.mint-* dir.
+// Both of the latter can hold a private key that a crash left behind, so this is
+// a leak sweep and not only tidiness. Returns the relative paths removed.
 func CleanTempArtifacts(sshDir string) []string {
 	if _, err := os.Stat(sshDir); err != nil {
 		return nil
@@ -49,6 +50,8 @@ func CleanTempArtifacts(sshDir string) []string {
 	profiles := filepath.Join(sshDir, "profiles")
 	if fi, err := os.Lstat(profiles); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
 		stagings, _ := filepath.Glob(filepath.Join(profiles, "*", ".staging"))
+		minting, _ := filepath.Glob(filepath.Join(profiles, "*", ".mint-*"))
+		stagings = append(stagings, minting...)
 		sort.Strings(stagings)
 		for _, s := range stagings {
 			if fi, err := os.Lstat(s); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {

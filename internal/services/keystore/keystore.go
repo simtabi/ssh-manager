@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/simtabi/ssh-manager/internal/util/askpass"
 	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
 
@@ -43,11 +44,17 @@ func requireKeygen() error {
 
 // Generate mints a keypair at privPath. Idempotent and non-destructive by default
 // (an existing key is kept and its fingerprint returned); with overwrite the old
-// pair is removed first (callers MUST have snapshotted ~/.ssh). A hardware *-sk
+// pair is replaced (callers MUST have snapshotted ~/.ssh). A hardware *-sk
 // type falls back to its software equivalent when no FIDO2 device is present.
 func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overwrite bool) (GenResult, error) {
 	if keyType == "" {
 		keyType = "ed25519"
+	}
+	if err := refuseSymlink(privPath); err != nil {
+		return GenResult{}, err
+	}
+	if err := refuseSymlink(pubPath(privPath)); err != nil {
+		return GenResult{}, err
 	}
 	if exists(privPath) && !overwrite {
 		fp, err := k.Fingerprint(privPath)
@@ -55,10 +62,6 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 			return GenResult{}, err
 		}
 		return GenResult{Path: privPath, Fingerprint: fp, Created: false}, nil
-	}
-	if exists(privPath) { // overwrite: drop the old pair so ssh-keygen won't prompt
-		_ = os.Remove(privPath)
-		_ = os.Remove(pubPath(privPath))
 	}
 	if err := requireKeygen(); err != nil {
 		return GenResult{}, err
@@ -70,13 +73,23 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 	if err := perms.SetPerms(parent, perms.DirMode); err != nil {
 		return GenResult{}, err
 	}
-	err := runKeygen(keyType, privPath, comment, passphrase)
-	if err != nil && strings.HasSuffix(keyType, "-sk") {
-		fallback := strings.TrimSuffix(keyType, "-sk") // ed25519-sk -> ed25519
-		err = runKeygen(fallback, privPath, comment+" (sk-fallback)", passphrase)
-	}
+
+	staged, cleanup, err := mint(parent, keyType, comment, passphrase)
+	defer cleanup()
 	if err != nil {
-		return GenResult{}, fmt.Errorf("ssh-keygen failed: %w", err)
+		return GenResult{}, err
+	}
+	// The old pair is only dropped once a replacement exists, so a failed mint
+	// cannot leave the profile without a key.
+	if overwrite {
+		_ = os.Remove(privPath)
+		_ = os.Remove(pubPath(privPath))
+	}
+	if err := os.Rename(staged, privPath); err != nil {
+		return GenResult{}, err
+	}
+	if err := os.Rename(pubPath(staged), pubPath(privPath)); err != nil {
+		return GenResult{}, err
 	}
 	if err := perms.SetPerms(privPath, perms.PrivateKeyMode); err != nil {
 		return GenResult{}, err
@@ -91,10 +104,61 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 	return GenResult{Path: privPath, Fingerprint: fp, Created: true}, nil
 }
 
+// mint generates a pair inside a directory created for this call, and returns the
+// staged private key path plus a cleanup func the caller must defer.
+//
+// Generating straight to the final path would let ssh-keygen write private key
+// material through a symlink planted there by someone else, and would leave the
+// key readable for however long it took to chmod it afterwards. A directory that
+// did not exist a moment ago can contain neither.
+func mint(parent, keyType, comment, passphrase string) (string, func(), error) {
+	dir, err := os.MkdirTemp(parent, ".mint-")
+	if err != nil {
+		return "", func() {}, err
+	}
+	cleanup := func() { _ = os.RemoveAll(dir) }
+	if err := perms.SetPerms(dir, perms.DirMode); err != nil {
+		return "", cleanup, err
+	}
+	staged := filepath.Join(dir, "key")
+
+	err = runKeygen(keyType, staged, comment, passphrase)
+	if err != nil && strings.HasSuffix(keyType, "-sk") {
+		// No FIDO2 authenticator present. ssh-keygen refuses to overwrite, so the
+		// partial attempt has to go before the software fallback is tried.
+		_ = os.Remove(staged)
+		_ = os.Remove(pubPath(staged))
+		fallback := strings.TrimSuffix(keyType, "-sk") // ed25519-sk -> ed25519
+		err = runKeygen(fallback, staged, comment+" (sk-fallback)", passphrase)
+	}
+	if err != nil {
+		return "", cleanup, fmt.Errorf("ssh-keygen failed: %w", err)
+	}
+	return staged, cleanup, nil
+}
+
 func runKeygen(keyType, privPath, comment, passphrase string) error {
-	cmd := exec.Command("ssh-keygen", "-t", keyType, "-f", privPath, "-C", comment, "-N", passphrase, "-q")
+	args := []string{"-t", keyType, "-f", privPath, "-C", comment, "-q"}
+	if passphrase == "" {
+		// An empty passphrase is not a secret, and -N keeps the run silent.
+		args = append(args, "-N", "")
+	}
+	cmd := exec.Command("ssh-keygen", args...)
 	var stderr bytes.Buffer
 	cmd.Stderr = &stderr
+
+	if passphrase != "" {
+		// Never -N a real passphrase: argv is world-readable via ps. Hand it over
+		// through the askpass protocol instead, and also offer it on stdin, which
+		// is what pre-8.4 ssh-keygen reads when it has no terminal to prompt on.
+		self, err := os.Executable()
+		if err != nil {
+			return fmt.Errorf("cannot locate own binary to act as askpass helper: %w", err)
+		}
+		cmd.Env = askpass.Environ(self, passphrase)
+		cmd.Stdin = strings.NewReader(passphrase + "\n" + passphrase + "\n")
+	}
+
 	if err := cmd.Run(); err != nil {
 		if msg := strings.TrimSpace(stderr.String()); msg != "" {
 			return fmt.Errorf("%s", msg)
@@ -147,7 +211,19 @@ func (k *KeyStore) PublicFromPrivate(privPath string) (pub string, encrypted boo
 	return "", strings.Contains(string(head), "PRIVATE KEY-----"), nil
 }
 
+// exists reports whether a path exists, without following symlinks: a symlink
+// sitting at a key path is something to notice, not something to write through.
 func exists(path string) bool {
-	_, err := os.Stat(path)
+	_, err := os.Lstat(path)
 	return err == nil
+}
+
+// refuseSymlink rejects a key path that is a symlink, which would otherwise
+// place private key material wherever the link points.
+func refuseSymlink(path string) error {
+	fi, err := os.Lstat(path)
+	if err != nil || fi.Mode()&os.ModeSymlink == 0 {
+		return nil
+	}
+	return fmt.Errorf("%s is a symlink; refusing to write key material through it", path)
 }

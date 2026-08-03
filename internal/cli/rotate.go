@@ -34,7 +34,11 @@ func newRotateCmd() *cobra.Command {
 			}
 			pw := ""
 			if passphrase {
-				pw = readPassphrase(c)
+				secret, err := readPassphrase()
+				if err != nil {
+					return err
+				}
+				pw = secret
 			}
 			snapshotBeforeMutation(p)
 			report, err := rotator.New(p, m, inv).Rotate(key, allowUnverified, pw)
@@ -54,7 +58,7 @@ func newRotateCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&allowUnverified, "allow-unverified", false, "commit even if a target can't auto-verify")
-	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect the rotated-in key (prompts on stdin)")
+	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect the rotated-in key (prompts without echo)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
 }

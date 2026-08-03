@@ -62,7 +62,11 @@ func newKeygenCmd() *cobra.Command {
 
 			pw := ""
 			if passphrase {
-				pw = readPassphrase(c)
+				secret, err := readPassphrase()
+				if err != nil {
+					return err
+				}
+				pw = secret
 			}
 			snapshotBeforeMutation(p)
 			minted, err := r.Mint(target, pw, overwrite)
@@ -88,7 +92,7 @@ func newKeygenCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing keys (prompts; ~/.ssh snapshotted first)")
 	cmd.Flags().BoolVar(&noPin, "no-pin", false, "don't auto-pin reachable hosts' known_hosts")
-	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect newly minted keys (prompts on stdin)")
+	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect newly minted keys (prompts without echo)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "answer yes to overwrite prompts")
 	return cmd
 }
