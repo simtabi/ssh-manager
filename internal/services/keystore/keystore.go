@@ -79,11 +79,12 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 	if err != nil {
 		return GenResult{}, err
 	}
-	// The old pair is only dropped once a replacement exists, so a failed mint
+	// The old pair is only displaced once a replacement exists, so a failed mint
 	// cannot leave the profile without a key.
 	if overwrite {
-		_ = os.Remove(privPath)
-		_ = os.Remove(pubPath(privPath))
+		if err := archivePredecessor(privPath); err != nil {
+			return GenResult{}, err
+		}
 	}
 	if err := os.Rename(staged, privPath); err != nil {
 		return GenResult{}, err
@@ -209,6 +210,40 @@ func (k *KeyStore) PublicFromPrivate(privPath string) (pub string, encrypted boo
 		return "", false, nil
 	}
 	return "", strings.Contains(string(head), "PRIVATE KEY-----"), nil
+}
+
+// archivePredecessor moves the key being replaced into the profile's old/ dir,
+// the same place rotation parks a superseded key, keeping the one-predecessor
+// invariant.
+//
+// Overwriting used to just unlink the pair and lean on the pre-mutation snapshot
+// to make that reversible. Snapshots no longer carry private keys, so without
+// this an overwrite would be unrecoverable.
+func archivePredecessor(privPath string) error {
+	if !exists(privPath) {
+		return nil
+	}
+	oldDir := filepath.Join(filepath.Dir(privPath), "old")
+	if err := os.MkdirAll(oldDir, perms.DirMode); err != nil {
+		return err
+	}
+	if err := perms.SetPerms(oldDir, perms.DirMode); err != nil {
+		return err
+	}
+	name := filepath.Base(privPath)
+	for _, m := range []struct{ from, to string }{
+		{privPath, filepath.Join(oldDir, name)},
+		{pubPath(privPath), pubPath(filepath.Join(oldDir, name))},
+	} {
+		if !exists(m.from) {
+			continue
+		}
+		_ = os.Remove(m.to) // at most one predecessor is kept
+		if err := os.Rename(m.from, m.to); err != nil {
+			return fmt.Errorf("could not archive the key being replaced: %w", err)
+		}
+	}
+	return nil
 }
 
 // exists reports whether a path exists, without following symlinks: a symlink

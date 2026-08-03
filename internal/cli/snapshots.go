@@ -49,10 +49,15 @@ func newSnapshotsCmd() *cobra.Command {
 	var yes bool
 	restore := &cobra.Command{
 		Use:   "restore [snapshot]",
-		Short: "Restore ~/.ssh from a snapshot (snapshots the current tree first)",
-		Args:  cobra.MaximumNArgs(1),
+		Short: "Restore ~/.ssh config from a snapshot (private keys are left as they are)",
+		Long: "Restore ~/.ssh config from a snapshot.\n\n" +
+			"Snapshots hold config, known_hosts and public keys - never private keys, since\n" +
+			"they are plaintext archives taken on every mutating command. Restoring puts those\n" +
+			"files back and leaves everything else on disk untouched, so a key minted after the\n" +
+			"snapshot survives the rollback. Use `sshmgr bundle` for encrypted key backups.",
+		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			if !yes && !confirm(c, "Restore ~/.ssh from a snapshot? (current tree is snapshotted first)") {
+			if !yes && !confirm(c, "Restore ~/.ssh config from a snapshot? (private keys are left as they are)") {
 				os.Exit(1)
 			}
 			id := ""

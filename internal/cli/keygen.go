@@ -50,10 +50,10 @@ func newKeygenCmd() *cobra.Command {
 				fmt.Fprintf(out, "%d key(s) already exist in %q: %s\n", len(existing), target, strings.Join(existing, ", "))
 				if !force {
 					fmt.Fprintln(out, "  existing keys will be SKIPPED - re-run with --force to "+
-						"overwrite (a ~/.ssh snapshot is taken first; undo via `sshmgr snapshots restore`).")
+						"overwrite (the replaced key is kept in the profile's old/ dir).")
 				} else {
 					for _, name := range existing {
-						if yes || confirm(c, fmt.Sprintf("  overwrite %s? (~/.ssh is snapshotted first)", name)) {
+						if yes || confirm(c, fmt.Sprintf("  overwrite %s? (the replaced key moves to old/)", name)) {
 							overwrite[name] = true
 						}
 					}
@@ -90,7 +90,7 @@ func newKeygenCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing keys (prompts; ~/.ssh snapshotted first)")
+	cmd.Flags().BoolVarP(&force, "force", "f", false, "overwrite existing keys (prompts; replaced keys move to old/)")
 	cmd.Flags().BoolVar(&noPin, "no-pin", false, "don't auto-pin reachable hosts' known_hosts")
 	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect newly minted keys (prompts without echo)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "answer yes to overwrite prompts")

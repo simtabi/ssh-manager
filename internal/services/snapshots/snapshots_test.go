@@ -40,8 +40,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 		}
 	}
 
-	// Mutate the tree, then restore and confirm the original is back.
-	os.Remove(filepath.Join(ssh, "profiles/work/work_gh-ed25519"))
+	// Mutate the config, then restore and confirm the original is back.
 	os.WriteFile(filepath.Join(ssh, "config"), []byte("CHANGED\n"), 0o600)
 	if err := Restore(tarball, ssh); err != nil {
 		t.Fatalf("restore: %v", err)
@@ -50,8 +49,14 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	if string(got) != "# root config\n" {
 		t.Errorf("config not restored: %q", got)
 	}
+	// Public keys travel with the snapshot.
+	if _, err := os.Stat(filepath.Join(ssh, "profiles/work/work_gh-ed25519.pub")); err != nil {
+		t.Errorf("public key not restored: %v", err)
+	}
+	// The private key was never archived, so restoring must leave the one on disk
+	// alone rather than wiping the tree it cannot repopulate.
 	if _, err := os.Stat(filepath.Join(ssh, "profiles/work/work_gh-ed25519")); err != nil {
-		t.Errorf("private key not restored: %v", err)
+		t.Errorf("restore destroyed a private key it does not hold: %v", err)
 	}
 }
 
