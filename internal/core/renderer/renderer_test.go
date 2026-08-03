@@ -7,8 +7,9 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 )
 
-// Expected output captured verbatim from the Python render_all() on the shipped
-// config/manifest.json (emit_use_keychain=True).
+// Expected output for the shipped config/manifest.json (emit_use_keychain=True).
+// Host blocks additionally carry IdentitiesOnly, which the Python renderer left
+// to defaults.global_options.
 const wantRoot = "# Managed by ssh-manager - do not edit (run: sshmgr config render)\n" +
 	"Include profiles/*/config\n\nHost *\n" +
 	"    AddKeysToAgent yes\n    IgnoreUnknown UseKeychain\n    UseKeychain yes\n" +
@@ -18,6 +19,7 @@ const wantRoot = "# Managed by ssh-manager - do not edit (run: sshmgr config ren
 const wantWork = "# Managed by ssh-manager - do not edit (run: sshmgr config render)\n" +
 	"Host unc\n    HostName sc.its.unc.edu\n    User uncgit\n    Port 443\n" +
 	"    IdentityFile ~/.ssh/profiles/work/work_unc-ed25519\n" +
+	"    IdentitiesOnly yes\n" +
 	"    UserKnownHostsFile ~/.ssh/profiles/work/known_hosts\n\n"
 
 func TestRenderAllParity(t *testing.T) {

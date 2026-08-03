@@ -63,6 +63,23 @@ func RenderRootConfig(globalOptions manifest.OrderedOptions, emitUseKeychain boo
 	return b.String()
 }
 
+const identitiesOnlyKey = "IdentitiesOnly"
+
+// identitiesOnly is the value to bind a host to its own key. Every host block
+// carries this directive: without it ssh offers each identity loaded in the agent
+// to the server in turn, disclosing the whole key inventory to any host reached.
+// Relying on defaults.global_options for it, as the config used to, meant editing
+// that map silently switched the protection off. An explicit per-host value is
+// still honoured, so the directive is pinned in place rather than forced.
+func identitiesOnly(opts manifest.OrderedOptions) string {
+	for _, k := range opts.Keys() {
+		if strings.EqualFold(k, identitiesOnlyKey) {
+			return opts.Get(k)
+		}
+	}
+	return "yes"
+}
+
 // RenderProfileConfig renders one profiles/<name>/config from its hosts.
 func RenderProfileConfig(hosts []RenderHost) string {
 	var b strings.Builder
@@ -75,8 +92,12 @@ func RenderProfileConfig(hosts []RenderHost) string {
 			b.WriteString("    Port " + strconv.Itoa(h.Port) + "\n")
 		}
 		b.WriteString("    IdentityFile " + h.IdentityFile + "\n")
+		b.WriteString("    IdentitiesOnly " + identitiesOnly(h.RawOptions) + "\n")
 		b.WriteString("    UserKnownHostsFile " + h.KnownHosts + "\n")
 		for _, k := range h.RawOptions.Keys() {
+			if strings.EqualFold(k, identitiesOnlyKey) {
+				continue // already emitted next to the IdentityFile it constrains
+			}
 			b.WriteString("    " + k + " " + h.RawOptions.Get(k) + "\n")
 		}
 		b.WriteString("\n") // blank line between/after host blocks (template)
