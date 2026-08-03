@@ -613,6 +613,47 @@ func tokenIsLive(parsed khLine, live []string) bool {
 	return false
 }
 
+// MigrationReport summarizes a one-shot migration of legacy per-profile
+// known_hosts stores into the single ~/.ssh/known_hosts.
+type MigrationReport struct {
+	Merged  int      // lines merged in (post-dedup)
+	Removed []string // profiles/<name>/known_hosts files deleted, ssh-dir-relative
+}
+
+// MigrateLegacyStores merges every profiles/*/known_hosts left over from
+// before the trust store consolidated into one file, then deletes them. Lines
+// still in plaintext are hashed on the way in, and every merged line is
+// tagged, exactly as any other call to Add. A tree with none is a no-op
+// (zero merged, zero removed), so callers can run this unconditionally on
+// every render without cost once the migration has already happened.
+func (s *Service) MigrateLegacyStores() (MigrationReport, error) {
+	matches, err := filepath.Glob(filepath.Join(s.sshDir, "profiles", "*", "known_hosts"))
+	if err != nil {
+		return MigrationReport{}, err
+	}
+	sort.Strings(matches)
+	var report MigrationReport
+	for _, legacy := range matches {
+		data, readErr := os.ReadFile(legacy)
+		if readErr == nil {
+			if lines := splitNonEmptyTrailing(string(data)); len(lines) > 0 {
+				n, addErr := s.Add(lines)
+				if addErr != nil {
+					return report, addErr
+				}
+				report.Merged += n
+			}
+		}
+		if err := os.Remove(legacy); err != nil {
+			return report, err
+		}
+		if rel, err := filepath.Rel(s.sshDir, legacy); err == nil {
+			report.Removed = append(report.Removed, filepath.ToSlash(rel))
+		}
+	}
+	return report, nil
+}
+
 func (s *Service) rewrite(path string, lines []string) error {
 	body := ""
 	if len(lines) > 0 {

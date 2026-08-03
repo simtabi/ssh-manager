@@ -3,11 +3,30 @@ package knownhosts
 import (
 	"encoding/json"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 )
+
+func mustMkdir(t *testing.T, base string, parts ...string) {
+	t.Helper()
+	if err := os.MkdirAll(filepath.Join(append([]string{base}, parts...)...), 0o700); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func mustWrite(t *testing.T, base, rel, content string) {
+	t.Helper()
+	if err := os.WriteFile(filepath.Join(base, filepath.FromSlash(rel)), []byte(content), 0o600); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func osStat(base, rel string) (os.FileInfo, error) {
+	return os.Stat(filepath.Join(base, filepath.FromSlash(rel)))
+}
 
 func mustManifest(t *testing.T, raw string) *manifest.Manifest {
 	t.Helper()
@@ -117,5 +136,48 @@ func TestAdoptTagsOnlyMatchingUntaggedLines(t *testing.T) {
 	// Adopting twice must not double-tag or duplicate.
 	if n2, _ := s.Adopt(mustManifest(t, oneHostJSON)); n2 != 0 {
 		t.Errorf("re-adopt should be a no-op, adopted %d more", n2)
+	}
+}
+
+// The one-shot migration off per-profile stores has to merge what is there
+// (plaintext, pre-hashing) into the single file and remove the legacy files -
+// otherwise every rendered UserKnownHostsFile ~/.ssh/known_hosts line points at
+// a store missing the entries the old per-profile files held.
+func TestMigrateLegacyStoresMergesAndRemoves(t *testing.T) {
+	ssh := t.TempDir()
+	mustMkdir(t, ssh, "profiles", "work")
+	mustMkdir(t, ssh, "profiles", "personal")
+	mustWrite(t, ssh, "profiles/work/known_hosts", "github.com ssh-ed25519 AAAA\n")
+	mustWrite(t, ssh, "profiles/personal/known_hosts", "gitlab.com ssh-ed25519 BBBB\n")
+
+	s := New(ssh)
+	rep, err := s.MigrateLegacyStores()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Merged != 2 {
+		t.Errorf("merged=%d want 2", rep.Merged)
+	}
+	if len(rep.Removed) != 2 {
+		t.Errorf("removed=%v want 2 files", rep.Removed)
+	}
+	for _, legacy := range []string{"profiles/work/known_hosts", "profiles/personal/known_hosts"} {
+		if _, err := osStat(ssh, legacy); err == nil {
+			t.Errorf("%s should have been deleted", legacy)
+		}
+	}
+	for _, host := range []string{"github.com", "gitlab.com"} {
+		if !HostInKnownHosts(s.Path(), host) {
+			t.Errorf("%s should have been merged into the single store", host)
+		}
+	}
+
+	// A tree with no legacy stores left is a no-op.
+	rep2, err := s.MigrateLegacyStores()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep2.Merged != 0 || len(rep2.Removed) != 0 {
+		t.Errorf("second migration should be a no-op, got %+v", rep2)
 	}
 }

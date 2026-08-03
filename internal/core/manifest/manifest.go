@@ -506,11 +506,56 @@ func checkKeyScope(value string) error {
 	return nil
 }
 
+// checkAliasCollisions rejects a Host alias declared more than once anywhere in
+// the manifest, in any profile.
+//
+// Under inline rendering every Host block lives in one file, so a duplicate
+// alias is no longer a doctor warning about which per-profile file Include
+// happened to expand first - it is dead config, deterministically: ssh takes
+// the first Host block it sees for that alias and silently ignores every
+// other one, in manifest (file) order. That is unambiguous enough to reject
+// outright rather than merely report.
+func checkAliasCollisions(m *Manifest) error {
+	count := map[string]int{}
+	profiles := map[string]map[string]bool{}
+	for _, pname := range m.sortedProfileNames() {
+		for _, h := range m.Profiles[pname].Hosts {
+			count[h.Alias]++
+			if profiles[h.Alias] == nil {
+				profiles[h.Alias] = map[string]bool{}
+			}
+			profiles[h.Alias][pname] = true
+		}
+	}
+	aliases := make([]string, 0, len(count))
+	for a := range count {
+		aliases = append(aliases, a)
+	}
+	sort.Strings(aliases)
+	for _, alias := range aliases {
+		if count[alias] < 2 {
+			continue
+		}
+		profs := make([]string, 0, len(profiles[alias]))
+		for p := range profiles[alias] {
+			profs = append(profs, p)
+		}
+		sort.Strings(profs)
+		return fmt.Errorf("alias %q is declared more than once (profiles: %s) - "+
+			"every Host block renders into one file, so only the first would take effect",
+			alias, strings.Join(profs, ", "))
+	}
+	return nil
+}
+
 func (m *Manifest) validate() error {
 	if err := checkOptions("global_options", m.Defaults.GlobalOptions); err != nil {
 		return err
 	}
 	if err := checkKeyScope(m.Defaults.KeyScope); err != nil {
+		return err
+	}
+	if err := checkAliasCollisions(m); err != nil {
 		return err
 	}
 	for name, p := range m.Profiles {

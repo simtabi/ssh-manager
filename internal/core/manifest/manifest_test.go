@@ -66,10 +66,38 @@ func TestValidationRejections(t *testing.T) {
 		"glob alias":        `{"profiles":{"p":{"hosts":[{"alias":"*","hostname":"h","user":"u"}]}}}`,
 		"leading-dash user": `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"-x"}]}}}`,
 		"bad key_scope":     `{"profiles":{"p":{"key_scope":"weird","hosts":[]}}}`,
+		"duplicate alias, same profile": `{"profiles":{"p":{"hosts":[
+			{"alias":"gh","hostname":"h1","user":"u"},
+			{"alias":"gh","hostname":"h2","user":"u"}
+		]}}}`,
+		"duplicate alias, across profiles": `{"profiles":{
+			"work":{"hosts":[{"alias":"gh","hostname":"h1","user":"u"}]},
+			"personal":{"hosts":[{"alias":"gh","hostname":"h2","user":"u"}]}
+		}}`,
 	}
 	for name, js := range cases {
 		if _, err := loadJSON(t, js); err == nil {
 			t.Errorf("%s: expected a validation error, got nil", name)
+		}
+	}
+}
+
+// Under inline rendering every Host block lives in one file, so a duplicate
+// alias is deterministically dead config (ssh takes the first, in manifest
+// order) rather than a warning about filesystem-glob ordering. Load must
+// refuse it outright.
+func TestDuplicateAliasAcrossProfilesIsRejected(t *testing.T) {
+	const js = `{"profiles":{
+		"work":{"hosts":[{"alias":"gh","hostname":"h1","user":"u"}]},
+		"personal":{"hosts":[{"alias":"gh","hostname":"h2","user":"u"}]}
+	}}`
+	_, err := loadJSON(t, js)
+	if err == nil {
+		t.Fatal("expected a validation error for a duplicate alias")
+	}
+	for _, want := range []string{`"gh"`, "personal", "work"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error should mention %q: %v", want, err)
 		}
 	}
 }
