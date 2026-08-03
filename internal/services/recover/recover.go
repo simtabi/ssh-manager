@@ -22,28 +22,23 @@ import (
 //go:embed fixkeys.sh
 var fixkeysScript []byte
 
-// Script returns the recovery material: the full fixkeys tool when keyName is
+// Script returns the recovery material: the full fixkeys tool when selector is
 // empty, else a per-key re-add snippet. Mirrors facade.recovery_script.
-func Script(p paths.Paths, m *manifest.Manifest, keyName string) (string, error) {
-	if keyName == "" {
+func Script(p paths.Paths, m *manifest.Manifest, selector string) (string, error) {
+	if selector == "" {
 		return string(fixkeysScript), nil
 	}
 	if m == nil {
 		return "", fmt.Errorf("no manifest - run `sshmgr init` first")
 	}
-	rks, err := m.IterResolved()
+	ref, err := m.ResolveKeySelector(selector)
 	if err != nil {
 		return "", err
 	}
-	pubPath := ""
-	for _, rk := range rks {
-		if rk.KeyName == keyName {
-			pubPath = filepath.Join(p.SSHDir, "profiles", rk.Profile, keyName+".pub")
-			break
-		}
-	}
-	if pubPath == "" || !exists(pubPath) {
-		return "", fmt.Errorf("public key not found for %q - run `sshmgr reconcile` first", keyName)
+	keyName := ref.KeyName
+	pubPath := filepath.Join(p.SSHDir, "profiles", ref.Profile, keyName+".pub")
+	if !exists(pubPath) {
+		return "", fmt.Errorf("public key not found for %q - run `sshmgr reconcile` first", ref)
 	}
 	b, err := os.ReadFile(pubPath)
 	if err != nil {

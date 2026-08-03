@@ -93,8 +93,8 @@ func TestDoctorReportSubchecks(t *testing.T) {
 	if !has(rep.OrphanKeys, "profiles/work/work_stray-ed25519") {
 		t.Errorf("orphan not detected: %v", rep.OrphanKeys)
 	}
-	if rep.OldKeys["work_gh-ed25519"] != 1 {
-		t.Errorf("old key count=%v want 1", rep.OldKeys["work_gh-ed25519"])
+	if rep.OldKeys["work/work_gh-ed25519"] != 1 {
+		t.Errorf("old key count=%v want 1 for work/work_gh-ed25519", rep.OldKeys)
 	}
 
 	if runtime.GOOS != "windows" {

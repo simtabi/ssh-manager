@@ -19,8 +19,9 @@ func newValidateCmd() *cobra.Command {
 		Use:   "validate [selector]",
 		Short: "Check keypairs parse, match, and have safe perms",
 		Long: "Validate managed keypairs: each key parses, the public matches the " +
-			"private, and perms are correct. selector filters by key name or profile; " +
-			"omit it to validate every managed key. Exits non-zero if any key fails.",
+			"private, and perms are correct. selector filters by profile, key name, or " +
+			"profile/key; a key name shared by several profiles validates all of them. " +
+			"Omit it to validate every managed key. Exits non-zero if any key fails.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			selector := ""

@@ -306,22 +306,27 @@ func oldKeyCounts(ssh string) map[string]int {
 		if err != nil || !fi.IsDir() {
 			continue
 		}
+		profile := filepath.Base(filepath.Dir(old))
 		entries, _ := os.ReadDir(old)
 		for _, e := range entries {
 			if e.IsDir() || strings.HasSuffix(e.Name(), ".pub") {
 				continue
 			}
-			counts[e.Name()]++
+			// Counted per profile: merging same-named archives from two profiles
+			// would falsely trip the "more than one predecessor" check.
+			counts[profile+"/"+e.Name()]++
 		}
 	}
 	return counts
 }
 
 func (s *Service) orphanKeys(ssh string) []string {
-	referenced := map[string]bool{}
-	if rks, err := s.m.IterResolved(); err == nil {
-		for _, rk := range rks {
-			referenced[rk.KeyName] = true
+	// Keyed by profile as well as name: the same file name under two profiles is
+	// two different keys, so a bare-name index would mask a real orphan.
+	referenced := map[manifest.KeyRef]bool{}
+	if refs, err := s.m.KeyRefs(); err == nil {
+		for _, ref := range refs {
+			referenced[ref] = true
 		}
 	}
 	profDir := filepath.Join(ssh, "profiles")
@@ -341,7 +346,8 @@ func (s *Service) orphanKeys(ssh string) []string {
 		if !fs.Exists(priv + ".pub") {
 			continue
 		}
-		if !referenced[base] {
+		ref := manifest.KeyRef{Profile: filepath.Base(filepath.Dir(priv)), KeyName: base}
+		if !referenced[ref] {
 			rel, _ := filepath.Rel(ssh, priv)
 			orphans = append(orphans, filepath.ToSlash(rel))
 		}
@@ -370,7 +376,8 @@ func duplicateKeys(ssh string) []string {
 		if _, seen := byFP[fp]; !seen {
 			order = append(order, fp)
 		}
-		byFP[fp] = append(byFP[fp], strings.TrimSuffix(filepath.Base(pub), ".pub"))
+		name := strings.TrimSuffix(filepath.Base(pub), ".pub")
+		byFP[fp] = append(byFP[fp], filepath.Base(filepath.Dir(pub))+"/"+name)
 	}
 	var dups []string
 	for _, fp := range order {

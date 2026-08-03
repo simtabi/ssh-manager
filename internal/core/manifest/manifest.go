@@ -7,6 +7,7 @@ package manifest
 import (
 	"bytes"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"os"
 	"regexp"
@@ -544,24 +545,6 @@ func (m *Manifest) validate() error {
 			}
 		}
 	}
-	return m.validateKeyNameUniqueness()
-}
-
-func (m *Manifest) validateKeyNameUniqueness() error {
-	owner := map[string]string{}
-	for _, pname := range m.sortedProfileNames() {
-		for _, h := range m.Profiles[pname].Hosts {
-			kname, err := m.ResolvedKeyName(pname, h)
-			if err != nil {
-				continue // unresolvable key reported at use-time
-			}
-			if prev, ok := owner[kname]; ok && prev != pname {
-				return fmt.Errorf("key_name %q is used by both profile %q and %q; "+
-					"a key_name must be unique across profiles", kname, prev, pname)
-			}
-			owner[kname] = pname
-		}
-	}
 	return nil
 }
 
@@ -598,6 +581,97 @@ func (m *Manifest) ResolvedKeyName(profileName string, host Host) (string, error
 // IdentityFile is the rendered ~ form path for a key (always forward slashes).
 func (m *Manifest) IdentityFile(profileName, keyName string) string {
 	return sshToken + "/profiles/" + profileName + "/" + keyName
+}
+
+// KeyRef names one key: the profile that owns it plus the file name inside that
+// profile's directory. Key names are unique per profile, not globally - a person
+// working under two orgs uses the same file name in both profile directories.
+type KeyRef struct {
+	Profile string
+	KeyName string
+}
+
+// String renders the composite "profile/key" selector form.
+func (r KeyRef) String() string { return r.Profile + "/" + r.KeyName }
+
+// ResolveKeySelector turns a user-supplied key selector into a single KeyRef.
+// It accepts the composite "profile/key" form, or a bare key name when exactly
+// one profile uses it. A bare name matched by several profiles is an error
+// listing the candidates, because the caller would otherwise operate on one
+// profile's files while touching another's hosts.
+func (m *Manifest) ResolveKeySelector(selector string) (KeyRef, error) {
+	if selector == "" {
+		return KeyRef{}, errors.New("no key given")
+	}
+	refs, err := m.KeyRefs()
+	if err != nil {
+		return KeyRef{}, err
+	}
+	if pname, kname, ok := strings.Cut(selector, "/"); ok {
+		for _, r := range refs {
+			if r.Profile == pname && r.KeyName == kname {
+				return r, nil
+			}
+		}
+		if _, exists := m.Profiles[pname]; !exists {
+			return KeyRef{}, fmt.Errorf("no such profile: %q", pname)
+		}
+		return KeyRef{}, fmt.Errorf("no key %q in profile %q", kname, pname)
+	}
+	var matches []KeyRef
+	for _, r := range refs {
+		if r.KeyName == selector {
+			matches = append(matches, r)
+		}
+	}
+	switch len(matches) {
+	case 0:
+		return KeyRef{}, fmt.Errorf("no such key: %q", selector)
+	case 1:
+		return matches[0], nil
+	default:
+		names := make([]string, 0, len(matches))
+		for _, r := range matches {
+			names = append(names, r.String())
+		}
+		return KeyRef{}, fmt.Errorf("key %q is ambiguous - it exists in %d profiles; "+
+			"use one of: %s", selector, len(matches), strings.Join(names, ", "))
+	}
+}
+
+// KeyRefs lists every distinct key in the manifest, deduplicated per profile so
+// that hosts sharing one key yield a single ref. Ordered by profile, then key.
+func (m *Manifest) KeyRefs() ([]KeyRef, error) {
+	resolved, err := m.IterResolved()
+	if err != nil {
+		return nil, err
+	}
+	seen := map[KeyRef]bool{}
+	var out []KeyRef
+	for _, rk := range resolved {
+		ref := KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
+		if seen[ref] {
+			continue
+		}
+		seen[ref] = true
+		out = append(out, ref)
+	}
+	return out, nil
+}
+
+// HostsForKey returns the hosts that use one key, scoped to its own profile.
+func (m *Manifest) HostsForKey(ref KeyRef) ([]Host, error) {
+	resolved, err := m.IterResolved()
+	if err != nil {
+		return nil, err
+	}
+	var hosts []Host
+	for _, rk := range resolved {
+		if rk.Profile == ref.Profile && rk.KeyName == ref.KeyName {
+			hosts = append(hosts, rk.Host)
+		}
+	}
+	return hosts, nil
 }
 
 // KnownHostsFile is the per-profile host-key trust store path.

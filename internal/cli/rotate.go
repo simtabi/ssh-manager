@@ -15,7 +15,7 @@ import (
 func newRotateCmd() *cobra.Command {
 	var allowUnverified, passphrase, yes bool
 	cmd := &cobra.Command{
-		Use:   "rotate <key>",
+		Use:   "rotate <[profile/]key>",
 		Short: "Zero-downtime staged key rotation",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -62,7 +62,7 @@ func newRotateCmd() *cobra.Command {
 func newRollbackCmd() *cobra.Command {
 	var yes bool
 	cmd := &cobra.Command{
-		Use:   "rollback <key>",
+		Use:   "rollback <[profile/]key>",
 		Short: "Restore the previous key",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {

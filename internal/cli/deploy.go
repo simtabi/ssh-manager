@@ -17,7 +17,7 @@ import (
 // record it. Exits non-zero if any attempted deploy failed.
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "deploy <key> [target]",
+		Use:   "deploy <[profile/]key> [target]",
 		Short: "Install a public key on its target",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {

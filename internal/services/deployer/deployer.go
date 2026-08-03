@@ -78,11 +78,12 @@ func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Deploye
 
 // Deploy installs key keyName on its target(s) (all hosts using it, or just
 // targetAlias) and records each deployment. Mirrors Deployer.deploy.
-func (d *Deployer) Deploy(keyName, targetAlias string) (DeployReport, error) {
-	hosts, profile, err := d.targets(keyName, targetAlias)
+func (d *Deployer) Deploy(selector, targetAlias string) (DeployReport, error) {
+	hosts, ref, err := d.targets(selector, targetAlias)
 	if err != nil {
 		return DeployReport{}, err
 	}
+	profile, keyName := ref.Profile, ref.KeyName
 	pub := filepath.Join(d.p.SSHDir, "profiles", profile, keyName+".pub")
 	if _, err := os.Stat(pub); err != nil {
 		return DeployReport{}, fmt.Errorf("public key not found: %s - run `sshmgr reconcile` first", pub)
@@ -129,26 +130,23 @@ func (d *Deployer) Deploy(keyName, targetAlias string) (DeployReport, error) {
 	return report, nil
 }
 
-func (d *Deployer) targets(keyName, targetAlias string) ([]manifest.Host, string, error) {
-	rks, err := d.m.IterResolved()
+// targets resolves a key selector to the hosts it should be deployed to. Hosts
+// come from the key's own profile only - the public key lives in that profile's
+// directory, so a same-named key elsewhere is a different key entirely.
+func (d *Deployer) targets(selector, targetAlias string) ([]manifest.Host, manifest.KeyRef, error) {
+	ref, err := d.m.ResolveKeySelector(selector)
 	if err != nil {
-		return nil, "", err
+		return nil, manifest.KeyRef{}, err
 	}
-	var using []manifest.Host
-	profile := ""
-	for _, rk := range rks {
-		if rk.KeyName == keyName {
-			using = append(using, rk.Host)
-			if profile == "" {
-				profile = rk.Profile
-			}
-		}
+	using, err := d.m.HostsForKey(ref)
+	if err != nil {
+		return nil, manifest.KeyRef{}, err
 	}
 	if len(using) == 0 {
-		return nil, "", fmt.Errorf("no host in the manifest uses key %q", keyName)
+		return nil, manifest.KeyRef{}, fmt.Errorf("no host in the manifest uses key %q", ref)
 	}
 	if targetAlias == "" {
-		return using, profile, nil
+		return using, ref, nil
 	}
 	var chosen []manifest.Host
 	var aliases []string
@@ -159,9 +157,9 @@ func (d *Deployer) targets(keyName, targetAlias string) ([]manifest.Host, string
 		}
 	}
 	if len(chosen) == 0 {
-		return nil, "", fmt.Errorf("host %q does not use key %q (it's used by: %s)", targetAlias, keyName, strings.Join(aliases, ", "))
+		return nil, manifest.KeyRef{}, fmt.Errorf("host %q does not use key %q (it's used by: %s)", targetAlias, ref, strings.Join(aliases, ", "))
 	}
-	return chosen, profile, nil
+	return chosen, ref, nil
 }
 
 // ensureRecord makes sure an inventory record exists for fp, with pydantic

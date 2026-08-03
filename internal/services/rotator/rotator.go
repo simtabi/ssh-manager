@@ -98,25 +98,23 @@ func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Rotator
 	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New()}
 }
 
-func (r *Rotator) profileAndHosts(keyName string) (string, []manifest.Host, error) {
-	rks, err := r.m.IterResolved()
+// profileAndHosts resolves a key selector to its owning profile and the hosts
+// that use it. Hosts are scoped to that one profile: rotating touches files in a
+// single profile directory, so pulling in a same-named key from another profile
+// would deploy against hosts whose key was never rotated.
+func (r *Rotator) profileAndHosts(selector string) (string, string, []manifest.Host, error) {
+	ref, err := r.m.ResolveKeySelector(selector)
 	if err != nil {
-		return "", nil, err
+		return "", "", nil, err
 	}
-	profile := ""
-	var hosts []manifest.Host
-	for _, rk := range rks {
-		if rk.KeyName == keyName {
-			if profile == "" {
-				profile = rk.Profile
-			}
-			hosts = append(hosts, rk.Host)
-		}
+	hosts, err := r.m.HostsForKey(ref)
+	if err != nil {
+		return "", "", nil, err
 	}
 	if len(hosts) == 0 {
-		return "", nil, fmt.Errorf("no host in the manifest uses key %q", keyName)
+		return "", "", nil, fmt.Errorf("no host in the manifest uses key %q", ref)
 	}
-	return profile, hosts, nil
+	return ref.Profile, ref.KeyName, hosts, nil
 }
 
 func (r *Rotator) dir(profile string) string {
@@ -151,8 +149,8 @@ func (r *Rotator) unreachable(hosts []manifest.Host) []string {
 
 // Rotate stages a fresh key, deploys+verifies it on every target, and commits only
 // if all verified (or allowUnverified and all deployed). Mirrors Rotator.rotate.
-func (r *Rotator) Rotate(keyName string, allowUnverified bool, passphrase string) (RotateReport, error) {
-	profile, hosts, err := r.profileAndHosts(keyName)
+func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase string) (RotateReport, error) {
+	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
 	}
@@ -289,8 +287,8 @@ func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, 
 
 // Rollback restores the single /old/ predecessor (plain reverse move), re-deploys
 // it, and revokes the rotated-in key. Mirrors Rotator.rollback.
-func (r *Rotator) Rollback(keyName string) (RotateReport, error) {
-	profile, hosts, err := r.profileAndHosts(keyName)
+func (r *Rotator) Rollback(selector string) (RotateReport, error) {
+	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
 	}

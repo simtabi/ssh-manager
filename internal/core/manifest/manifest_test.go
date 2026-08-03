@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 )
 
@@ -65,9 +66,6 @@ func TestValidationRejections(t *testing.T) {
 		"glob alias":        `{"profiles":{"p":{"hosts":[{"alias":"*","hostname":"h","user":"u"}]}}}`,
 		"leading-dash user": `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"-x"}]}}}`,
 		"bad key_scope":     `{"profiles":{"p":{"key_scope":"weird","hosts":[]}}}`,
-		"dup key_name across profiles": `{"profiles":{
-			"p1":{"key_scope":"shared","key_name":"deploy","hosts":[{"alias":"a","hostname":"h","user":"u"}]},
-			"p2":{"key_scope":"shared","key_name":"deploy","hosts":[{"alias":"b","hostname":"h","user":"u"}]}}}`,
 	}
 	for name, js := range cases {
 		if _, err := loadJSON(t, js); err == nil {
@@ -75,6 +73,81 @@ func TestValidationRejections(t *testing.T) {
 		}
 	}
 }
+
+// A profile models an org and a key file is named for the person using it, so
+// the same name legitimately appears in several profiles. The directory keeps
+// them apart on disk; commands disambiguate with the profile/key selector.
+func TestDuplicateKeyNameAcrossProfilesIsAllowed(t *testing.T) {
+	m, err := loadJSON(t, dupKeyManifest)
+	if err != nil {
+		t.Fatalf("same key_name in two profiles should load: %v", err)
+	}
+	refs, err := m.KeyRefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// personal + adelsaiq share the basename; simtabi is a third distinct key.
+	if len(refs) != 3 {
+		t.Fatalf("KeyRefs = %v, want one entry per distinct profile/key", refs)
+	}
+	for _, ref := range refs {
+		want := "~/.ssh/profiles/" + ref.Profile + "/" + ref.KeyName
+		if got := m.IdentityFile(ref.Profile, ref.KeyName); got != want {
+			t.Errorf("identity for %s = %q, want %q", ref, got, want)
+		}
+	}
+}
+
+func TestResolveKeySelector(t *testing.T) {
+	m, err := loadJSON(t, dupKeyManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Run("composite form picks the named profile", func(t *testing.T) {
+		ref, err := m.ResolveKeySelector("adelsaiq/imani_github-ed25519")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ref.Profile != "adelsaiq" {
+			t.Errorf("profile = %q, want adelsaiq", ref.Profile)
+		}
+	})
+	t.Run("bare name resolves when only one profile uses it", func(t *testing.T) {
+		ref, err := m.ResolveKeySelector("simtabi_github-ed25519")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ref.String() != "simtabi/simtabi_github-ed25519" {
+			t.Errorf("ref = %q", ref)
+		}
+	})
+	t.Run("bare name shared by profiles is ambiguous", func(t *testing.T) {
+		_, err := m.ResolveKeySelector("imani_github-ed25519")
+		if err == nil {
+			t.Fatal("expected an ambiguity error")
+		}
+		// The message must name the candidates - the caller has to retype one.
+		for _, want := range []string{"adelsaiq/imani_github-ed25519", "personal/imani_github-ed25519"} {
+			if !strings.Contains(err.Error(), want) {
+				t.Errorf("error %q does not offer %q", err, want)
+			}
+		}
+	})
+	t.Run("rejects unknown key, profile, and pairing", func(t *testing.T) {
+		for _, sel := range []string{"", "nope", "nosuch/imani_github-ed25519", "personal/nope"} {
+			if _, err := m.ResolveKeySelector(sel); err == nil {
+				t.Errorf("selector %q should have failed", sel)
+			}
+		}
+	})
+}
+
+// One person (imani) working under two orgs, plus a third profile whose key name
+// is unique - enough to exercise both the ambiguous and unambiguous paths.
+const dupKeyManifest = `{"profiles":{
+	"personal":{"hosts":[{"alias":"github-imani","hostname":"github.com","user":"git","key_name":"imani_github-ed25519"}]},
+	"adelsaiq":{"hosts":[{"alias":"github-danniela","hostname":"github.com","user":"git","key_name":"imani_github-ed25519"}]},
+	"simtabi":{"hosts":[{"alias":"github-simtabi","hostname":"github.com","user":"git","key_name":"simtabi_github-ed25519"}]}}}`
 
 func TestSharedAndPerServiceResolution(t *testing.T) {
 	m, err := loadJSON(t, `{"profiles":{"team":{"key_scope":"shared","key_name":"team_all-ed25519",

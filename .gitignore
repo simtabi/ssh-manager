@@ -43,6 +43,9 @@ dist/
 # Shipping checklist is a personal release-prep aid, never tracked
 docs/shipping-checklist.md
 
+# Per-machine ssh reconciliation worklist, never tracked
+docs/ssh-worklist.md
+
 # ai-cleanup tool artifacts (never tracked)
 reports/
 cleaned/

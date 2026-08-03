@@ -401,18 +401,17 @@ func (t *tui) banner() {
 
 func (t *tui) print(text string) { fmt.Fprintln(t.out, text) }
 
+// keyNames lists keys as "profile/key" selectors. The composite form is used
+// even when a name is unique, so the picker never hides which profile a key
+// belongs to when the same person's name appears under several orgs.
 func keyNames(m *manifest.Manifest) []string {
-	rks, err := m.IterResolved()
+	refs, err := m.KeyRefs()
 	if err != nil {
 		return nil
 	}
-	set := map[string]bool{}
-	for _, rk := range rks {
-		set[rk.KeyName] = true
-	}
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ref.String())
 	}
 	sort.Strings(out)
 	return out

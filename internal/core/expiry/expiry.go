@@ -147,8 +147,11 @@ func BannerLines(states []Status) []string {
 		if s.ExpiresOn != nil {
 			exp = *s.ExpiresOn
 		}
+		// The hint uses the profile/key form because a key name alone can belong
+		// to more than one profile.
+		selector := s.Profile + "/" + s.KeyName
 		lines = append(lines, fmt.Sprintf(
-			"⚠ %s %s (%s) - run: sshmgr rotate %s", s.KeyName, when, exp, s.KeyName))
+			"⚠ %s %s (%s) - run: sshmgr rotate %s", selector, when, exp, selector))
 	}
 	return lines
 }

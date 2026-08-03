@@ -37,39 +37,36 @@ func New(m *manifest.Manifest, sshDir string) *Service {
 	return &Service{m: m, sshDir: sshDir, ks: keystore.New()}
 }
 
-// ValidateKeys validates every managed key, deduped by key name. selector filters
-// by key name or profile (empty means all); an unmatched selector is an error.
+// ValidateKeys validates every managed key, one check per profile+name pair.
+// selector filters by profile, key name, or the composite "profile/key" form
+// (empty means all); an unmatched selector is an error. A bare key name used by
+// several profiles validates every one of them - checking only the first would
+// report a broken key as clean.
 func (s *Service) ValidateKeys(selector string) ([]KeyCheck, error) {
 	resolved, err := s.m.IterResolved()
 	if err != nil {
 		return nil, err
 	}
-	if selector != "" {
-		matched := false
-		for _, rk := range resolved {
-			if selector == rk.KeyName || selector == rk.Profile {
-				matched = true
-				break
-			}
-		}
-		if !matched {
-			return nil, fmt.Errorf("unknown key or profile: %q", selector)
-		}
-	}
-	seen := map[string]bool{}
+	seen := map[manifest.KeyRef]bool{}
 	var checks []KeyCheck
 	for _, rk := range resolved {
-		if seen[rk.KeyName] {
+		ref := manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
+		if seen[ref] || !selectorMatches(selector, ref) {
 			continue
 		}
-		if selector != "" && selector != rk.KeyName && selector != rk.Profile {
-			continue
-		}
-		seen[rk.KeyName] = true
-		priv := filepath.Join(s.sshDir, "profiles", rk.Profile, rk.KeyName)
-		checks = append(checks, s.validateOne(rk.Profile, rk.KeyName, priv))
+		seen[ref] = true
+		priv := filepath.Join(s.sshDir, "profiles", ref.Profile, ref.KeyName)
+		checks = append(checks, s.validateOne(ref.Profile, ref.KeyName, priv))
+	}
+	if len(checks) == 0 && selector != "" {
+		return nil, fmt.Errorf("unknown key or profile: %q", selector)
 	}
 	return checks, nil
+}
+
+func selectorMatches(selector string, ref manifest.KeyRef) bool {
+	return selector == "" || selector == ref.Profile ||
+		selector == ref.KeyName || selector == ref.String()
 }
 
 func (s *Service) validateOne(profile, keyName, priv string) KeyCheck {
