@@ -39,12 +39,18 @@ func newDiffCmd() *cobra.Command {
 			}
 			var missing []string
 			present := 0
+			seen := map[manifest.KeyRef]bool{}
 			for _, rk := range rks {
-				priv := filepath.Join(p.SSHDir, "profiles", rk.Profile, rk.KeyName)
+				ref := manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
+				if seen[ref] {
+					continue // hosts sharing one key are one key to mint
+				}
+				seen[ref] = true
+				priv := filepath.Join(p.SSHDir, "profiles", ref.Profile, ref.KeyName)
 				if fs.Exists(priv) {
 					present++
 				} else {
-					missing = append(missing, fmt.Sprintf("  MINT  %s (manifest wants it; not on disk)", rk.KeyName))
+					missing = append(missing, fmt.Sprintf("  MINT  %s (manifest wants it; not on disk)", ref))
 				}
 			}
 			lines = append(lines, missing...)

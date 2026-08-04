@@ -46,7 +46,7 @@ func Script(p paths.Paths, m *manifest.Manifest, selector string) (string, error
 	}
 	pubtext := strings.TrimSpace(string(b))
 	if !authkeys.IsValidPublicKey(pubtext) {
-		return "", fmt.Errorf("%s: %s is not a valid public key", keyName, pubPath)
+		return "", fmt.Errorf("%s: %s is not a valid public key", ref, pubPath)
 	}
 	return snippet(keyName, pubtext), nil
 }

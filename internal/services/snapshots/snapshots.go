@@ -349,7 +349,8 @@ func Prune(snapshotsDir string, keep int) int {
 // RestoreByID restores ~/.ssh from a snapshot (latest if id is empty, else the
 // last whose name contains id), snapshotting the current tree first so the restore
 // is itself reversible, then re-asserting perms. Returns the chosen snapshot path.
-// Mirrors facade.restore_snapshot (minus the advisory lock, not yet ported).
+// The advisory lock and the pre-restore snapshot are the CLI's mutation guard,
+// upstream of this, so they are not duplicated here.
 func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, error) {
 	snaps := List(snapshotsDir)
 	if len(snaps) == 0 {

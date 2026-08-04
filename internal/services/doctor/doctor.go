@@ -1,7 +1,9 @@
-// Package doctor diagnoses the install: deps, perms, agent, known_hosts, and
-// manifest-vs-disk drift/hygiene. Ported from facade.doctor + its helpers. Every
-// on-disk and manifest check mirrors v1 exactly; only the preflight runtime line
-// differs (the Go binary has no interpreter dependency).
+// Package doctor diagnoses the install: deps, perms, agent, known_hosts,
+// manifest-vs-disk drift, and dangling keys.
+//
+// It no longer mirrors v1 check for check. The dangling-key section comes from
+// the keyaudit service and, unlike the orphan list it replaced, decides the
+// verdict; --strict escalates every state for CI.
 package doctor
 
 import (
@@ -200,7 +202,7 @@ func (r Report) JSON() ([]byte, error) {
 
 // FixPerms re-asserts canonical perms on the tool-managed ~/.ssh paths and the
 // config-home secrets, returning the paths it changed. Mirrors facade.fix_perms
-// (the advisory lock is the Facade's mutation guard, not yet ported).
+// (the advisory lock is the CLI's mutation guard, upstream of this).
 func (s *Service) FixPerms() []string {
 	var changed []string
 	for _, mp := range perms.IterManagedPaths(s.p.SSHDir) {

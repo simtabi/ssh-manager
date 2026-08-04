@@ -45,8 +45,11 @@ func (s Status) Ref() string {
 	return s.Profile + "/" + s.KeyName
 }
 
+// keyName is the file name in an inventory path. Those are written in the
+// "~/.ssh/..." forward-slash form, but both separators are honoured so a record
+// carrying a native Windows path still yields a name rather than the whole path.
 func keyName(path string) string {
-	if i := strings.LastIndex(path, "/"); i >= 0 {
+	if i := strings.LastIndexAny(path, `/\`); i >= 0 {
 		return path[i+1:]
 	}
 	return path

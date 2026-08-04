@@ -472,8 +472,12 @@ func (e *Editor) pruneIdents(m *manifest.Manifest, inv *inventory.Inventory, aff
 	return nil
 }
 
+// basename is the last segment of an identity path. Inventory paths are always
+// written in the "~/.ssh/..." forward-slash form, but a caller could hand this a
+// native path, so both separators are honoured rather than only the one that
+// happens to be right on this machine.
 func basename(p string) string {
-	if i := strings.LastIndex(p, "/"); i >= 0 {
+	if i := strings.LastIndexAny(p, `/\`); i >= 0 {
 		return p[i+1:]
 	}
 	return p
