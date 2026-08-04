@@ -222,32 +222,58 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	}
 
 	// 4. COMMIT.
+	//
+	// The canonical path is the only identity ssh will offer, so it has to hold a
+	// working private key at every instant. This used to be four bare renames -
+	// current pair out to old/, staged pair in - and any one of them failing left
+	// the canonical path empty with the live key sitting in old/ or .staging/,
+	// discovered the next time the user tried to push. Nothing put it back.
+	//
+	// Now the outgoing pair is preserved into old/ by hard link, so the canonical
+	// path still points at it while the copy is made, and the staged pair is
+	// renamed *over* the canonical path - which POSIX defines as atomic. A crash
+	// between any two steps leaves a complete, working key behind, and a failure
+	// puts back whatever had already moved.
 	oldDir := filepath.Join(pdir, "old")
 	if err := fs.EnsureDir(oldDir, perms.DirMode); err != nil {
-		return RotateReport{}, err
+		return RotateReport{}, fmt.Errorf("could not prepare the archive directory, so the rotation "+
+			"was not committed (the active key is untouched): %w", err)
 	}
-	_ = os.Remove(filepath.Join(oldDir, keyName))
-	_ = os.Remove(filepath.Join(oldDir, keyName+".pub"))
-	if err := os.Rename(curPriv, filepath.Join(oldDir, keyName)); err != nil {
-		return RotateReport{}, err
-	}
-	if err := os.Rename(curPub, filepath.Join(oldDir, keyName+".pub")); err != nil {
-		return RotateReport{}, err
+	oldPrivSlot := filepath.Join(oldDir, keyName)
+	if err := preservePair(curPriv, oldPrivSlot); err != nil {
+		return RotateReport{}, fmt.Errorf("could not archive the outgoing key, so the rotation was "+
+			"not committed (the active key is untouched): %w", err)
 	}
 	if err := os.Rename(stagedPriv, curPriv); err != nil {
-		return RotateReport{}, err
+		// The canonical pair never moved; drop the archive copy we just made so
+		// old/ does not claim a predecessor that was never replaced.
+		removePair(oldPrivSlot)
+		return RotateReport{}, fmt.Errorf("could not move the new key into place, so the rotation "+
+			"was not committed (the active key is untouched): %w", err)
 	}
 	if err := os.Rename(stagedPub, curPub); err != nil {
-		return RotateReport{}, err
+		// The private half already changed. Put the preserved one back so the
+		// canonical pair matches itself again.
+		if rerr := os.Rename(oldPrivSlot, curPriv); rerr != nil {
+			return RotateReport{}, fmt.Errorf("the rotation failed midway AND could not be undone. "+
+				"%s now holds the NEW private key while %s is the OLD public key, and the "+
+				"previous private key is at %s. Restore by hand, or run `sshmgr rollback %s`: "+
+				"%w (undo also failed: %v)", curPriv, curPub, oldPrivSlot, keyName, err, rerr)
+		}
+		removePair(oldPrivSlot)
+		return RotateReport{}, fmt.Errorf("could not move the new public key into place, so the "+
+			"rotation was undone and the previous key is active again: %w", err)
 	}
+	// Only now: before the swap the archive shared an inode with the live key, so
+	// setting its mode would have set the live key's too.
 	_ = perms.SetPerms(curPriv, perms.PrivateKeyMode)
 	_ = perms.SetPerms(curPub, perms.PublicKeyMode)
-	_ = perms.SetPerms(filepath.Join(oldDir, keyName), perms.PrivateKeyMode)
-	_ = perms.SetPerms(filepath.Join(oldDir, keyName+".pub"), perms.PublicKeyMode)
+	_ = perms.SetPerms(oldPrivSlot, perms.PrivateKeyMode)
+	_ = perms.SetPerms(oldPrivSlot+".pub", perms.PublicKeyMode)
 	_ = os.RemoveAll(staging)
 
 	// Revoke the old public key from each target (best-effort).
-	oldPub := filepath.Join(oldDir, keyName+".pub")
+	oldPub := oldPrivSlot + ".pub"
 	for i := range hosts {
 		tgt := r.target(hosts[i], profile, oldPub, oldPubText, "")
 		results[i].Revoked = r.provider(hosts[i]).Remove(tgt)
@@ -312,14 +338,28 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 		report.NewFingerprint = fp
 	}
 
-	// Reverse move: predecessor -> canonical (replacing current).
-	_ = os.Remove(curPriv)
-	_ = os.Remove(curPub)
+	// Reverse move: predecessor -> canonical, replacing the rotated-in key.
+	//
+	// Nothing is removed first. This used to delete the canonical pair and then
+	// move the predecessor in, so a failed rename left the canonical path empty
+	// with the key it had just deleted gone for good - a rollback that locks you
+	// out is worse than the rotation it was undoing. Rename over an existing file
+	// is atomic, so the canonical path holds a complete private key throughout.
 	if err := os.Rename(oldPriv, curPriv); err != nil {
-		return RotateReport{}, err
+		return RotateReport{}, fmt.Errorf("could not restore the previous private key, so nothing "+
+			"was rolled back (the rotated-in key is still active): %w", err)
 	}
 	if err := os.Rename(oldPub, curPub); err != nil {
-		return RotateReport{}, err
+		// The private half is restored and working; only the .pub is stale. It is
+		// derivable from the private key, so derive it rather than leave a pair
+		// that does not match itself.
+		if !r.rederivePub(curPriv, curPub) {
+			return RotateReport{}, fmt.Errorf("the previous private key was restored to %s and is "+
+				"active, but its public key could not be put back: %s still holds the rotated-in "+
+				"public key. Re-derive it with `ssh-keygen -y -f %s > %s`: %w",
+				curPriv, curPub, curPriv, curPub, err)
+		}
+		log.Audit(r.p.AuditLog(), "rollback.pub-rederived", log.Field{Key: "key", Value: keyName})
 	}
 	_ = perms.SetPerms(curPriv, perms.PrivateKeyMode)
 	_ = perms.SetPerms(curPub, perms.PublicKeyMode)
@@ -360,6 +400,59 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	report.Committed = true
 	log.Audit(r.p.AuditLog(), "rollback", log.Field{Key: "key", Value: keyName}, log.Field{Key: "restored", Value: report.NewFingerprint})
 	return report, nil
+}
+
+// preservePair copies the keypair at src to dst without disturbing src.
+//
+// A hard link, not a copy: the two names share one inode, so the source keeps
+// working while the archive exists and no private key bytes are written a second
+// time. src and dst are both inside one profile directory, so a link is
+// essentially always possible; a filesystem that refuses one (a bind mount over
+// old/, say) falls back to copying, since preserving the outgoing key matters
+// more than how it is preserved.
+func preservePair(srcPriv, dstPriv string) error {
+	for _, ext := range []string{"", ".pub"} {
+		src, dst := srcPriv+ext, dstPriv+ext
+		if !exists(src) {
+			continue // a half pair is the caller's problem, not this one's
+		}
+		_ = os.Remove(dst) // the single archive slot holds one predecessor
+		if err := os.Link(src, dst); err == nil {
+			continue
+		}
+		if err := copyFile(src, dst); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+// copyFile is the fallback for preservePair. Private key modes are re-asserted
+// by the caller's perms sweep; 0600 here means the file is never briefly
+// readable by anyone else.
+func copyFile(src, dst string) error {
+	body, err := os.ReadFile(src)
+	if err != nil {
+		return err
+	}
+	return fs.WriteTextAtomic(dst, string(body), perms.PrivateKeyMode)
+}
+
+// removePair deletes both halves of a keypair, ignoring absent files.
+func removePair(priv string) {
+	_ = os.Remove(priv)
+	_ = os.Remove(priv + ".pub")
+}
+
+// rederivePub regenerates a public key file from its private key. Reports
+// whether it succeeded - an encrypted key cannot be derived without its
+// passphrase, and the caller has to say so rather than pretend.
+func (r *Rotator) rederivePub(priv, pub string) bool {
+	derived, _, err := r.ks.PublicFromPrivate(priv)
+	if err != nil || derived == "" {
+		return false
+	}
+	return fs.WriteTextAtomic(pub, derived+"\n", perms.PublicKeyMode) == nil
 }
 
 func deployments(results []TargetResult, date string) []inventory.Deployment {
