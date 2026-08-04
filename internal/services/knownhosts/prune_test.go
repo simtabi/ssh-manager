@@ -181,3 +181,92 @@ func TestMigrateLegacyStoresMergesAndRemoves(t *testing.T) {
 		t.Errorf("second migration should be a no-op, got %+v", rep2)
 	}
 }
+
+// A --dry-run is only trustworthy if it is computed by the same code that does
+// the work. These assert the previews and the mutations agree on both counts
+// and contents.
+func TestCandidatesMatchWhatPruneAndAdoptDo(t *testing.T) {
+	ssh := t.TempDir()
+	s := New(ssh)
+	// Tagged and live, tagged and stale, untagged and live, untagged and stale.
+	if _, err := s.Add([]string{"github.com ssh-ed25519 AAAAlive", "gone.example.com ssh-ed25519 AAAAstale"}); err != nil {
+		t.Fatal(err)
+	}
+	existing, err := os.ReadFile(s.Path())
+	if err != nil {
+		t.Fatal(err)
+	}
+	mine := "github.com ssh-rsa AAAAmine\nsomewhere.else ssh-rsa AAAAtheirs\n"
+	if err := os.WriteFile(s.Path(), append(existing, []byte(mine)...), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := mustManifest(t, oneHostJSON)
+
+	adoptable, err := s.AdoptCandidates(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(adoptable) != 1 || adoptable[0].Token != "github.com" || adoptable[0].Keytype != "ssh-rsa" {
+		t.Fatalf("adopt candidates = %+v, want only the untagged github.com line", adoptable)
+	}
+	prunable, err := s.PruneCandidates(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(prunable) != 1 {
+		t.Fatalf("prune candidates = %+v, want only the tagged stale line", prunable)
+	}
+	// Hashed and matching no live host, so it cannot be named - only identified.
+	if prunable[0].Token != "" || prunable[0].Name() != "(hashed host)" {
+		t.Errorf("a stale hashed line should not claim a host name: %+v", prunable[0])
+	}
+
+	adopted, err := s.Adopt(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if adopted != len(adoptable) {
+		t.Errorf("adopted %d but predicted %d", adopted, len(adoptable))
+	}
+	pruned, err := s.Prune(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pruned != len(prunable) {
+		t.Errorf("pruned %d but predicted %d", pruned, len(prunable))
+	}
+	// The user's unrelated pin is still untouched by both operations.
+	body, _ := os.ReadFile(s.Path())
+	if !strings.Contains(string(body), "somewhere.else") {
+		t.Errorf("a foreign pin was removed:\n%s", body)
+	}
+}
+
+// Adopting makes a line prunable later, never in the same run - it matches a
+// live host by definition, which is why it was adoptable at all.
+func TestAdoptDoesNotMakeALinePrunableNow(t *testing.T) {
+	ssh := t.TempDir()
+	s := New(ssh)
+	if err := os.WriteFile(s.Path(), []byte("github.com ssh-ed25519 AAAAmine\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	m := mustManifest(t, oneHostJSON)
+	if _, err := s.Adopt(m); err != nil {
+		t.Fatal(err)
+	}
+	pruned, err := s.Prune(m)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pruned != 0 {
+		t.Errorf("pruned %d adopted-but-live line(s), want 0", pruned)
+	}
+	// Once the host is gone, the adopted line is sshmgr's to remove.
+	pruned, err = s.Prune(mustManifest(t, emptyManifestJSON))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if pruned != 1 {
+		t.Errorf("pruned %d, want the adopted line once its host went away", pruned)
+	}
+}

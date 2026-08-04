@@ -47,6 +47,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newListCmd())       // native Go
 	root.AddCommand(newViewCmd())       // native Go
 	root.AddCommand(newShowCmd())       // native Go
+	root.AddCommand(newCleanCmd())      // native Go
 	root.AddCommand(newExpiryCmd())     // native Go
 	root.AddCommand(newAuditCmd())      // native Go
 	root.AddCommand(newNotifyCmd())     // native Go

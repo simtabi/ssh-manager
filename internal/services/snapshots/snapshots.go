@@ -72,24 +72,22 @@ func HoldsKeyMaterial(tarball string) bool {
 	}
 }
 
-// CleanTempArtifacts sweeps crash residue: leftover .<name>.*.tmp files anywhere
-// under sshDir, plus any stray profiles/<p>/.staging or profiles/<p>/.mint-* dir.
-// Both of the latter can hold a private key that a crash left behind, so this is
-// a leak sweep and not only tidiness. Returns the relative paths removed.
-func CleanTempArtifacts(sshDir string) []string {
+// FindTempArtifacts lists crash residue without removing it: leftover
+// .<name>.*.tmp files anywhere under sshDir, plus any stray
+// profiles/<p>/.staging or profiles/<p>/.mint-* dir. Paths are absolute and in
+// removal order; CleanTempArtifacts is this plus the deletion, so a preview
+// (`clean --dry-run`) reports exactly what the sweep would take.
+func FindTempArtifacts(sshDir string) []string {
 	if _, err := os.Stat(sshDir); err != nil {
 		return nil
 	}
-	var removed []string
+	var found []string
 	_ = filepath.WalkDir(sshDir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
 		if tmpArtifact(d.Name()) {
-			if os.Remove(p) == nil {
-				rel, _ := filepath.Rel(sshDir, p)
-				removed = append(removed, filepath.ToSlash(rel))
-			}
+			found = append(found, p)
 		}
 		return nil
 	})
@@ -100,13 +98,26 @@ func CleanTempArtifacts(sshDir string) []string {
 		stagings = append(stagings, minting...)
 		sort.Strings(stagings)
 		for _, s := range stagings {
+			// A symlink here would make RemoveAll follow it out of the tree.
 			if fi, err := os.Lstat(s); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
-				if os.RemoveAll(s) == nil {
-					rel, _ := filepath.Rel(sshDir, s)
-					removed = append(removed, filepath.ToSlash(rel))
-				}
+				found = append(found, s)
 			}
 		}
+	}
+	return found
+}
+
+// CleanTempArtifacts sweeps the crash residue FindTempArtifacts reports. Both
+// .staging and .mint-* can hold a private key a crash left behind, so this is a
+// leak sweep and not only tidiness. Returns the relative paths removed.
+func CleanTempArtifacts(sshDir string) []string {
+	var removed []string
+	for _, p := range FindTempArtifacts(sshDir) {
+		if os.RemoveAll(p) != nil {
+			continue
+		}
+		rel, _ := filepath.Rel(sshDir, p)
+		removed = append(removed, filepath.ToSlash(rel))
 	}
 	return removed
 }

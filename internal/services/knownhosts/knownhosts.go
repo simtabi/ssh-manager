@@ -270,12 +270,28 @@ func HostInKnownHosts(path, token string) bool {
 
 // Entry is one trust-store line, decoded for display.
 type Entry struct {
-	Token       string // the host token it was matched against, in the clear
+	Token       string // the host name it matched, in the clear; "" when unknown
+	Field       string // the host field as stored (an HMAC when hashed)
 	Marker      string // @cert-authority / @revoked, empty for an ordinary line
 	Keytype     string
 	Fingerprint string
 	Hashed      bool
 	Tagged      bool // written (or adopted) by sshmgr
+}
+
+// Name is how to refer to the entry on screen. A hashed line that matches no
+// manifest host cannot be named: recovering the host name from the HMAC is
+// exactly what hashing prevents, so the key type and fingerprint identify it
+// instead.
+func (e Entry) Name() string {
+	switch {
+	case e.Token != "":
+		return e.Token
+	case e.Hashed:
+		return "(hashed host)"
+	default:
+		return e.Field
+	}
 }
 
 // EntriesFor returns the trust-store lines that pin token (a hostname or the
@@ -298,6 +314,7 @@ func (s *Service) EntriesFor(token string) []Entry {
 		}
 		out = append(out, Entry{
 			Token:       token,
+			Field:       parsed.field,
 			Marker:      parsed.marker,
 			Keytype:     parsed.keytype,
 			Fingerprint: fingerprint(parsed.field + " " + parsed.keytype + " " + parsed.key),
@@ -580,34 +597,106 @@ func liveTokens(m *manifest.Manifest) ([]string, error) {
 // pins, or anything else in the file) are never touched. Returns the count
 // removed.
 func (s *Service) Prune(m *manifest.Manifest) (int, error) {
+	sc, err := s.scan(m)
+	if err != nil || len(sc.prunable) == 0 {
+		return 0, err
+	}
+	drop := map[int]bool{}
+	for _, i := range sc.prunable {
+		drop[i] = true
+	}
+	kept := make([]string, 0, len(sc.lines))
+	for i, raw := range sc.lines {
+		if !drop[i] {
+			kept = append(kept, raw)
+		}
+	}
+	return len(sc.prunable), s.rewrite(s.Path(), kept)
+}
+
+// scanResult is the trust store classified against the manifest: every line, and
+// the indexes of the ones Prune would remove and Adopt would tag.
+type scanResult struct {
+	lines     []string
+	parsed    map[int]khLine
+	matched   map[int]string // index -> the live token it matched, in the clear
+	prunable  []int
+	adoptable []int
+}
+
+// scan classifies the trust store against the manifest. Prune, Adopt and the
+// two candidate previews all go through it, so what `clean --dry-run` reports
+// cannot drift from what the run that follows actually does.
+func (s *Service) scan(m *manifest.Manifest) (scanResult, error) {
+	sc := scanResult{parsed: map[int]khLine{}, matched: map[int]string{}}
 	live, err := liveTokens(m)
 	if err != nil {
-		return 0, err
+		return sc, err
 	}
-	path := s.Path()
-	data, err := os.ReadFile(path)
+	data, err := os.ReadFile(s.Path())
 	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return sc, nil
 		}
-		return 0, err
+		return sc, err
 	}
-	lines := splitNonEmptyTrailing(string(data))
-	kept := make([]string, 0, len(lines))
-	removed := 0
-	for _, raw := range lines {
-		trimmed := strings.TrimSpace(raw)
-		parsed, ok := parseKHLine(trimmed)
-		if !ok || !parsed.tagged() || tokenIsLive(parsed, live) {
-			kept = append(kept, raw)
+	sc.lines = splitNonEmptyTrailing(string(data))
+	for i, raw := range sc.lines {
+		parsed, ok := parseKHLine(strings.TrimSpace(raw))
+		if !ok {
 			continue
 		}
-		removed++
+		sc.parsed[i] = parsed
+		token, isLive := liveTokenOf(parsed, live)
+		if isLive {
+			sc.matched[i] = token
+		}
+		switch {
+		case parsed.tagged() && !isLive:
+			sc.prunable = append(sc.prunable, i)
+		case !parsed.tagged() && isLive:
+			sc.adoptable = append(sc.adoptable, i)
+		}
 	}
-	if removed == 0 {
-		return 0, nil
+	return sc, nil
+}
+
+// PruneCandidates returns the lines Prune would remove, decoded for display.
+// Their host names are unrecoverable when hashed - that is the point of hashing
+// - so they are identified by key type and fingerprint instead.
+func (s *Service) PruneCandidates(m *manifest.Manifest) ([]Entry, error) {
+	sc, err := s.scan(m)
+	if err != nil {
+		return nil, err
 	}
-	return removed, s.rewrite(path, kept)
+	return sc.entries(sc.prunable), nil
+}
+
+// AdoptCandidates returns the untagged lines Adopt would tag. These do match a
+// live host, so each one can be named in the clear.
+func (s *Service) AdoptCandidates(m *manifest.Manifest) ([]Entry, error) {
+	sc, err := s.scan(m)
+	if err != nil {
+		return nil, err
+	}
+	return sc.entries(sc.adoptable), nil
+}
+
+func (sc scanResult) entries(idx []int) []Entry {
+	out := make([]Entry, 0, len(idx))
+	for _, i := range idx {
+		p := sc.parsed[i]
+		out = append(out, Entry{
+			Token:       sc.matched[i],
+			Field:       p.field,
+			Marker:      p.marker,
+			Keytype:     p.keytype,
+			Fingerprint: fingerprint(p.field + " " + p.keytype + " " + p.key),
+			Hashed:      strings.HasPrefix(p.field, hashMagic),
+			Tagged:      p.tagged(),
+		})
+	}
+	return out
 }
 
 // Adopt tags every untagged line matching a live manifest host, making it
@@ -615,42 +704,25 @@ func (s *Service) Prune(m *manifest.Manifest) (int, error) {
 // user's own until they explicitly ask for sshmgr to manage it. Returns the
 // count adopted.
 func (s *Service) Adopt(m *manifest.Manifest) (int, error) {
-	live, err := liveTokens(m)
-	if err != nil {
+	sc, err := s.scan(m)
+	if err != nil || len(sc.adoptable) == 0 {
 		return 0, err
 	}
-	path := s.Path()
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return 0, nil
-		}
-		return 0, err
+	for _, i := range sc.adoptable {
+		sc.lines[i] = strings.TrimSpace(sc.lines[i]) + " " + sshmgrTag
 	}
-	lines := splitNonEmptyTrailing(string(data))
-	adopted := 0
-	for i, raw := range lines {
-		trimmed := strings.TrimSpace(raw)
-		parsed, ok := parseKHLine(trimmed)
-		if !ok || parsed.tagged() || !tokenIsLive(parsed, live) {
-			continue
-		}
-		lines[i] = trimmed + " " + sshmgrTag
-		adopted++
-	}
-	if adopted == 0 {
-		return 0, nil
-	}
-	return adopted, s.rewrite(path, lines)
+	return len(sc.adoptable), s.rewrite(s.Path(), sc.lines)
 }
 
-func tokenIsLive(parsed khLine, live []string) bool {
+// liveTokenOf returns the manifest host token a line pins, and whether it pins
+// one at all.
+func liveTokenOf(parsed khLine, live []string) (string, bool) {
 	for _, token := range live {
 		if hostFieldMatches(parsed.field, token) {
-			return true
+			return token, true
 		}
 	}
-	return false
+	return "", false
 }
 
 // MigrationReport summarizes a one-shot migration of legacy per-profile
