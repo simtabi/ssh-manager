@@ -174,9 +174,15 @@ func (r *Reconciler) Reconcile(dryRun bool, passphrase string) (*ReconcileResult
 }
 
 // Mint is the targeted keygen primitive: mint missing keys for selector (all if
-// empty), plus regenerate any whose name is in overwrite (destructive; the caller
+// empty), plus regenerate any key in overwrite (destructive; the caller
 // snapshots first). No render.
-func (r *Reconciler) Mint(selector, passphrase string, overwrite map[string]bool) ([]MintedKey, error) {
+//
+// overwrite is keyed by KeyRef, not by name. Key names are unique per profile,
+// not globally - one person under two orgs uses the same file name in both - so
+// a name-keyed set meant confirming "overwrite imani_github-ed25519" regenerated
+// it in every profile that had one, destroying identities the user was never
+// asked about.
+func (r *Reconciler) Mint(selector, passphrase string, overwrite map[manifest.KeyRef]bool) ([]MintedKey, error) {
 	toMint, existing, err := r.planMint(selector)
 	if err != nil {
 		return nil, err
@@ -190,7 +196,7 @@ func (r *Reconciler) Mint(selector, passphrase string, overwrite map[string]bool
 		minted = append(minted, mk)
 	}
 	for _, pk := range existing {
-		if overwrite[pk.Ref.KeyName] {
+		if overwrite[pk.Ref] {
 			mk, err := r.mintOne(pk, passphrase, true)
 			if err != nil {
 				return nil, err
@@ -232,16 +238,17 @@ func (r *Reconciler) MintRef(ref manifest.KeyRef, passphrase string) (*MintedKey
 	return &mk, nil
 }
 
-// ExistingKeys lists key names that already have a private key on disk, deduped
-// and filtered to selector.
-func (r *Reconciler) ExistingKeys(selector string) ([]string, error) {
+// ExistingKeys lists the keys that already have a private key on disk, filtered
+// to selector. Refs, not names: the caller prompts per key before overwriting
+// one, and two profiles can hold the same name.
+func (r *Reconciler) ExistingKeys(selector string) ([]manifest.KeyRef, error) {
 	_, existing, err := r.planMint(selector)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]string, 0, len(existing))
+	out := make([]manifest.KeyRef, 0, len(existing))
 	for _, pk := range existing {
-		out = append(out, pk.Ref.KeyName)
+		out = append(out, pk.Ref)
 	}
 	return out, nil
 }

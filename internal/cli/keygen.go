@@ -45,16 +45,24 @@ func newKeygenCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			overwrite := map[string]bool{}
+			// Keyed by ref, and prompted per ref. The same key name legitimately
+			// exists in several profiles, so both the question and the answer have
+			// to name the profile - otherwise one "yes" regenerates a stranger's
+			// identity in another profile.
+			overwrite := map[manifest.KeyRef]bool{}
 			if len(existing) > 0 {
-				fmt.Fprintf(out, "%d key(s) already exist in %q: %s\n", len(existing), target, strings.Join(existing, ", "))
+				names := make([]string, 0, len(existing))
+				for _, ref := range existing {
+					names = append(names, ref.String())
+				}
+				fmt.Fprintf(out, "%d key(s) already exist in %q: %s\n", len(existing), target, strings.Join(names, ", "))
 				if !force {
 					fmt.Fprintln(out, "  existing keys will be SKIPPED - re-run with --force to "+
 						"overwrite (the replaced key is kept in the profile's old/ dir).")
 				} else {
-					for _, name := range existing {
-						if yes || confirm(c, fmt.Sprintf("  overwrite %s? (the replaced key moves to old/)", name)) {
-							overwrite[name] = true
+					for _, ref := range existing {
+						if yes || confirm(c, fmt.Sprintf("  overwrite %s? (the replaced key moves to old/)", ref)) {
+							overwrite[ref] = true
 						}
 					}
 				}

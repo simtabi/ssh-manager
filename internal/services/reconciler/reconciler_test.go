@@ -220,3 +220,79 @@ func TestReconcileDryRunMintsNothing(t *testing.T) {
 		t.Error("dry-run must not write the config")
 	}
 }
+
+// The same key name in two profiles is the normal case - one person working
+// under two orgs uses the same file name in both. Overwrite was keyed by that
+// name, so confirming "overwrite imani_github-ed25519" regenerated it in every
+// profile that had one: an identity destroyed that the user was never asked
+// about, and the deployed public key silently invalidated with it.
+const dupNameJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519", "rotate_after_days": 365},
+  "profiles": {
+    "personal": {"key_scope": "per_service", "hosts": [
+      {"alias": "gh-personal", "hostname": "github.com", "user": "git", "key_name": "imani_github-ed25519"}]},
+    "adelsaiq": {"key_scope": "per_service", "hosts": [
+      {"alias": "gh-adelsaiq", "hostname": "gitlab.com", "user": "git", "key_name": "imani_github-ed25519"}]}
+  }
+}`
+
+func TestOverwriteIsScopedToOneProfile(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(dupNameJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	ssh := t.TempDir()
+	p := paths.Paths{SSHDir: ssh, ConfigDir: t.TempDir()}
+	inv := inventory.New()
+	if _, err := New(p, &m, inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	read := func(profile string) string {
+		b, err := os.ReadFile(filepath.Join(ssh, "profiles", profile, "imani_github-ed25519"))
+		if err != nil {
+			t.Fatal(err)
+		}
+		return string(b)
+	}
+	personalBefore, adelsaiqBefore := read("personal"), read("adelsaiq")
+
+	// Both keys are reported for confirmation, each naming its own profile.
+	existing, err := New(p, &m, inv, false).ExistingKeys("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(existing) != 2 {
+		t.Fatalf("existing = %v, want one per profile", existing)
+	}
+	profiles := map[string]bool{}
+	for _, ref := range existing {
+		profiles[ref.Profile] = true
+	}
+	if !profiles["personal"] || !profiles["adelsaiq"] {
+		t.Errorf("both profiles' keys should be offered separately: %v", existing)
+	}
+
+	// Say yes to exactly one of them.
+	minted, err := New(p, &m, inv, false).Mint("", "",
+		map[manifest.KeyRef]bool{{Profile: "personal", KeyName: "imani_github-ed25519"}: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(minted) != 1 || minted[0].Profile != "personal" {
+		t.Fatalf("minted = %+v, want only personal's key", minted)
+	}
+	if read("personal") == personalBefore {
+		t.Error("the confirmed key was not regenerated")
+	}
+	if read("adelsaiq") != adelsaiqBefore {
+		t.Fatal("confirming one profile's key destroyed the same-named key in another profile")
+	}
+	// The untouched profile keeps its archive slot empty: nothing was replaced.
+	if _, err := os.Stat(filepath.Join(ssh, "profiles", "adelsaiq", "old")); err == nil {
+		t.Error("a key that was never overwritten should have no archived predecessor")
+	}
+}
