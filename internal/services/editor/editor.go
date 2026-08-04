@@ -93,11 +93,13 @@ func (e *Editor) EditProfile(name string, keyScope *string, keyName *string) err
 	if keyScope != nil && *keyScope != "" {
 		scope = *keyScope
 	}
-	kn := p.KeyName
 	if keyName != nil {
-		kn = keyName
+		p.KeyName = keyName
 	}
-	m.SetProfile(name, manifest.Profile{KeyScope: scope, KeyName: kn, Hosts: p.Hosts})
+	// Mutate the loaded profile rather than rebuilding one from the fields this
+	// command knows about, so a field it does not edit (keys) survives the edit.
+	p.KeyScope = scope
+	m.SetProfile(name, p)
 	if err := e.save(m); err != nil {
 		return err
 	}

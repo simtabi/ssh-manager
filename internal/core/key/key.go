@@ -40,8 +40,21 @@ func SplitKeyName(name string) (profile, remainder string, err error) {
 	return profile, remainder, nil
 }
 
-// Known algo suffixes, longest first so -ed25519-sk wins over -sk.
+// Known algo suffixes, longest first so -ed25519-sk wins over -sk. The same set
+// is what ssh-keygen -t accepts, so it doubles as the type allowlist.
 var algoSuffixes = []string{"ed25519-sk", "ecdsa-sk", "ed25519", "ecdsa", "rsa", "dsa"}
+
+// IsKnownAlgo reports whether algo is a key type ssh-keygen -t understands.
+// Callers validate a declared type up front rather than letting a typo surface
+// as a mid-mint ssh-keygen failure, after the snapshot and directory work.
+func IsKnownAlgo(algo string) bool {
+	for _, a := range algoSuffixes {
+		if algo == a {
+			return true
+		}
+	}
+	return false
+}
 
 // AlgoOf returns the trailing -<algo> token of a key name (default ed25519).
 func AlgoOf(name string) (string, error) {

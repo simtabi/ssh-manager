@@ -197,11 +197,41 @@ func (h Host) MarshalJSON() ([]byte, error) {
 	})
 }
 
-// Profile groups hosts that share an identity.
+// KeySpec declares a key as a first-class member of its profile, independent of
+// any host that uses it. Type and rotate_after_days are optional and inherit the
+// manifest defaults when unset (see KeyTypeFor / RotateAfterDaysFor).
+//
+// Declaring is optional in both directions: a host whose key_name names a key
+// absent from the list still implicitly declares it, so every pre-`keys`
+// manifest loads and renders unchanged. The list exists so a profile can own a
+// key no host references yet - a second identity for the same org, or a key
+// minted ahead of the host it will serve - which previously could not be
+// expressed at all, since a key existed only as a property of a host.
+type KeySpec struct {
+	Name string `json:"name"`
+	// Unset (rather than defaulted-on-load) so re-saving a manifest does not
+	// bake today's defaults into every key, freezing them against a later
+	// change to defaults.key_type / defaults.rotate_after_days.
+	Type            *string `json:"type,omitempty"`
+	RotateAfterDays *int    `json:"rotate_after_days,omitempty"`
+}
+
+func (k *KeySpec) UnmarshalJSON(b []byte) error {
+	type alias KeySpec
+	var aux alias
+	if err := decodeStrict(b, &aux); err != nil {
+		return err
+	}
+	*k = KeySpec(aux)
+	return nil
+}
+
+// Profile groups hosts that share an identity, plus the keys it owns.
 type Profile struct {
-	KeyScope string  `json:"key_scope"`
-	KeyName  *string `json:"key_name,omitempty"`
-	Hosts    []Host  `json:"hosts"`
+	KeyScope string    `json:"key_scope"`
+	KeyName  *string   `json:"key_name,omitempty"`
+	Keys     []KeySpec `json:"keys,omitempty"`
+	Hosts    []Host    `json:"hosts"`
 }
 
 func (p *Profile) UnmarshalJSON(b []byte) error {
@@ -215,18 +245,22 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON emits key_scope, key_name (null when unset), and hosts ([] when
-// none) in declaration order, matching pydantic.
+// none) in declaration order, matching pydantic. keys is the one field emitted
+// only when non-empty: it is a v2 addition with no pydantic counterpart, and
+// omitting it keeps a manifest that declares no keys - i.e. every manifest
+// written before this field existed - byte-identical across a load/save cycle.
 func (p Profile) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		KeyScope string  `json:"key_scope"`
-		KeyName  *string `json:"key_name"`
-		Hosts    []Host  `json:"hosts"`
+		KeyScope string    `json:"key_scope"`
+		KeyName  *string   `json:"key_name"`
+		Keys     []KeySpec `json:"keys,omitempty"`
+		Hosts    []Host    `json:"hosts"`
 	}
 	hosts := p.Hosts
 	if hosts == nil {
 		hosts = []Host{}
 	}
-	return json.Marshal(wire{KeyScope: p.KeyScope, KeyName: p.KeyName, Hosts: hosts})
+	return json.Marshal(wire{KeyScope: p.KeyScope, KeyName: p.KeyName, Keys: p.Keys, Hosts: hosts})
 }
 
 // ExpiryCheck is the notifier policy.
@@ -548,6 +582,30 @@ func checkAliasCollisions(m *Manifest) error {
 	return nil
 }
 
+// checkDeclaredKeys validates one profile's keys list. Names are path segments
+// (they become file names under profiles/<profile>/) and unique within the
+// profile - not globally, since a profile models an org and the same person's
+// key name legitimately recurs across orgs.
+func checkDeclaredKeys(profileName string, p Profile) error {
+	seen := map[string]bool{}
+	for _, k := range p.Keys {
+		if err := safeSegment("key name", k.Name); err != nil {
+			return err
+		}
+		if seen[k.Name] {
+			return fmt.Errorf("profile %q declares key %q more than once", profileName, k.Name)
+		}
+		seen[k.Name] = true
+		if k.Type != nil && !key.IsKnownAlgo(*k.Type) {
+			return fmt.Errorf("key %q in profile %q has an unknown type %q", k.Name, profileName, *k.Type)
+		}
+		if k.RotateAfterDays != nil && *k.RotateAfterDays < 0 {
+			return fmt.Errorf("key %q in profile %q has a negative rotate_after_days", k.Name, profileName)
+		}
+	}
+	return nil
+}
+
 func (m *Manifest) validate() error {
 	if err := checkOptions("global_options", m.Defaults.GlobalOptions); err != nil {
 		return err
@@ -569,6 +627,9 @@ func (m *Manifest) validate() error {
 			if err := safeSegment("profile key_name", *p.KeyName); err != nil {
 				return err
 			}
+		}
+		if err := checkDeclaredKeys(name, p); err != nil {
+			return err
 		}
 		for _, h := range p.Hosts {
 			if err := safeSegment("alias", h.Alias); err != nil {
@@ -684,24 +745,73 @@ func (m *Manifest) ResolveKeySelector(selector string) (KeyRef, error) {
 	}
 }
 
-// KeyRefs lists every distinct key in the manifest, deduplicated per profile so
-// that hosts sharing one key yield a single ref. Ordered by profile, then key.
+// KeyRefs lists every distinct key in the manifest - the union of the keys each
+// profile declares and the keys its hosts resolve to - deduplicated per profile
+// so that hosts sharing one key yield a single ref. Refs are grouped by profile
+// in manifest (file) order; within a profile, host-derived keys come first in
+// host order, then any declared key no host uses.
+//
+// The union is what makes a declared key real: it has no Host block, so walking
+// IterResolved alone (which iterates hosts) leaves it invisible to reconcile,
+// validate, doctor, list and expiry - present in the manifest, never minted,
+// never checked.
 func (m *Manifest) KeyRefs() ([]KeyRef, error) {
 	resolved, err := m.IterResolved()
 	if err != nil {
 		return nil, err
 	}
+	fromHosts := map[string][]string{}
+	for _, rk := range resolved {
+		fromHosts[rk.Profile] = append(fromHosts[rk.Profile], rk.KeyName)
+	}
 	seen := map[KeyRef]bool{}
 	var out []KeyRef
-	for _, rk := range resolved {
-		ref := KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
+	add := func(profile, keyName string) {
+		ref := KeyRef{Profile: profile, KeyName: keyName}
 		if seen[ref] {
-			continue
+			return
 		}
 		seen[ref] = true
 		out = append(out, ref)
 	}
+	for _, pname := range m.ProfileNames() {
+		for _, kname := range fromHosts[pname] {
+			add(pname, kname)
+		}
+		for _, spec := range m.Profiles[pname].Keys {
+			add(pname, spec.Name)
+		}
+	}
 	return out, nil
+}
+
+// KeySpecFor returns the profile's declaration for one key, if it has one. A
+// key that only exists because a host names it has no spec and inherits every
+// default.
+func (m *Manifest) KeySpecFor(ref KeyRef) (KeySpec, bool) {
+	for _, spec := range m.Profiles[ref.Profile].Keys {
+		if spec.Name == ref.KeyName {
+			return spec, true
+		}
+	}
+	return KeySpec{}, false
+}
+
+// KeyTypeFor resolves the algorithm to mint a key with: the declared type when
+// the profile declares one, else the manifest default.
+func (m *Manifest) KeyTypeFor(ref KeyRef) string {
+	if spec, ok := m.KeySpecFor(ref); ok && spec.Type != nil && *spec.Type != "" {
+		return *spec.Type
+	}
+	return m.Defaults.KeyType
+}
+
+// RotateAfterDaysFor resolves a key's rotation interval the same way.
+func (m *Manifest) RotateAfterDaysFor(ref KeyRef) int {
+	if spec, ok := m.KeySpecFor(ref); ok && spec.RotateAfterDays != nil {
+		return *spec.RotateAfterDays
+	}
+	return m.Defaults.RotateAfterDays
 }
 
 // HostsForKey returns the hosts that use one key, scoped to its own profile.

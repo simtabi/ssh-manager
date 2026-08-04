@@ -177,6 +177,164 @@ const dupKeyManifest = `{"profiles":{
 	"adelsaiq":{"hosts":[{"alias":"github-danniela","hostname":"github.com","user":"git","key_name":"imani_github-ed25519"}]},
 	"simtabi":{"hosts":[{"alias":"github-simtabi","hostname":"github.com","user":"git","key_name":"simtabi_github-ed25519"}]}}}`
 
+// A profile declares two keys: one its host uses, one no host references yet.
+// The unwired key is the whole point of the list - it exists nowhere else in the
+// manifest, so KeyRefs is the only thing that can surface it.
+const declaredKeysManifest = `{"profiles":{
+	"adelsaiq":{"key_scope":"per_service",
+		"keys":[
+			{"name":"imani_github-ed25519","type":"ed25519","rotate_after_days":180},
+			{"name":"imani_spare-ed25519"}
+		],
+		"hosts":[{"alias":"github-danniela","hostname":"github.com","user":"git","key_name":"imani_github-ed25519"}]},
+	"personal":{"hosts":[{"alias":"github-imani","hostname":"github.com","user":"git","key_name":"imani_github-ed25519"}]}}}`
+
+func TestDeclaredKeysAreUnionedIntoKeyRefs(t *testing.T) {
+	m, err := loadJSON(t, declaredKeysManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	refs, err := m.KeyRefs()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// Host-derived first within a profile, then the declared-only key; profiles
+	// in file order (adelsaiq before personal).
+	want := []KeyRef{
+		{Profile: "adelsaiq", KeyName: "imani_github-ed25519"},
+		{Profile: "adelsaiq", KeyName: "imani_spare-ed25519"},
+		{Profile: "personal", KeyName: "imani_github-ed25519"},
+	}
+	if len(refs) != len(want) {
+		t.Fatalf("KeyRefs = %v, want %v", refs, want)
+	}
+	for i, w := range want {
+		if refs[i] != w {
+			t.Errorf("KeyRefs[%d] = %v, want %v", i, refs[i], w)
+		}
+	}
+	// A key nothing references is still selectable by name, unambiguously.
+	ref, err := m.ResolveKeySelector("imani_spare-ed25519")
+	if err != nil {
+		t.Fatalf("unwired key should resolve: %v", err)
+	}
+	if ref.Profile != "adelsaiq" {
+		t.Errorf("profile = %q, want adelsaiq", ref.Profile)
+	}
+	hosts, err := m.HostsForKey(ref)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(hosts) != 0 {
+		t.Errorf("unwired key has %d hosts, want 0", len(hosts))
+	}
+}
+
+func TestDeclaredKeyOverridesInheritDefaults(t *testing.T) {
+	m, err := loadJSON(t, declaredKeysManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declared := KeyRef{Profile: "adelsaiq", KeyName: "imani_github-ed25519"}
+	if got := m.RotateAfterDaysFor(declared); got != 180 {
+		t.Errorf("rotate_after_days = %d, want the declared 180", got)
+	}
+	if got := m.KeyTypeFor(declared); got != "ed25519" {
+		t.Errorf("type = %q, want the declared ed25519", got)
+	}
+	// Declared with no overrides, and not declared at all, both inherit.
+	for _, ref := range []KeyRef{
+		{Profile: "adelsaiq", KeyName: "imani_spare-ed25519"},
+		{Profile: "personal", KeyName: "imani_github-ed25519"},
+	} {
+		if got := m.RotateAfterDaysFor(ref); got != m.Defaults.RotateAfterDays {
+			t.Errorf("%s rotate_after_days = %d, want the default %d", ref, got, m.Defaults.RotateAfterDays)
+		}
+		if got := m.KeyTypeFor(ref); got != m.Defaults.KeyType {
+			t.Errorf("%s type = %q, want the default %q", ref, got, m.Defaults.KeyType)
+		}
+	}
+	if _, ok := m.KeySpecFor(KeyRef{Profile: "personal", KeyName: "imani_github-ed25519"}); ok {
+		t.Error("a host-derived key should have no spec")
+	}
+}
+
+// A manifest that declares no keys must serialize as if the field did not exist,
+// since every manifest written before it did is one of those and sshmgr rewrites
+// the file on every edit. (Save normalizes other fields - null-filling, number
+// coercion - so the contract is "no keys field, and stable across re-saves", not
+// byte-equality with the hand-written source.)
+func TestKeysOmittedWhenEmpty(t *testing.T) {
+	m, err := Load("../../../config/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	out := filepath.Join(dir, "out.json")
+	if err := m.Save(out); err != nil {
+		t.Fatal(err)
+	}
+	got, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if contains(string(got), `"keys"`) {
+		t.Error("saved manifest emits a keys field for profiles that declare none")
+	}
+	again, err := Load(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	out2 := filepath.Join(dir, "out2.json")
+	if err := again.Save(out2); err != nil {
+		t.Fatal(err)
+	}
+	round, _ := os.ReadFile(out2)
+	if string(round) != string(got) {
+		t.Error("save is not stable across a load/save round trip")
+	}
+	// Declared keys do serialize, with unset overrides omitted rather than nulled.
+	m2, err := loadJSON(t, declaredKeysManifest)
+	if err != nil {
+		t.Fatal(err)
+	}
+	declaredOut := filepath.Join(dir, "declared.json")
+	if err := m2.Save(declaredOut); err != nil {
+		t.Fatal(err)
+	}
+	b, _ := os.ReadFile(declaredOut)
+	for _, want := range []string{`"keys"`, `"imani_spare-ed25519"`, `"rotate_after_days": 180`} {
+		if !contains(string(b), want) {
+			t.Errorf("serialized manifest missing %s", want)
+		}
+	}
+	if contains(string(b), `"type": null`) {
+		t.Error("an unset key override should be omitted, not emitted as null")
+	}
+}
+
+func TestDeclaredKeyValidation(t *testing.T) {
+	cases := map[string]string{
+		"unsafe key name":  `{"profiles":{"p":{"keys":[{"name":"../escape"}],"hosts":[]}}}`,
+		"empty key name":   `{"profiles":{"p":{"keys":[{"name":""}],"hosts":[]}}}`,
+		"duplicate key":    `{"profiles":{"p":{"keys":[{"name":"a-ed25519"},{"name":"a-ed25519"}],"hosts":[]}}}`,
+		"unknown type":     `{"profiles":{"p":{"keys":[{"name":"a-ed25519","type":"quantum"}],"hosts":[]}}}`,
+		"negative rotate":  `{"profiles":{"p":{"keys":[{"name":"a-ed25519","rotate_after_days":-1}],"hosts":[]}}}`,
+		"unknown subfield": `{"profiles":{"p":{"keys":[{"name":"a-ed25519","bogus":1}],"hosts":[]}}}`,
+	}
+	for name, js := range cases {
+		if _, err := loadJSON(t, js); err == nil {
+			t.Errorf("%s: expected a validation error, got nil", name)
+		}
+	}
+	// The same key name in two profiles stays legal - profiles are orgs.
+	if _, err := loadJSON(t, `{"profiles":{
+		"a":{"keys":[{"name":"imani_github-ed25519"}],"hosts":[]},
+		"b":{"keys":[{"name":"imani_github-ed25519"}],"hosts":[]}}}`); err != nil {
+		t.Errorf("per-profile uniqueness should allow the same name in two profiles: %v", err)
+	}
+}
+
 func TestSharedAndPerServiceResolution(t *testing.T) {
 	m, err := loadJSON(t, `{"profiles":{"team":{"key_scope":"shared","key_name":"team_all-ed25519",
 		"hosts":[{"alias":"a","hostname":"h1","user":"u"},{"alias":"b","hostname":"h2","user":"u"}]}}}`)
