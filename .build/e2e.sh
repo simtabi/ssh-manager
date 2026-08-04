@@ -5,7 +5,7 @@
 # ~/.ssh), generating keys for every profile and exercising every verb, with
 # assertions. Exits non-zero on the first failure.
 #
-# Usage:  .build/e2e.sh              (uses .venv/bin/sshmgr)  |  make -C .build e2e
+# Usage:  .build/e2e.sh              (uses bin/sshmgr - run `make build` first)  |  make -C .build e2e
 #         SSHMGR=/path/to/sshmgr .build/e2e.sh
 set -eu
 
@@ -14,8 +14,8 @@ set -eu
 export SSH_MANAGER_AUTO_PIN=0
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-SSHMGR="${SSHMGR:-$ROOT/.venv/bin/sshmgr}"
-[ -x "$SSHMGR" ] || { echo "ssh-manager not found at $SSHMGR (run .build/bootstrap.sh)"; exit 1; }
+SSHMGR="${SSHMGR:-$ROOT/bin/sshmgr}"
+[ -x "$SSHMGR" ] || { echo "ssh-manager not found at $SSHMGR (run: make build)"; exit 1; }
 
 PASS=0; FAIL=0
 ok()   { PASS=$((PASS+1)); printf '  \033[32mok\033[0m   %s\n' "$1"; }

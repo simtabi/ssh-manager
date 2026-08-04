@@ -11,13 +11,33 @@ import (
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
-func TestEmbeddedFixkeysMatchesShipped(t *testing.T) {
-	shipped, err := os.ReadFile("../../../src/ssh_manager/data/fixkeys.sh")
-	if err != nil {
-		t.Skip("shipped fixkeys.sh not present")
+// fixkeys.sh is now shipped only as the embedded copy - there is no second file
+// to drift from - so what is worth pinning is the script's own contract. It runs
+// on a server the user is locked out of, edits authorized_keys, and is pasted
+// into a provider's recovery console.
+//
+// Note it deliberately does NOT `set -e`: it is an interactive menu, and
+// aborting the whole session because one command returned non-zero is the
+// opposite of what a recovery tool should do.
+func TestEmbeddedFixkeysKeepsItsContract(t *testing.T) {
+	script := string(fixkeysScript)
+	checks := []struct {
+		want string
+		why  string
+	}{
+		{"#!", "no shebang, so it depends on how it happens to be invoked"},
+		{"set -u", "an unset variable in a script that rewrites authorized_keys must not expand to nothing"},
+		{"/dev/tty", "prompts must read from the terminal, or pasting the script eats its own menu answers"},
+		{"backup()", "it promises every change is backed up first"},
+		{"write_atomic()", "a half-written authorized_keys is a lockout"},
 	}
-	if string(shipped) != string(fixkeysScript) {
-		t.Error("embedded fixkeys.sh drifted from data/fixkeys.sh")
+	for _, c := range checks {
+		if !strings.Contains(script, c.want) {
+			t.Errorf("fixkeys.sh is missing %q: %s", c.want, c.why)
+		}
+	}
+	if strings.Contains(script, "rm -rf") {
+		t.Error("a permissions repair script has no business deleting a tree")
 	}
 }
 

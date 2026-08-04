@@ -19,7 +19,9 @@ config/audit.log
 # generated ~/.ssh is NOT in this repo; if you also version it via chezmoi,
 # allowlist only *.pub and config there, never private keys.
 
-# python
+# Leftovers from the removed Python implementation: the tree is gone, but these
+# caches may still sit in a working copy that predates its removal. (dist/ is
+# kept regardless - GoReleaser writes there.)
 __pycache__/
 *.py[cod]
 *.egg-info/
@@ -61,5 +63,6 @@ cleaned/
 # by GoReleaser and scripts/build-all.sh).
 /build/dist/
 
-# Build-generated frozen engine (PyInstaller output embedded by -tags bundled)
-internal/engine/embed/engine
+
+# Local build output (make build)
+bin/

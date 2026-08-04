@@ -1,22 +1,16 @@
 # Release
 
-Tag-driven. A `v*` tag builds a self-contained binary per OS/arch and attaches
-them, with checksums and a cosign signature, to a GitHub Release. Not published
-to PyPI; install the binary, or from the repo
-(`pip install git+https://github.com/simtabi/ssh-manager.git`) for the engine.
+Tag-driven. A `v*` tag builds a static binary per OS/arch and attaches them,
+with checksums, to a GitHub Release. Install the binary, or build from source
+with `go install github.com/simtabi/ssh-manager/cmd/sshmgr@latest`.
 
-## How a release is built (v2)
+## How a release is built
 
-Each binary is the Go front-end with the Python engine frozen and embedded
-(`-tags bundled`). CPython cannot cross-compile, so `release.yml` builds every
-target on a matching native runner: macOS arm64 (`macos-14`) and amd64
-(`macos-13`), Linux amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`), and
-Windows amd64. A final job combines checksums, cosign-signs them keylessly
-(OIDC), and creates the GitHub Release. The binary version comes from the tag via
-ldflags (`internal/version.Version`).
-
-Note: macOS Intel (`macos-13`) runners are scarce, so `darwin/amd64` can sit
-queued well after the others finish; that is runner latency, not a failure.
+Each binary is pure Go with no runtime dependency of any kind - there is no
+embedded interpreter and no `-tags bundled` build any more, so every target
+cross-compiles from one Linux runner (`CGO_ENABLED=0`) instead of needing a
+matching native one per OS. The binary version comes from the tag via ldflags
+(`internal/version.Version`).
 
 ## Cut a release
 

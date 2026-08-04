@@ -8,11 +8,14 @@ import (
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
-// TestEmbeddedEnvMatchesShipped pins the embedded .env to the shipped template.
+// TestEmbeddedEnvMatchesShipped pins the embedded .env to the template in the
+// repo root - the copy a reader finds first, and the one the docs point at. The
+// two used to be kept in sync by a script that copied both into the Python
+// package; with that gone, this test is what keeps them from drifting.
 func TestEmbeddedEnvMatchesShipped(t *testing.T) {
-	shipped, err := os.ReadFile("../../../src/ssh_manager/data/.env-example")
+	shipped, err := os.ReadFile("../../../.env-example")
 	if err != nil {
-		t.Skip("shipped .env-example not present")
+		t.Fatalf("the shipped .env-example is missing: %v", err)
 	}
 	if string(shipped) != string(defaultEnv) {
 		t.Error("embedded env_example.txt drifted from data/.env-example")

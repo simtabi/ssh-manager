@@ -3,15 +3,15 @@
 # with assertions, and prints a per-feature checklist. Complements the unit suite
 # (pytest) and the e2e smoke (e2e.sh) with explicit, command-by-command coverage.
 #
-# Usage:  .build/feature-check.sh        (uses .venv/bin/sshmgr)
+# Usage:  .build/feature-check.sh        (uses bin/sshmgr - run `make build` first)
 set -u
 
 # Deterministic + offline: don't auto-pin host keys via ssh-keyscan during reconcile.
 export SSH_MANAGER_AUTO_PIN=0
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
-S="${SSHMGR:-$ROOT/.venv/bin/sshmgr}"
-[ -x "$S" ] || { echo "ssh-manager not found at $S (run .build/bootstrap.sh)"; exit 1; }
+S="${SSHMGR:-$ROOT/bin/sshmgr}"
+[ -x "$S" ] || { echo "ssh-manager not found at $S (run: make build)"; exit 1; }
 
 PASS=0; FAIL=0
 ok()  { PASS=$((PASS+1)); printf '  \033[32m✓\033[0m %s\n' "$1"; }
