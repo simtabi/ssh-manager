@@ -181,6 +181,10 @@ func TestPurgeLeavesUnmanagedFilesAlone(t *testing.T) {
 	if len(res.UnmanagedLeft) == 0 || !strings.Contains(res.Format(), "did not create") {
 		t.Errorf("the summary should explain why the directory survived:\n%s", res.Format())
 	}
+	// Naming the file is the difference between a report and a shrug.
+	if !strings.Contains(res.Format(), "notes.txt") {
+		t.Errorf("the summary should name what it declined to delete:\n%s", res.Format())
+	}
 }
 
 // Deleting the last profile that resolves a hostname does release its pin.

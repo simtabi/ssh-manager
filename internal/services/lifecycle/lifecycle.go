@@ -18,6 +18,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
@@ -337,12 +338,15 @@ func (s *Service) purgeOrKeep(res *Result, files []string, profileDir string, op
 		if !exists(dir) {
 			continue
 		}
-		empty, err := isEmptyDir(dir)
+		left, err := entryNames(dir)
 		if err != nil {
 			return err
 		}
-		if !empty {
-			res.UnmanagedLeft = append(res.UnmanagedLeft, dir)
+		if len(left) > 0 {
+			// Name them: "something is still in there" is not actionable, and the
+			// user is the only one who can decide what those files are.
+			res.UnmanagedLeft = append(res.UnmanagedLeft,
+				fmt.Sprintf("%s (%s)", dir, strings.Join(left, ", ")))
 			break
 		}
 		if err := os.Remove(dir); err != nil {
@@ -404,10 +408,17 @@ func exists(path string) bool {
 	return err == nil
 }
 
-func isEmptyDir(dir string) (bool, error) {
+// entryNames lists what is left in a directory, sorted, so a purge can say what
+// it declined to delete rather than only that something remained.
+func entryNames(dir string) ([]string, error) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
-		return false, err
+		return nil, err
 	}
-	return len(entries) == 0, nil
+	names := make([]string, 0, len(entries))
+	for _, e := range entries {
+		names = append(names, e.Name())
+	}
+	sort.Strings(names)
+	return names, nil
 }
