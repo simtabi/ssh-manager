@@ -19,25 +19,16 @@ import (
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
-// DeleteResult summarizes a profile/host deletion.
+// DeleteResult is what one manifest-level deletion changed. It is data for the
+// caller to fold into its own report - it carries no Format of its own, because
+// the manifest half of a deletion is no longer the whole story: the lifecycle
+// service composes this with the config re-render, the known_hosts pruning and
+// whatever happened to the key files, and only it can describe the outcome
+// truthfully.
 type DeleteResult struct {
 	Removed    string
 	Revoked    []string
 	PrunedKeys []string
-}
-
-// Format renders the human-readable deletion summary.
-func (r DeleteResult) Format() string {
-	lines := []string{"deleted " + r.Removed}
-	if len(r.Revoked) > 0 {
-		lines = append(lines, "  revoked from: "+strings.Join(r.Revoked, ", "))
-	}
-	if len(r.PrunedKeys) > 0 {
-		lines = append(lines, "  pruned inventory: "+strings.Join(r.PrunedKeys, ", "))
-	}
-	lines = append(lines, "  run `sshmgr reconcile` to re-render; local key files (if any) "+
-		"are left in place (doctor flags them as orphaned).")
-	return strings.Join(lines, "\n")
 }
 
 // Editor edits the manifest at the resolved home.

@@ -137,12 +137,12 @@ func newKeyAddCmd() *cobra.Command {
 				fmt.Fprintf(out, "declared %s (a key already exists at that path; left untouched)\n", ref)
 			}
 			if host != "" {
-				fmt.Fprintf(out, "wired to host %s. Run `sshmgr reconcile` to render the config.\n", host)
+				fmt.Fprintf(out, "wired to host %s\n", host)
 			} else {
 				fmt.Fprintf(out, "UNWIRED: no host uses %s yet. Wire it with:\n"+
-					"  sshmgr host edit <alias> --key-name %s\n", ref, name)
+					"  sshmgr host edit %s <alias> --key-name %s\n", ref, profile, name)
 			}
-			return nil
+			return applyManifestEdit(c, p)
 		},
 	}
 	cmd.Flags().StringVar(&host, "host", "", "wire an existing host in this profile to the key")

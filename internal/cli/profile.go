@@ -34,12 +34,14 @@ func newProfileCmd() *cobra.Command {
 			if shared {
 				scope = "shared"
 			}
-			ed := editor.New(paths.Resolve(nil, "", ""))
-			if err := ed.AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
+			p := paths.Resolve(nil, "", "")
+			snapshotBeforeMutation(p)
+			if err := editor.New(p).AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "added profile %s. Run `sshmgr reconcile` to apply.\n", args[0])
-			return nil
+			fmt.Fprintf(c.OutOrStdout(), "added profile %s (no hosts yet - add one with "+
+				"`sshmgr host add %s <alias>`)\n", args[0], args[0])
+			return applyManifestEdit(c, p)
 		},
 	}
 	add.Flags().BoolVar(&shared, "shared", false, "key_scope=shared (one key per profile)")
@@ -52,12 +54,17 @@ func newProfileCmd() *cobra.Command {
 		Short: "Edit a profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			ed := editor.New(paths.Resolve(nil, "", ""))
-			if err := ed.EditProfile(args[0], strPtrIf(c, "key-scope", editScope), strPtrIf(c, "key-name", editKeyName)); err != nil {
+			p := paths.Resolve(nil, "", "")
+			snapshotBeforeMutation(p)
+			if err := editor.New(p).EditProfile(args[0],
+				strPtrIf(c, "key-scope", editScope), strPtrIf(c, "key-name", editKeyName)); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "edited profile %s. Run `sshmgr reconcile` to apply.\n", args[0])
-			return nil
+			// Changing key_scope or key_name changes which key each host resolves
+			// to, and that key may not exist yet.
+			fmt.Fprintf(c.OutOrStdout(), "edited profile %s (run `sshmgr reconcile` to mint any key "+
+				"this now points at)\n", args[0])
+			return applyManifestEdit(c, p)
 		},
 	}
 	edit.Flags().StringVar(&editScope, "key-scope", "", "per_service | shared")
