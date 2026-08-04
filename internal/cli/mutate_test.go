@@ -8,7 +8,9 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
@@ -157,5 +159,115 @@ func TestRenderIsQuietWhenNothingChanges(t *testing.T) {
 	}
 	if string(before) != string(after) {
 		t.Error("the config changed for an edit that changed nothing")
+	}
+}
+
+// A key nothing will ever use should be noticed by the command that left it
+// that way, not days later by doctor.
+func TestReconcileWarnsAboutBlockingDanglingKeys(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	editHome(t)
+	run(t, "profile", "add", "work")
+	run(t, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+	run(t, "key", "add", "work", "work_spare-ed25519") // declared, wired to nothing
+
+	out := run(t, "reconcile")
+	if !strings.Contains(out, "WARNING") || !strings.Contains(out, keyaudit.Unwired) {
+		t.Errorf("reconcile should warn about the unwired key:\n%s", out)
+	}
+	if !strings.Contains(out, "key delete work/work_spare-ed25519") {
+		t.Errorf("the warning should carry the way out:\n%s", out)
+	}
+
+	// Wiring it clears that warning - and strands the key gh used to name, which
+	// is reported by the edit itself rather than discovered later.
+	edited := run(t, "host", "edit", "work", "gh", "--key-name", "work_spare-ed25519")
+	if !strings.Contains(edited, "WARNING") || !strings.Contains(edited, keyaudit.Untracked) {
+		t.Errorf("re-pointing a host should report the key it stranded:\n%s", edited)
+	}
+	if !strings.Contains(edited, "work_gh-ed25519") {
+		t.Errorf("the stranded key should be named:\n%s", edited)
+	}
+	out = run(t, "reconcile")
+	if strings.Contains(out, keyaudit.Unwired) {
+		t.Errorf("the newly wired key should no longer be unwired:\n%s", out)
+	}
+}
+
+// An unminted key is the normal state between `host add` and reconcile, so it
+// must not shout - it warns only in doctor, and fails only under --strict.
+func TestReconcileDoesNotWarnAboutAnUnmintedKey(t *testing.T) {
+	editHome(t)
+	run(t, "profile", "add", "work")
+	out := run(t, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+	if strings.Contains(out, "WARNING") {
+		t.Errorf("adding a host should not warn about the key it has yet to mint:\n%s", out)
+	}
+}
+
+// clean removes the one dangling state that is only a JSON record, and says
+// plainly that it is leaving the rest - a dangling key surviving a command
+// called "clean" without a word is how it stays dangling.
+func TestCleanDropsStaleRecordsAndNamesWhatItLeaves(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	p := editHome(t)
+	run(t, "profile", "add", "work")
+	run(t, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+	run(t, "reconcile")
+
+	inv, err := inventory.Load(p.Inventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	inv.Record("SHA256:ghost", inventory.KeyRecord{
+		Profile: "gone", Path: "~/.ssh/profiles/gone/gone_key-ed25519", Type: "ed25519",
+	})
+	if err := inv.Save(p.Inventory()); err != nil {
+		t.Fatal(err)
+	}
+	// And an untracked key file, which clean must report but never delete.
+	stray := filepath.Join(p.SSHDir, "profiles", "ghost", "ghost_key-ed25519")
+	if err := os.MkdirAll(filepath.Dir(stray), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(stray, []byte("PRIVATE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	dry := run(t, "clean", "--dry-run")
+	if !strings.Contains(dry, "would drop") || !strings.Contains(dry, "SHA256:ghost") {
+		t.Errorf("--dry-run should name the record it would drop:\n%s", dry)
+	}
+	after, err := inventory.Load(p.Inventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := after.Keys["SHA256:ghost"]; !ok {
+		t.Error("--dry-run dropped the record for real")
+	}
+
+	out := run(t, "clean")
+	if !strings.Contains(out, "dropped 1 stale inventory record") {
+		t.Errorf("clean should drop the stale record:\n%s", out)
+	}
+	after, err = inventory.Load(p.Inventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := after.Keys["SHA256:ghost"]; ok {
+		t.Error("the stale record survived clean")
+	}
+	if len(after.Keys) == 0 {
+		t.Error("clean removed a live record too")
+	}
+	if !strings.Contains(out, "left alone") || !strings.Contains(out, keyaudit.Untracked) {
+		t.Errorf("clean should say what it is not touching:\n%s", out)
+	}
+	if _, err := os.Stat(stray); err != nil {
+		t.Errorf("clean deleted a key file: %v", err)
 	}
 }

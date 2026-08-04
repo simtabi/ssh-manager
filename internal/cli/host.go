@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
 	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -86,7 +87,15 @@ func newHostCmd() *cobra.Command {
 				fmt.Fprintln(c.OutOrStdout(), "  the key it now names may not exist yet - "+
 					"run `sshmgr reconcile` to mint it")
 			}
-			return applyManifestEdit(c, p)
+			if err := applyManifestEdit(c, p); err != nil {
+				return err
+			}
+			// Pointing a host at a different key strands the one it used to name,
+			// the same way deleting the host would - so it is reported the same way.
+			if m, err := manifest.Load(p.Manifest()); err == nil {
+				warnDangling(c.OutOrStdout(), p, m)
+			}
+			return nil
 		},
 	}
 	edit.Flags().StringVarP(&eHostname, "hostname", "H", "", "")

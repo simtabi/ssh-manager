@@ -2,13 +2,16 @@ package cli
 
 import (
 	"fmt"
+	"io"
 	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
+	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/snapshots"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
 	"github.com/simtabi/ssh-manager/internal/util/lock"
@@ -84,4 +87,32 @@ func applyManifestEdit(c *cobra.Command, p paths.Paths) error {
 		fmt.Fprintf(out, "removed stale %s\n", strings.Join(res.Pruned, ", "))
 	}
 	return nil
+}
+
+// warnDangling reports the blocking dangling-key states inline, right after the
+// command that could have caused one.
+//
+// Only the blocking ones, and only after the command's own output: a key nothing
+// will ever use is worth interrupting for, while an unminted key or a stale
+// record is doctor's business. Failing to audit is silent - this is a courtesy
+// on the end of a command that already succeeded, not a check in its own right.
+func warnDangling(out io.Writer, p paths.Paths, m *manifest.Manifest) {
+	inv, err := inventory.Load(p.Inventory())
+	if err != nil {
+		return
+	}
+	rep, err := keyaudit.New(m, inv, p.SSHDir).Audit(false)
+	if err != nil || rep.OK() {
+		return
+	}
+	fmt.Fprintln(out)
+	for _, f := range rep.Findings {
+		if !keyaudit.Blocking(f.State) {
+			continue
+		}
+		fmt.Fprintf(out, "WARNING: %s is %s - %s\n", f.Subject, f.State, f.Detail)
+		if f.Fix != "" {
+			fmt.Fprintf(out, "  -> %s\n", f.Fix)
+		}
+	}
 }

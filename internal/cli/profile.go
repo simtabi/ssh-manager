@@ -7,6 +7,7 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
 	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -64,7 +65,15 @@ func newProfileCmd() *cobra.Command {
 			// to, and that key may not exist yet.
 			fmt.Fprintf(c.OutOrStdout(), "edited profile %s (run `sshmgr reconcile` to mint any key "+
 				"this now points at)\n", args[0])
-			return applyManifestEdit(c, p)
+			if err := applyManifestEdit(c, p); err != nil {
+				return err
+			}
+			// Switching key_scope or key_name re-points every host in the profile,
+			// stranding whatever they used to name.
+			if m, err := manifest.Load(p.Manifest()); err == nil {
+				warnDangling(c.OutOrStdout(), p, m)
+			}
+			return nil
 		},
 	}
 	edit.Flags().StringVar(&editScope, "key-scope", "", "per_service | shared")

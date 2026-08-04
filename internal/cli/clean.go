@@ -6,7 +6,9 @@ import (
 
 	"github.com/spf13/cobra"
 
+	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/snapshots"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -23,8 +25,8 @@ func newCleanCmd() *cobra.Command {
 	var dryRun, adopt bool
 	cmd := &cobra.Command{
 		Use:   "clean",
-		Short: "Remove stale known_hosts pins and write residue",
-		Long: "Remove stale known_hosts pins and write residue.\n\n" +
+		Short: "Remove stale known_hosts pins, stale records and write residue",
+		Long: "Remove stale known_hosts pins, stale inventory records and write residue.\n\n" +
 			"--adopt first tags the untagged pins that match a manifest host, putting\n" +
 			"them under sshmgr's management so they are pruned when their host goes\n" +
 			"away. It is opt-in: an untagged pin is presumed to be yours.",
@@ -35,8 +37,23 @@ func newCleanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			inv, err := inventory.Load(p.Inventory())
+			if err != nil {
+				return err
+			}
 			out := c.OutOrStdout()
 			kh := knownhosts.New(p.SSHDir)
+
+			// Stale inventory records are the one dangling state safe to fix
+			// without asking: a record is a JSON entry pointing at a key nothing
+			// owns any more, so removing it destroys no key material. Every other
+			// state involves a file, and those are for the user to decide about -
+			// clean reports them and stops.
+			audit, err := keyaudit.New(m, inv, p.SSHDir).Audit(false)
+			if err != nil {
+				return err
+			}
+			stale := audit.ByState(keyaudit.StaleInventory)
 
 			// Report from the same classifier the mutation uses, so what a
 			// --dry-run promises is what a real run does.
@@ -54,13 +71,15 @@ func newCleanCmd() *cobra.Command {
 			if dryRun {
 				report(out, "would adopt", adoptable)
 				report(out, "would prune", prunable)
+				reportRecords(out, "would drop", stale)
 				residue := snapshots.FindTempArtifacts(p.SSHDir)
 				for _, r := range residue {
 					fmt.Fprintf(out, "would remove residue: %s\n", r)
 				}
-				if len(adoptable)+len(prunable)+len(residue) == 0 {
+				if len(adoptable)+len(prunable)+len(stale)+len(residue) == 0 {
 					fmt.Fprintln(out, "nothing to clean")
 				}
+				reportRemaining(out, audit)
 				return nil
 			}
 
@@ -80,15 +99,57 @@ func newCleanCmd() *cobra.Command {
 				return err
 			}
 			report(out, fmt.Sprintf("pruned %d", n), prunable)
-			if n == 0 && (!adopt || len(adoptable) == 0) {
+			if len(stale) > 0 {
+				for _, f := range stale {
+					delete(inv.Keys, f.Subject)
+				}
+				if err := inv.Save(p.Inventory()); err != nil {
+					return err
+				}
+				reportRecords(out, fmt.Sprintf("dropped %d", len(stale)), stale)
+			}
+			if n == 0 && len(stale) == 0 && (!adopt || len(adoptable) == 0) {
 				fmt.Fprintln(out, "nothing to clean")
 			}
+			reportRemaining(out, audit)
 			return nil
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would change, touch nothing")
 	cmd.Flags().BoolVar(&adopt, "adopt", false, "put untagged pins matching a manifest host under sshmgr's management")
 	return cmd
+}
+
+// reportRecords lists the inventory records clean is dropping. They are named by
+// fingerprint, because that is what the inventory is keyed by and the path they
+// pointed at no longer exists.
+func reportRecords(out io.Writer, label string, findings []keyaudit.Finding) {
+	if len(findings) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "%s stale inventory record(s):\n", label)
+	for _, f := range findings {
+		fmt.Fprintf(out, "  %s  %s\n", f.Subject, f.Detail)
+	}
+}
+
+// reportRemaining names what clean deliberately will not touch. Everything left
+// involves a key file, and deleting one is the user's call - but leaving it
+// unmentioned is how a dangling key survives a command called "clean".
+func reportRemaining(out io.Writer, audit keyaudit.Report) {
+	var rest []keyaudit.Finding
+	for _, f := range audit.Findings {
+		if f.State != keyaudit.StaleInventory {
+			rest = append(rest, f)
+		}
+	}
+	if len(rest) == 0 {
+		return
+	}
+	fmt.Fprintf(out, "\n%d dangling key(s) left alone (they involve key files; see `sshmgr doctor`):\n", len(rest))
+	for _, f := range rest {
+		fmt.Fprintf(out, "  %s  %s\n", f.State, f.Subject)
+	}
 }
 
 func report(out io.Writer, label string, entries []knownhosts.Entry) {
