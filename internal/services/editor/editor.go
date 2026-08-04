@@ -10,6 +10,7 @@ package editor
 
 import (
 	"fmt"
+	"sort"
 	"strings"
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
@@ -138,7 +139,9 @@ func (e *Editor) DeleteProfile(name string, revoke bool) (DeleteResult, error) {
 		e.revokeHost(m, inv, name, host, revoke, &res)
 	}
 	m.DeleteProfile(name)
-	e.pruneIdents(m, inv, affected, &res)
+	if err := e.pruneIdents(m, inv, affected, &res); err != nil {
+		return DeleteResult{}, err
+	}
 	if err := e.save(m); err != nil {
 		return DeleteResult{}, err
 	}
@@ -379,7 +382,9 @@ func (e *Editor) DeleteHost(profile, alias string, revoke bool) (DeleteResult, e
 	p := m.Profiles[profile]
 	p.Hosts = append(p.Hosts[:idx], p.Hosts[idx+1:]...)
 	m.SetProfile(profile, p)
-	e.pruneIdents(m, inv, affected, &res)
+	if err := e.pruneIdents(m, inv, affected, &res); err != nil {
+		return DeleteResult{}, err
+	}
 	if err := e.save(m); err != nil {
 		return DeleteResult{}, err
 	}
@@ -442,16 +447,27 @@ func (e *Editor) revokeHost(m *manifest.Manifest, inv *inventory.Inventory, prof
 // The adapters are a later wave, so this is a no-op (matching the base provider).
 func removeFromTarget() bool { return false }
 
-// pruneIdents drops inventory records for the affected key paths that no surviving
-// manifest host references any more.
-func (e *Editor) pruneIdents(m *manifest.Manifest, inv *inventory.Inventory, affected map[string]bool, res *DeleteResult) {
+// pruneIdents drops inventory records for the affected key paths that nothing in
+// the surviving manifest owns any more.
+//
+// "Owns", not "has a host for". A profile can declare a key no host references,
+// and that key still has files on disk and a record tracking its expiry and
+// deployments. Deriving the surviving set from hosts alone silently dropped the
+// record of a key that had merely become unwired - deleting the last host using
+// a declared key left the key itself in place with nothing tracking it, which
+// expiry and rotation then could not see.
+//
+// Failing to compute the surviving set is not a licence to prune - it means we
+// cannot prove a record is unused - so the error is returned rather than
+// swallowed per host as it used to be.
+func (e *Editor) pruneIdents(m *manifest.Manifest, inv *inventory.Inventory, affected map[string]bool, res *DeleteResult) error {
+	refs, err := m.KeyRefs()
+	if err != nil {
+		return err
+	}
 	used := map[string]bool{}
-	for _, pname := range m.ProfileNames() {
-		for _, h := range m.Profiles[pname].Hosts {
-			if kn, err := m.ResolvedKeyName(pname, h); err == nil {
-				used[m.IdentityFile(pname, kn)] = true
-			}
-		}
+	for _, ref := range refs {
+		used[m.IdentityFile(ref.Profile, ref.KeyName)] = true
 	}
 	for fp, rec := range inv.Keys {
 		if affected[rec.Path] && !used[rec.Path] {
@@ -459,6 +475,10 @@ func (e *Editor) pruneIdents(m *manifest.Manifest, inv *inventory.Inventory, aff
 			delete(inv.Keys, fp)
 		}
 	}
+	// The inventory is a map, so iteration order is randomized; sort so the same
+	// deletion always reports the same list.
+	sort.Strings(res.PrunedKeys)
+	return nil
 }
 
 func basename(p string) string {

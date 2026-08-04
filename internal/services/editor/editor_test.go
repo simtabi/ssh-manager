@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
@@ -220,3 +221,62 @@ func TestEditProfileKeepsDeclaredKeys(t *testing.T) {
 }
 
 func intp(v int) *int { return &v }
+
+// Deleting the last host that used a key does not mean the key is gone: the
+// profile may still declare it, in which case the key keeps its files and must
+// keep the inventory record that tracks its expiry and deployments. Deriving the
+// surviving set from hosts alone dropped that record and left the key untracked.
+func TestDeleteHostKeepsTheRecordOfAStillDeclaredKey(t *testing.T) {
+	cfg := t.TempDir()
+	base := `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "work":{"key_scope":"per_service","keys":[{"name":"work_gh-ed25519"}],
+	    "hosts":[
+	      {"alias":"gh","hostname":"github.com","user":"git","key_name":"work_gh-ed25519"},
+	      {"alias":"box","hostname":"10.0.0.2","user":"deploy","key_name":"work_box-ed25519"}]}}}`
+	if err := os.WriteFile(filepath.Join(cfg, "manifest.json"), []byte(base), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := paths.Paths{SSHDir: filepath.Join(t.TempDir(), ".ssh"), ConfigDir: cfg}
+	inv := inventory.New()
+	for name, fp := range map[string]string{"work_gh-ed25519": "SHA256:gh", "work_box-ed25519": "SHA256:box"} {
+		inv.Record(fp, inventory.KeyRecord{
+			Profile: "work", Path: "~/.ssh/profiles/work/" + name, Type: "ed25519",
+		})
+	}
+	if err := inv.Save(p.Inventory()); err != nil {
+		t.Fatal(err)
+	}
+	ed := New(p)
+
+	// gh's key is declared, so it survives the host that used it.
+	res, err := ed.DeleteHost("work", "gh", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.PrunedKeys) != 0 {
+		t.Errorf("pruned %v, but the key is still declared by the profile", res.PrunedKeys)
+	}
+	after, err := inventory.Load(p.Inventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := after.Keys["SHA256:gh"]; !ok {
+		t.Error("the record of a still-declared key was pruned")
+	}
+
+	// box's key existed only because box named it, so deleting box does take it.
+	res, err = ed.DeleteHost("work", "box", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.PrunedKeys) != 1 || res.PrunedKeys[0] != "work_box-ed25519" {
+		t.Errorf("pruned %v, want the now-unreferenced key", res.PrunedKeys)
+	}
+	after, err = inventory.Load(p.Inventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := after.Keys["SHA256:box"]; ok {
+		t.Error("a record nothing in the manifest owns should have been pruned")
+	}
+}
