@@ -15,8 +15,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/preflight"
@@ -38,6 +40,7 @@ type Report struct {
 	StaleOldKeys       []string       // archived predecessors past the retention window
 	ConfigInSync       bool
 	OrphanKeys         []string
+	Dangling           keyaudit.Report
 	DuplicateKeys      []string
 	UnpinnedHosts      []string
 	AliasCollisions    []string
@@ -45,9 +48,17 @@ type Report struct {
 	StrandedLegacyHome string
 }
 
-// OK is the overall verdict (mirrors DoctorReport.ok).
+// OK is the overall verdict.
+//
+// Dangling keys count. They used to be printed and then ignored by the verdict,
+// so doctor could list an orphaned key and still say "clean" - a check whose
+// result nothing acts on is not a check. Which states are fatal is keyaudit's
+// call, not this one's (--strict makes all of them fatal).
 func (r Report) OK() bool {
 	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync {
+		return false
+	}
+	if !r.Dangling.OK() {
 		return false
 	}
 	for _, n := range r.OldKeys {
@@ -125,12 +136,7 @@ func (r Report) Format() string {
 		lines = append(lines, "  -> remove them once the rotation is confirmed good "+
 			"(keep them longer with SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS)")
 	}
-	if len(r.OrphanKeys) > 0 {
-		lines = append(lines, "orphaned keys (on disk, not in the manifest):")
-		for _, k := range r.OrphanKeys {
-			lines = append(lines, "  "+k)
-		}
-	}
+	lines = append(lines, r.Dangling.Lines()...)
 	if len(r.DuplicateKeys) > 0 {
 		lines = append(lines, "WARNING: keys reuse the same fingerprint (blast radius): "+strings.Join(r.DuplicateKeys, ", "))
 	}
@@ -165,6 +171,7 @@ func (r Report) JSON() ([]byte, error) {
 		OldKeys            map[string]int `json:"old_keys"`
 		StaleOldKeys       []string       `json:"stale_old_keys"`
 		OrphanKeys         []string       `json:"orphan_keys"`
+		DanglingKeys       []danglingJSON `json:"dangling_keys"`
 		DuplicateKeys      []string       `json:"duplicate_keys"`
 		UnpinnedHosts      []string       `json:"unpinned_hosts"`
 		AliasCollisions    []string       `json:"alias_collisions"`
@@ -185,7 +192,7 @@ func (r Report) JSON() ([]byte, error) {
 		ProvidersSource: r.ProvidersSource, PreflightOK: r.Preflight.OK(),
 		Agent: r.AgentStatus, KnownHosts: r.KnownHosts, ConfigInSync: r.ConfigInSync,
 		PermIssues: nz(r.PermIssues), OldKeys: old, StaleOldKeys: nz(r.StaleOldKeys),
-		OrphanKeys:    nz(r.OrphanKeys),
+		OrphanKeys: nz(r.OrphanKeys), DanglingKeys: danglingRows(r.Dangling),
 		DuplicateKeys: nz(r.DuplicateKeys), UnpinnedHosts: nz(r.UnpinnedHosts),
 		AliasCollisions: nz(r.AliasCollisions), StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
 	})
@@ -223,8 +230,9 @@ func New(p paths.Paths, m *manifest.Manifest, emitUseKeychain bool) *Service {
 	return &Service{p: p, m: m, emitUseKeychain: emitUseKeychain}
 }
 
-// Run gathers the full report.
-func (s *Service) Run() Report {
+// Run gathers the full report. strict escalates every dangling-key state to
+// fatal, for CI.
+func (s *Service) Run(strict bool) Report {
 	rep := Report{
 		Preflight:       preflight.Check(),
 		Home:            s.p.ConfigDir,
@@ -245,7 +253,13 @@ func (s *Service) Run() Report {
 		if chk, err := configsvc.New(ssh, s.m, s.emitUseKeychain).Check(false); err == nil {
 			rep.ConfigInSync = chk.InSync()
 		}
-		rep.OrphanKeys = s.orphanKeys(ssh)
+		rep.Dangling = s.dangling(strict)
+		// orphan_keys stays in the JSON as the untracked view of the same audit:
+		// same meaning as before, now without the .pub requirement that hid the
+		// worst cases.
+		for _, f := range rep.Dangling.ByState(keyaudit.Untracked) {
+			rep.OrphanKeys = append(rep.OrphanKeys, f.Subject)
+		}
 		rep.DuplicateKeys = duplicateKeys(ssh)
 		rep.UnpinnedHosts = s.unpinnedHosts(ssh)
 		rep.AliasCollisions = aliasCollisions(s.m)
@@ -385,39 +399,40 @@ func archivedKeys(ssh string, maxAge time.Duration, now time.Time) (map[string]i
 	return counts, stale
 }
 
-func (s *Service) orphanKeys(ssh string) []string {
-	// Keyed by profile as well as name: the same file name under two profiles is
-	// two different keys, so a bare-name index would mask a real orphan.
-	referenced := map[manifest.KeyRef]bool{}
-	if refs, err := s.m.KeyRefs(); err == nil {
-		for _, ref := range refs {
-			referenced[ref] = true
-		}
+// dangling runs the key audit. A missing/unreadable inventory is not fatal here:
+// doctor's job is to report the state of a broken install, so it audits with an
+// empty inventory rather than refusing to run - every key then reads as
+// unrecorded, which is the truth.
+func (s *Service) dangling(strict bool) keyaudit.Report {
+	inv, err := inventory.Load(s.p.Inventory())
+	if err != nil {
+		inv = inventory.New()
 	}
-	profDir := filepath.Join(ssh, "profiles")
-	if !isDir(profDir) {
-		return nil
+	rep, err := keyaudit.New(s.m, inv, s.p.SSHDir).Audit(strict)
+	if err != nil {
+		return keyaudit.Report{Strict: strict}
 	}
-	privs, _ := filepath.Glob(filepath.Join(profDir, "*", "*"))
-	sort.Strings(privs)
-	var orphans []string
-	for _, priv := range privs {
-		base := filepath.Base(priv)
-		fi, err := os.Lstat(priv)
-		if err != nil || fi.IsDir() || strings.HasSuffix(base, ".pub") ||
-			base == "config" || strings.HasPrefix(base, ".") {
-			continue
-		}
-		if !fs.Exists(priv + ".pub") {
-			continue
-		}
-		ref := manifest.KeyRef{Profile: filepath.Base(filepath.Dir(priv)), KeyName: base}
-		if !referenced[ref] {
-			rel, _ := filepath.Rel(ssh, priv)
-			orphans = append(orphans, filepath.ToSlash(rel))
-		}
+	return rep
+}
+
+// danglingJSON is one finding in the machine-readable report.
+type danglingJSON struct {
+	State    string `json:"state"`
+	Subject  string `json:"subject"`
+	Detail   string `json:"detail"`
+	Fix      string `json:"fix"`
+	Blocking bool   `json:"blocking"`
+}
+
+func danglingRows(rep keyaudit.Report) []danglingJSON {
+	out := make([]danglingJSON, 0, len(rep.Findings))
+	for _, f := range rep.Findings {
+		out = append(out, danglingJSON{
+			State: f.State, Subject: f.Subject, Detail: f.Detail, Fix: f.Fix,
+			Blocking: rep.Strict || keyaudit.Blocking(f.State),
+		})
 	}
-	return orphans
+	return out
 }
 
 func duplicateKeys(ssh string) []string {

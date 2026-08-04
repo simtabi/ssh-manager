@@ -16,10 +16,10 @@ import (
 // agent, known_hosts, and manifest-vs-disk drift/hygiene. Exits non-zero when the
 // report is not clean, matching v1.
 func newDoctorCmd() *cobra.Command {
-	var fix, jsonOut bool
+	var fix, jsonOut, strict bool
 	cmd := &cobra.Command{
 		Use:   "doctor",
-		Short: "Diagnose deps, perms, agent, known_hosts, drift",
+		Short: "Diagnose deps, perms, agent, known_hosts, drift, dangling keys",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			p := paths.Resolve(nil, "", "")
@@ -35,7 +35,7 @@ func newDoctorCmd() *cobra.Command {
 					}
 				}
 			}
-			rep := svc.Run()
+			rep := svc.Run(strict)
 			if jsonOut {
 				b, err := rep.JSON()
 				if err != nil {
@@ -53,5 +53,7 @@ func newDoctorCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&fix, "fix", false, "auto-fix perms first")
 	cmd.Flags().BoolVar(&jsonOut, "json", false, "machine-readable output (scripting)")
+	cmd.Flags().BoolVar(&strict, "strict", false,
+		"treat every dangling-key state as a failure, not only the blocking ones (for CI)")
 	return cmd
 }
