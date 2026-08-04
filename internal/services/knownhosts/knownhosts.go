@@ -268,6 +268,46 @@ func HostInKnownHosts(path, token string) bool {
 	return false
 }
 
+// Entry is one trust-store line, decoded for display.
+type Entry struct {
+	Token       string // the host token it was matched against, in the clear
+	Marker      string // @cert-authority / @revoked, empty for an ordinary line
+	Keytype     string
+	Fingerprint string
+	Hashed      bool
+	Tagged      bool // written (or adopted) by sshmgr
+}
+
+// EntriesFor returns the trust-store lines that pin token (a hostname or the
+// [host]:port form), decoded so they can be shown to a human.
+//
+// Reading the file is not enough any more: sshmgr hashes the names it writes and
+// pins HashKnownHosts for the ones ssh writes, so the host field is an HMAC and
+// the store cannot be grepped. Matching goes through the same hash-aware
+// comparison the rest of the package uses, and only the fingerprint and key type
+// are surfaced - never the key blob.
+func (s *Service) EntriesFor(token string) []Entry {
+	data, err := os.ReadFile(s.Path())
+	if err != nil {
+		return nil
+	}
+	var out []Entry
+	for _, parsed := range parseAll(splitNonEmptyTrailing(string(data))) {
+		if !hostFieldMatches(parsed.field, token) {
+			continue
+		}
+		out = append(out, Entry{
+			Token:       token,
+			Marker:      parsed.marker,
+			Keytype:     parsed.keytype,
+			Fingerprint: fingerprint(parsed.field + " " + parsed.keytype + " " + parsed.key),
+			Hashed:      strings.HasPrefix(parsed.field, hashMagic),
+			Tagged:      parsed.tagged(),
+		})
+	}
+	return out
+}
+
 // Target is one manifest host to pin.
 type Target struct {
 	Profile  string

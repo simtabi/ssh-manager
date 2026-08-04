@@ -15,6 +15,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/internal/services/query"
 )
 
@@ -46,6 +47,8 @@ type Row struct {
 	PublicPath      string
 	PrivateOnDisk   bool
 	PublicOnDisk    bool
+	PrivateMode     os.FileMode // zero when the file is absent
+	PublicMode      os.FileMode
 	Recorded        bool // an inventory record covers this key
 	Fingerprint     string
 	Created         string
@@ -119,6 +122,44 @@ func (s *Service) Rows(selector string) ([]Row, error) {
 // Row returns the single row for one resolved key reference.
 func (s *Service) Row(ref manifest.KeyRef) (Row, error) { return s.row(ref) }
 
+// Detail is a Row plus what only reading the public key can answer.
+type Detail struct {
+	Row
+	// DiskFingerprint is fingerprinted from the .pub actually on disk, which can
+	// disagree with the recorded one after a key was regenerated outside sshmgr.
+	// Empty when there is no .pub to read.
+	DiskFingerprint string
+	// FingerprintErr explains an unreadable or malformed .pub, rather than
+	// letting it show as a blank fingerprint.
+	FingerprintErr string
+}
+
+// Mismatched reports whether the key on disk is a different key from the one the
+// inventory recorded - the state where deployments and expiry describe a key
+// that no longer exists.
+func (d Detail) Mismatched() bool {
+	return d.Fingerprint != "" && d.DiskFingerprint != "" && d.Fingerprint != d.DiskFingerprint
+}
+
+// Detail returns one key's row plus the fingerprint of its public key on disk.
+// Only the public half is ever read.
+func (s *Service) Detail(ref manifest.KeyRef) (Detail, error) {
+	row, err := s.row(ref)
+	if err != nil {
+		return Detail{}, err
+	}
+	d := Detail{Row: row}
+	if row.PublicOnDisk {
+		fp, err := keystore.New().Fingerprint(row.PublicPath)
+		if err != nil {
+			d.FingerprintErr = err.Error()
+		} else {
+			d.DiskFingerprint = fp
+		}
+	}
+	return d, nil
+}
+
 func (s *Service) row(ref manifest.KeyRef) (Row, error) {
 	hosts, err := s.m.HostsForKey(ref)
 	if err != nil {
@@ -131,6 +172,8 @@ func (s *Service) row(ref manifest.KeyRef) (Row, error) {
 	_, declared := s.m.KeySpecFor(ref)
 	priv := filepath.Join(s.sshDir, "profiles", ref.Profile, ref.KeyName)
 	ident := s.m.IdentityFile(ref.Profile, ref.KeyName)
+	privMode, privOK := lmode(priv)
+	pubMode, pubOK := lmode(priv + ".pub")
 	row := Row{
 		Ref:             ref,
 		Type:            s.m.KeyTypeFor(ref),
@@ -139,8 +182,10 @@ func (s *Service) row(ref manifest.KeyRef) (Row, error) {
 		IdentityFile:    ident,
 		PrivatePath:     priv,
 		PublicPath:      priv + ".pub",
-		PrivateOnDisk:   lexists(priv),
-		PublicOnDisk:    lexists(priv + ".pub"),
+		PrivateOnDisk:   privOK,
+		PublicOnDisk:    pubOK,
+		PrivateMode:     privMode,
+		PublicMode:      pubMode,
 		Hosts:           aliases,
 		Status:          query.NoKey,
 	}
@@ -189,10 +234,14 @@ func matches(selector string, r Row) bool {
 	return false
 }
 
-// lexists reports whether path exists without following a final symlink.
-func lexists(path string) bool {
-	_, err := os.Lstat(path)
-	return err == nil
+// lmode returns a path's permission bits without following a final symlink, and
+// whether it exists at all.
+func lmode(path string) (os.FileMode, bool) {
+	fi, err := os.Lstat(path)
+	if err != nil {
+		return 0, false
+	}
+	return fi.Mode().Perm(), true
 }
 
 func deref(s *string) string {

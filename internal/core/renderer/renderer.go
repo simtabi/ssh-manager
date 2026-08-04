@@ -173,6 +173,28 @@ func RenderRootConfig(m *manifest.Manifest, emitUseKeychain bool) (string, error
 	return b.String(), nil
 }
 
+// RenderHostBlockFor renders the Host block one manifest host produces - byte
+// for byte what RenderRootConfig emits for it. `sshmgr show` uses it to answer
+// "what does this alias actually do" from the manifest, without asking the user
+// to find the block in a file that now holds every profile's hosts at once.
+func RenderHostBlockFor(m *manifest.Manifest, profile string, host manifest.Host) (string, error) {
+	kname, err := m.ResolvedKeyName(profile, host)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	writeHostBlock(&b, RenderHost{
+		Alias:        host.Alias,
+		Hostname:     host.Hostname,
+		User:         host.User,
+		Port:         host.Port,
+		IdentityFile: m.IdentityFile(profile, kname),
+		KnownHosts:   m.KnownHostsFile(),
+		RawOptions:   host.RawOptions,
+	})
+	return b.String(), nil
+}
+
 // ComposeRootConfig returns the full ~/.ssh/config with the managed block in
 // place, preserving foreign content above and below it (e.g. an OrbStack
 // Include). Old/legacy markers are recognized so the block is re-owned, not
