@@ -16,6 +16,7 @@ import (
 	"unicode"
 
 	"github.com/simtabi/ssh-manager/internal/core/key"
+	"github.com/simtabi/ssh-manager/internal/util/fs"
 )
 
 const (
@@ -921,11 +922,17 @@ func Load(path string) (*Manifest, error) {
 	return &m, nil
 }
 
-// Save writes the manifest as indented JSON.
+// Save writes the manifest as indented JSON, atomically.
+//
+// Via a temp file and a rename, not os.WriteFile: WriteFile truncates the target
+// first, so a crash or a full disk mid-write leaves a truncated manifest - and
+// the manifest is the only description of every profile, host and key, with
+// nothing to rebuild it from. It also keeps whatever mode the file already had,
+// while this re-asserts 0600 on every write.
 func (m *Manifest) Save(path string) error {
 	b, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o600)
+	return fs.WriteTextAtomic(path, string(b)+"\n", 0o600)
 }

@@ -35,6 +35,12 @@ func newDeployCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Deploy writes the inventory and installs a key on a remote target, so
+			// it takes the same guard every other mutating verb does. Without it two
+			// concurrent deploys - a scheduled `audit --notify` and a manual run,
+			// say - could interleave their inventory writes, and there was no
+			// snapshot to go back to.
+			snapshotBeforeMutation(p)
 			report, err := deployer.New(p, m, inv).Deploy(key, target)
 			if err != nil {
 				return err

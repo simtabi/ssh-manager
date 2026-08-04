@@ -104,3 +104,49 @@ func TestComputeExpiry(t *testing.T) {
 		t.Errorf("Today() = %q, want YYYY-MM-DD", Today())
 	}
 }
+
+// Both files claimed atomic persistence in their package docs and used
+// os.WriteFile, which truncates first. A crash mid-write left a truncated
+// inventory - the only record of every key's expiry and deployments - and
+// WriteFile also kept whatever mode the file already had.
+func TestSaveIsAtomicAndReassertsMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "inventory.json")
+
+	inv := New()
+	created := "2026-01-01"
+	inv.Record("SHA256:one", KeyRecord{Profile: "work", Path: "~/.ssh/profiles/work/k", Created: &created})
+	if err := inv.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	// Loosen the mode the way an errant umask or a restore would.
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	inv.Record("SHA256:two", KeyRecord{Profile: "work", Path: "~/.ssh/profiles/work/k2"})
+	if err := inv.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode().Perm() != 0o600 {
+		t.Errorf("mode = %o after save, want 600", fi.Mode().Perm())
+	}
+	// No temp file left beside it, and the content is complete.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("save left residue: %v", entries)
+	}
+	back, err := Load(path)
+	if err != nil {
+		t.Fatalf("saved inventory does not load: %v", err)
+	}
+	if len(back.Keys) != 2 {
+		t.Errorf("round trip lost records: %+v", back.Keys)
+	}
+}
