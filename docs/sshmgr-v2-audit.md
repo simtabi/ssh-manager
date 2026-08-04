@@ -1,4 +1,4 @@
-# sshmgr v2 — status audit (2026-08-04, updated after Phase 6)
+# sshmgr v2 — status audit (2026-08-04, updated after Phase 7)
 
 Comprehensive handoff document for continuing this work in another tool (Claude
 Code CLI). Supersedes `docs/ssh-worklist.md` for anything about the v2
@@ -328,6 +328,57 @@ Commits: `28210ae`, `d3b37c8`, `a9ff78d`, `ce0f618`, `f5a1647`
   stale package docs in `doctor` and the two "advisory lock not yet ported"
   comments.
 
+### Phase 7 — Portability and de-Python
+
+Commits: `fe8cef1`, `1f0394e`. Tag: **`python-final`** marks the last commit
+containing `src/ssh_manager` + the pytest suite.
+
+- **The Python implementation is gone** — `src/ssh_manager` (57 files), the
+  pytest suite (37), `pyproject.toml`, and the two `.build` scripts that served
+  them (`bootstrap.sh` built the venv, `sync-data.sh` copied
+  `config/providers.json` + `.env-example` into the package data).
+  `.build/e2e.sh` and `.build/feature-check.sh` stay (Phase 10 rewrites their
+  layout assertions) and now default to `bin/sshmgr`.
+- **The two drift tests**: the `.env` one repoints at the repo-root template,
+  which is the surviving copy. `fixkeys.sh` had no counterpart outside the
+  deleted tree, so it now asserts the script's *contract* instead — shebang,
+  `set -u`, prompts from `/dev/tty` (the property that makes it paste-able into
+  a recovery console), backup + atomic write. It deliberately does **not**
+  `set -e`: it is an interactive menu.
+- **Makefile is Go throughout** — no bootstrap, no venv; run targets build
+  first so what you exercise is what you changed; `VERSION` matches only `v*`
+  tags so `python-final` never becomes a build's version. (`make install` is
+  Phase 8's, deliberately not added here.)
+- **CI inverted** — the Go job is now `test` (ubuntu/macOS/windows) and carries
+  the e2e + feature-check steps; the Python, pytest, ruff, mypy and
+  Windows-Python jobs are gone. `pre-commit` keeps a Python because pre-commit
+  *is* a Python tool; its hooks now run gofmt + go vet instead of ruff.
+- **`internal/platform` absorbed the scattered checks.** Sixteen copies of
+  `runtime.GOOS == "darwin"`, all computing the same thing, are now
+  `platform.EmitUseKeychain()`; the Windows branches in `paths`/`notify` and
+  preflight's OS predicates moved too. **`util/desktop` keeps its own switch on
+  purpose** — dispatching to terminal-notifier / notify-send / toast is a
+  contained implementation choice, not a predicate leaking across the tree.
+- **Windows** — `ssh-copy-id` demoted from hard to optional there (Microsoft's
+  OpenSSH does not ship it, so preflight and doctor failed on every stock
+  Windows machine). Demoting it alone would have left `deploy` broken, so
+  `GenericSSH` **falls back to plain `ssh`** doing the same work (same modes,
+  dedupe and result; key over stdin, so it stays out of the remote process
+  list). `importer.expanduser` accepts `~\` — a Windows-written ssh config's
+  path failed to expand, then failed to glob, and the host was imported with no
+  identity at all.
+- Stale `internal/engine/embed/engine` references purged from `.gitignore`;
+  `docs/release.md` no longer describes a frozen-CPython engine.
+
+**Left for Phase 10 (docs):** `README.md`, `docs/installation.md`,
+`docs/configuration.md`, `docs/features.md` and `docs/shipping-checklist.md`
+still describe the Python install path (`pip install`, venv, pytest). The code
+is clean; the prose is not.
+
+**Local cleanup not done:** this working copy still has `.venv/`,
+`.mypy_cache/`, `.pytest_cache/` and `.ruff_cache/` on disk (untracked). They
+are harmless and still gitignored; delete them whenever convenient.
+
 All of the above is fully tested (`go test ./...` green) and committed on
 `sshmgr-v2`. No dry-run/simulation — every change compiles, vets, and passes
 its test suite.
@@ -340,29 +391,15 @@ Full technical detail for each item is in the plan file linked above; summary
 below is enough to resume without re-reading it, but the plan has exact line
 numbers, code snippets, and reasoning for trickier ones.
 
-### Phase 7 — Portability and de-Python (not started)
-
-- Delete the Python tree — confirmed `src/ssh_manager` still present. Tag
-  first. Two Go tests read Python data files (`recover_test.go:15`,
-  `initsvc_test.go:13`) — repoint at `//go:embed` copies.
-- Rewrite `Makefile` for Go (confirmed: no `install:` target exists yet;
-  targets still dispatch to `.venv/bin/sshmgr`). Invert CI so `go test` is
-  the primary gate; drop Python/Windows-Python jobs.
-- `internal/platform` already exists (built in Phase 1 for the no-echo
-  read) — still need to absorb the other 15+ scattered
-  `runtime.GOOS == "darwin"` sites and `emitUseKeychain` threading into it.
-- Demote `ssh-copy-id` on Windows (hard preflight dep, not shipped with
-  Windows OpenSSH).
-- Fix `importer.expanduser` missing `~\` handling, and
-  `expiry.keyName`/`editor.basename` splitting on `/` only.
-- Purge stale `internal/engine/embed/engine` references from `.gitignore`
-  and `docs/release.md`.
-
 ### Phase 8 — Distribution (not started)
 
 - `.goreleaser.yaml` confirmed has **no `signs:` block** — checksums are
-  unauthenticated. Add cosign keyless signing over `checksums.txt`.
-- `make install` (confirmed: doesn't exist yet) — default `~/.local/bin`,
+  unauthenticated. Add cosign keyless signing over `checksums.txt`. (The build
+  itself is already pure-Go cross-compiled with `CGO_ENABLED=0`, so nothing in
+  Phase 7 changed what needs signing.)
+- `make install` (still not added — Phase 7 rewrote the Makefile for Go but
+  deliberately left `install` here, since the group-writable refusal is the
+  substance of it) — default `~/.local/bin`,
   `PREFIX=/usr/local` for global, **must refuse a group-/world-writable
   target dir** (macOS `/usr/local/bin` is admin-group-writable by default,
   and the notifier's launchd job runs the installed binary daily — a
@@ -413,7 +450,11 @@ so it builds on a stable service layer from the earlier phases.
   `newRootCmd().Execute()` against a `t.Setenv`-ed `$HOME` + `$SSH_MANAGER_HOME`
   — copy that harness rather than inventing another. Most verbs still have no
   end-to-end test.
-- **Docs are confirmed stale**: `SECURITY.md:37` and
+- **Docs are confirmed stale**, and Phase 7 widened this: `README.md`,
+  `docs/installation.md`, `docs/configuration.md`, `docs/features.md` and
+  `docs/shipping-checklist.md` still describe the Python install path (`pip
+  install`, venv, pytest) for an implementation that no longer exists. Also
+  `SECURITY.md:37` and
   `docs/configuration.md:76` both still describe "per-profile
   `UserKnownHostsFile`" as the model, which Phase 3 removed. Also update
   `docs/architecture.md`, `docs/tools/knownhosts.md`, `CHANGELOG.md`. The
