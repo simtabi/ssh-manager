@@ -197,11 +197,56 @@ Commits: `85f9c57`, `bb1151f`, `311d99a`, `f8d60b4`, `f54c6a3`, `2167589`
   same reason. A stale *hashed* line is reported by key type + fingerprint,
   never a host name — recovering that name is what hashing prevents.
 
-Known gap left deliberately: **`host delete` still goes straight through
-`editor`**, so it does not re-render the config or prune pins the way profile
-and key deletion now do; its output still says to run `reconcile`. Folding it
-into `lifecycle` is a small follow-up (it also wants Phase 5's "warns when it
-strands a key").
+### Phase 4 follow-ups — the three loose ends, closed
+
+Commits: `9ede8d3`, `bdb8a00`, `74dfb07`, `baa5a50`, `bf32782`
+
+Three things were flagged at the end of Phase 4; chasing each one turned up
+something beyond it.
+
+- **The hosts-vs-keys bug class is now closed, not just its first instance.**
+  The profile-delete fix (`f8d60b4`) had a sibling: `editor.pruneIdents` decided
+  which inventory records survive by walking hosts, so a key that was *declared*
+  and used by exactly one host lost its record when that host was deleted -
+  leaving the key declared and on disk with nothing tracking its expiry. Both now
+  derive from `KeyRefs`. A failure to compute the surviving set is returned
+  rather than swallowed (it means we cannot prove a record is unused, which is no
+  licence to delete it), and pruned names are sorted so a deletion reports the
+  same list every run.
+  The rest of the class was audited and is correct as-is: `rotator` and
+  `deployer` refuse an unwired key outright ("no host in the manifest uses key
+  X"), `agent` loads only host-derived keys by intent, `doctor.orphanKeys`
+  already uses `KeyRefs`, and `renderer`/`configsvc`/`knownhosts`/`netstat`/
+  `query` are host-centric by nature.
+- **`host delete` is folded into `lifecycle`** — re-renders, prunes pins, and no
+  longer touches directories (the profile survives it, unlike profile delete).
+  What becomes of the key is classified rather than assumed: still used by
+  another host (nothing to report), still declared (UNWIRED - reported with both
+  ways out, and `--purge` deliberately leaves the files, since the profile still
+  owns the key), or gone from the manifest entirely (the orphan case, and the
+  only one `--purge` deletes). That covers Phase 5's "host delete warns when it
+  strands a key" ahead of time.
+- **The render inconsistency is resolved by an invariant**: *a command that
+  changes the manifest renders the config; a command that only touches key files
+  does not*. It follows from the config being a pure function of the manifest -
+  any manifest edit makes the file stale, and staleness is exactly what `diff`
+  and `doctor` report, so the old behaviour ended each edit by creating the
+  problem the next command complained about. `key add --host` was the concrete
+  bug: it wired a host to a new key and left the config pointing at the old one.
+  `keygen`/`rotate` change no manifest state and still render nothing. The
+  add/edit verbs now take the mutation guard they had been skipping (part of
+  Phase 6's "editor mutations bypass the mutation guard"), and
+  `editor.DeleteResult` lost its `Format`, whose text had become false in both
+  halves.
+- **Found while testing the above: the mutation guard deadlocked on its own
+  lock.** `lock.Acquire` blocks until free and flock is per file descriptor, so
+  the second call in one process waited forever on a lock that process already
+  held - silently, since the guard prints nothing. One CLI command mutates once
+  and exits, which hid it; **the TUI is one process that mutates repeatedly, so
+  the second action of any session froze** (`tui.go` reconcile / knownhosts /
+  rotate). The lock is now taken once per process and reused.
+- `--purge` now names the files it declines to delete instead of only saying the
+  directory still holds some.
 
 All of the above is fully tested (`go test ./...` green) and committed on
 `sshmgr-v2`. No dry-run/simulation — every change compiles, vets, and passes
@@ -262,7 +307,9 @@ numbers, code snippets, and reasoning for trickier ones.
     one delete.
   - `deploy` bypasses the mutation guard entirely — confirmed no
     `snapshotBeforeMutation`/`lock.Acquire` call anywhere in
-    `internal/cli/deploy.go`. Same for editor mutations generally.
+    `internal/cli/deploy.go`. *(The editor half of this is closed: every
+    profile/host/key add·edit·delete verb takes the guard as of `baa5a50`.
+    `deploy` is what is left.)*
   - `doctor.OK()` ignoring orphans / the `.pub`-pair hole — folded into
     Phase 5.
 - **Medium** — rollback reports `Committed = true` when targets were
@@ -323,7 +370,10 @@ audit, reconcile, knownhosts pin, deploy, rotate, snapshots, quit). Missing:
 `import`, `bundle`/`restore`, `rollback`, `net`, `providers`, `load`,
 profile/host CRUD. (`cli.writeKeyTable` is already factored for reuse the way
 `writeExpiryTable` is, and `keysvc`/`lifecycle` are UI-free, so the key verbs
-should be cheap to surface.)
+should be cheap to surface.) Note the TUI's *existing* actions only started
+working past the first mutation with `74dfb07` — before that the second
+mutating action in a session froze on the advisory lock, so anything this
+phase adds should be exercised twice in one session, not once.
 No TTY detection. `docs/tools/tui.md` still describes a rich/questionary UI
 that no longer exists (Python-era doc). Plan recommends bubbletea, done last
 so it builds on a stable service layer from the earlier phases.
@@ -346,10 +396,11 @@ so it builds on a stable service layer from the earlier phases.
   landed with Phase 4** (`internal/services/lifecycle/lifecycle_test.go`), as
   did `show`-never-prints-key-material (`internal/cli/show_test.go`) and
   dry-run-matches-the-real-run for prune/adopt
-  (`internal/services/knownhosts/prune_test.go`). What is still missing at that
-  level is a *command-level* pass: every CLI verb resolves `paths.Resolve(nil,
-  "", "")` internally, so cobra commands are only ever tested through their
-  helper functions, never end to end through `newRootCmd().Execute()`.
+  (`internal/services/knownhosts/prune_test.go`). Command-level coverage started
+  with `internal/cli/mutate_test.go`, which drives real verbs through
+  `newRootCmd().Execute()` against a `t.Setenv`-ed `$HOME` + `$SSH_MANAGER_HOME`
+  — copy that harness rather than inventing another. Most verbs still have no
+  end-to-end test.
 - **Docs are confirmed stale**: `SECURITY.md:37` and
   `docs/configuration.md:76` both still describe "per-profile
   `UserKnownHostsFile`" as the model, which Phase 3 removed. Also update
@@ -360,8 +411,11 @@ so it builds on a stable service layer from the earlier phases.
   the old per-profile split did.
 - **Phase 4 added user-facing surface with no docs yet**: the manifest `keys`
   list (`docs/configuration.md`) and the `key add/list/delete`, `show`,
-  `clean`, `profile delete --purge` verbs (`docs/tools/`, one page per
-  subsystem per the org docs standard).
+  `clean`, `profile delete --purge`, `host delete --purge` verbs (`docs/tools/`,
+  one page per subsystem per the org docs standard). Also document the render
+  invariant — manifest edits render, key-file commands do not — since it
+  replaces the "run `sshmgr reconcile` to apply" instruction that any existing
+  doc or muscle memory still carries.
 
 ### Phase 11 — Apply to this machine (not started)
 
@@ -392,14 +446,20 @@ so it builds on a stable service layer from the earlier phases.
    predicate there, not in a second copy, or `--dry-run` starts lying.
 3. **`internal/platform` already exists** (Phase 1) — extend it in Phase 7
    rather than creating a second platform package. Same rule for
-   `internal/services/keysvc` (Phase 4) and Phase 5's `keyaudit`, and for
-   `internal/services/lifecycle` (Phase 4) if `host delete` gets folded in.
-4. Every phase so far has been committed as its own commit(s) on
+   `internal/services/keysvc` (Phase 4) and Phase 5's `keyaudit`.
+   `internal/services/lifecycle` now owns all three deletions (profile, host,
+   key); a fourth belongs there too.
+4. **Two invariants worth not breaking**, both load-bearing as of the Phase 4
+   follow-ups: *manifest edits render the config, key-file commands do not*
+   (`cli.applyManifestEdit`), and *a record/file survives while anything in
+   `KeyRefs` owns it* — never re-derive "in use" by walking hosts, since a
+   declared key has none.
+5. Every phase so far has been committed as its own commit(s) on
    `sshmgr-v2` with a real commit message (`git log sshmgr-v2` for the exact
    sequence) — keep that granularity; don't squash unrelated phases together.
-5. Full verification loop after every change: `gofmt -l .`, `go build ./...`,
+6. Full verification loop after every change: `gofmt -l .`, `go build ./...`,
    `go vet ./...`, `go test ./...` — all must be clean before moving on.
-6. This machine's real `config/manifest.json` (used by several renderer
+7. This machine's real `config/manifest.json` (used by several renderer
    tests as a fixture, e.g. `renderer_test.go`) has 4 non-empty profiles
    (`work`, `personal`, `simtabi`, `development`) and one empty one
    (`school`) — tests assert against this exact shape, so don't change that
@@ -407,7 +467,7 @@ so it builds on a stable service layer from the earlier phases.
    `manifest_test.go` also asserts it still round-trips with no `keys` field,
    which is the guard that the Phase 4 schema addition stays invisible to
    manifests that don't use it.
-7. **Phase 11 has not been run, and must not be run without asking.** Nothing
+8. **Phase 11 has not been run, and must not be run without asking.** Nothing
    in this branch has touched the real `~/.ssh` on this machine; every smoke
    test used a throwaway `$SSH_MANAGER_HOME` + `$HOME`.
 
