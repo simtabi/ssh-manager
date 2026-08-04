@@ -137,7 +137,7 @@ func (n *Notifier) Notify(now time.Time, force bool) bool {
 		if s.DaysRemaining != nil {
 			days = *s.DaysRemaining
 		}
-		parts = append(parts, fmt.Sprintf("%s (%dd)", s.KeyName, days))
+		parts = append(parts, fmt.Sprintf("%s (%dd)", s.Ref(), days))
 	}
 	for i, f := range dangling {
 		if i >= 3 {

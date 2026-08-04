@@ -289,9 +289,15 @@ func (r *Reconciler) planMint(selector string) (toMint, existing []plannedKey, e
 }
 
 // planMatches reports whether a key is in scope for selector: everything when
-// empty, else the profile that owns it or any host alias that uses it.
+// empty, else the profile that owns it, the key itself (by name or in the
+// "profile/key" form), or any host alias that uses it.
+//
+// The key forms matter because `keygen` is the one command whose whole purpose
+// is a single key, and it was the only selector in the tool that would not
+// accept one - `sshmgr keygen work/work_gh-ed25519` was an unknown target.
 func planMatches(selector string, ref manifest.KeyRef, hosts []manifest.Host) bool {
-	if selector == "" || selector == ref.Profile {
+	if selector == "" || selector == ref.Profile ||
+		selector == ref.KeyName || selector == ref.String() {
 		return true
 	}
 	for _, h := range hosts {

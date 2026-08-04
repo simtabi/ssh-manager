@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 
@@ -40,8 +41,18 @@ var heldLock func()
 // process these run in sequence anyway.
 func snapshotBeforeMutation(p paths.Paths) string {
 	if heldLock == nil {
-		if rel, err := lock.Acquire(p.LockFile()); err == nil {
+		rel, err := lock.Acquire(p.LockFile())
+		switch {
+		case err == nil:
 			heldLock = rel
+		default:
+			// Best-effort stays best-effort - refusing to work because a lock file
+			// cannot be made would strand the user on a read-only or exotic
+			// filesystem - but not silent. Acquire blocks while another process
+			// holds the lock, so an error here means the lock itself is broken,
+			// and the serialization the guard promises is simply not happening.
+			fmt.Fprintf(os.Stderr, "sshmgr: WARNING: could not take the advisory lock at %s, so "+
+				"a concurrent sshmgr command could interleave with this one: %v\n", p.LockFile(), err)
 		}
 	}
 	snapshots.CleanTempArtifacts(p.SSHDir)

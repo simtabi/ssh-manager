@@ -114,7 +114,9 @@ func newKeygenCmd() *cobra.Command {
 	return cmd
 }
 
-// selectorKnown reports whether selector names a profile or a host alias.
+// selectorKnown reports whether selector names a profile, a host alias, or a key
+// - the same set planMint filters on, so a target this accepts never plans zero
+// keys and a target it rejects is genuinely unknown.
 func selectorKnown(m *manifest.Manifest, selector string) bool {
 	if _, ok := m.Profiles[selector]; ok {
 		return true
@@ -124,6 +126,15 @@ func selectorKnown(m *manifest.Manifest, selector string) bool {
 			if h.Alias == selector {
 				return true
 			}
+		}
+	}
+	refs, err := m.KeyRefs()
+	if err != nil {
+		return false
+	}
+	for _, ref := range refs {
+		if selector == ref.KeyName || selector == ref.String() {
+			return true
 		}
 	}
 	return false

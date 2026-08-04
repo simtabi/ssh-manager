@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/internal/core/expiry"
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
@@ -269,5 +270,43 @@ func TestCleanDropsStaleRecordsAndNamesWhatItLeaves(t *testing.T) {
 	}
 	if _, err := os.Stat(stray); err != nil {
 		t.Errorf("clean deleted a key file: %v", err)
+	}
+}
+
+// Every other selector in the tool accepts a key; keygen - the one command whose
+// whole purpose is a single key - rejected one as an unknown target.
+func TestKeygenAcceptsAKeySelector(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	editHome(t)
+	run(t, "profile", "add", "work")
+	run(t, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+	run(t, "reconcile")
+
+	for _, selector := range []string{"work_gh-ed25519", "work/work_gh-ed25519"} {
+		out := run(t, "keygen", selector)
+		if strings.Contains(out, "unknown") {
+			t.Errorf("keygen rejected %q: %s", selector, out)
+		}
+		if !strings.Contains(out, "no keys minted") {
+			t.Errorf("keygen %q should have found the existing key: %s", selector, out)
+		}
+	}
+}
+
+// A bare key name is only unique inside a profile, so a table of bare names
+// showed two rows with one label and no way to tell which was due.
+func TestExpiryTableNamesKeysByProfile(t *testing.T) {
+	var out bytes.Buffer
+	writeExpiryTable(&out, []expiry.Status{
+		{KeyName: "imani_github-ed25519", Profile: "personal", State: expiry.OK},
+		{KeyName: "imani_github-ed25519", Profile: "adelsaiq", State: expiry.OK},
+	})
+	got := out.String()
+	for _, want := range []string{"personal/imani_github-ed25519", "adelsaiq/imani_github-ed25519"} {
+		if !strings.Contains(got, want) {
+			t.Errorf("expiry table missing %q:\n%s", want, got)
+		}
 	}
 }

@@ -89,7 +89,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 		if s.ExpiresOn != nil {
 			expires = *s.ExpiresOn
 		}
-		lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", s.KeyName, s.State, expires, days))
+		lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", s.Ref(), s.State, expires, days))
 	}
 	lines = append(lines, "", "=== recent activity ===")
 	if recent := recentAudit(p.AuditLog(), 10); len(recent) > 0 {

@@ -330,7 +330,11 @@ func (t *tui) deploy() {
 		t.print("error: " + err.Error())
 		return
 	}
-	_ = inv.Save(t.p.Inventory())
+	// A swallowed save is a deploy that happened remotely and is recorded
+	// nowhere: audit keeps saying needs-redeploy and nobody knows why.
+	if err := inv.Save(t.p.Inventory()); err != nil {
+		t.print("WARNING: the key was deployed but the inventory could not be saved: " + err.Error())
+	}
 	t.print(report.Format())
 }
 
@@ -361,7 +365,9 @@ func (t *tui) rotate() {
 		return
 	}
 	if report.Committed {
-		_ = inv.Save(t.p.Inventory())
+		if err := inv.Save(t.p.Inventory()); err != nil {
+			t.print("WARNING: the rotation completed but the inventory could not be saved: " + err.Error())
+		}
 	}
 	t.print(report.Format())
 }

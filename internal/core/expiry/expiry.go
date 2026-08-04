@@ -36,6 +36,15 @@ type Status struct {
 // NeedsAttention is true for due_soon/overdue keys.
 func (s Status) NeedsAttention() bool { return s.State == DueSoon || s.State == Overdue }
 
+// Ref is how to name this key unambiguously: "profile/key". KeyName alone is
+// only unique within a profile, so it is a label, not an identifier.
+func (s Status) Ref() string {
+	if s.Profile == "" {
+		return s.KeyName
+	}
+	return s.Profile + "/" + s.KeyName
+}
+
 func keyName(path string) string {
 	if i := strings.LastIndex(path, "/"); i >= 0 {
 		return path[i+1:]
@@ -149,7 +158,7 @@ func BannerLines(states []Status) []string {
 		}
 		// The hint uses the profile/key form because a key name alone can belong
 		// to more than one profile.
-		selector := s.Profile + "/" + s.KeyName
+		selector := s.Ref()
 		lines = append(lines, fmt.Sprintf(
 			"⚠ %s %s (%s) - run: sshmgr rotate %s", selector, when, exp, selector))
 	}

@@ -88,8 +88,17 @@ func New(m *manifest.Manifest, inv *inventory.Inventory, providersFile string) *
 	for name, spec := range providers.AllSpecs(providersFile) {
 		cats[name] = spec.Category
 	}
+	// Two records can point at one path - a rotation whose bookkeeping was
+	// interrupted, an import over an existing key. Map iteration is randomized, so
+	// last-wins meant the same tree reported different deployment status between
+	// runs. Break the tie by fingerprint instead, so it is at least stable.
 	byPath := make(map[string]inventory.KeyRecord, len(inv.Keys))
-	for _, r := range inv.Keys {
+	byPathFP := make(map[string]string, len(inv.Keys))
+	for fp, r := range inv.Keys {
+		if prev, ok := byPathFP[r.Path]; ok && prev <= fp {
+			continue
+		}
+		byPathFP[r.Path] = fp
 		byPath[r.Path] = r
 	}
 	return &Query{m: m, inv: inv, categories: cats, byPath: byPath}

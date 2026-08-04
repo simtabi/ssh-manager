@@ -161,6 +161,9 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 		return RotateReport{}, fmt.Errorf("key not present: %s - run `sshmgr reconcile` first", curPriv)
 	}
 	report := RotateReport{KeyName: keyName}
+	// An unreadable fingerprint is not a reason to skip the archive: the outgoing
+	// key still has to be preserved, and the inventory bookkeeping that needs the
+	// fingerprint is the part that degrades, not the part that keeps the key.
 	if fp, err := r.ks.Fingerprint(curPub); err == nil {
 		report.OldFingerprint = fp
 	}
@@ -297,9 +300,27 @@ func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, 
 		}
 	}
 	// Keep the outgoing record but mark it archived (path -> old/).
-	if rec, ok := r.inv.Keys[report.OldFingerprint]; ok {
+	//
+	// By fingerprint when one was readable, else by path. The fingerprint comes
+	// from reading the outgoing .pub, which can fail - a half pair, a bad mode,
+	// no ssh-keygen - and the archival step used to be skipped entirely when it
+	// did. The record then stayed pointing at the canonical path that now holds
+	// the *new* key, so two records claimed one path and the outgoing key's
+	// deployments were silently attributed to its replacement.
+	archived := false
+	if rec, ok := r.inv.Keys[report.OldFingerprint]; ok && report.OldFingerprint != "" {
 		rec.Path = oldIdent
 		r.inv.Keys[report.OldFingerprint] = rec
+		archived = true
+	}
+	if !archived {
+		for fp, rec := range r.inv.Keys {
+			if rec.Path != ident || fp == report.NewFingerprint {
+				continue
+			}
+			rec.Path = oldIdent
+			r.inv.Keys[fp] = rec
+		}
 	}
 	created := inventory.Today()
 	exp, _ := inventory.ComputeExpiry(created, r.m.Defaults.RotateAfterDays)
@@ -366,12 +387,14 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 
 	restoredPubText := readFile(curPub)
 	var results []TargetResult
+	var unreached []string
 	for _, h := range hosts {
 		prov := r.provider(h)
 		tr := TargetResult{Alias: h.Alias, Provider: prov.Name()}
 		if prov.Category() == "server" {
 			st := netcheck.Check(h.Hostname, h.Port, h.RequiresVPN, deref(h.VPNName), "", 4*time.Second, true)
 			if !st.Reachable {
+				unreached = append(unreached, h.Alias)
 				results = append(results, tr)
 				continue
 			}
@@ -397,8 +420,20 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 		rec.Deployments = deployments(results, inventory.Today())
 		r.inv.Keys[report.NewFingerprint] = rec
 	}
-	report.Committed = true
-	log.Audit(r.p.AuditLog(), "rollback", log.Field{Key: "key", Value: keyName}, log.Field{Key: "restored", Value: report.NewFingerprint})
+	// Committed means "the rollback is complete", and it is not while a target
+	// still trusts only the key that was rolled back. Reporting it as done sent
+	// the user away believing an unreachable host had been restored, which is the
+	// one thing a rollback exists to guarantee.
+	report.Committed = len(unreached) == 0
+	if !report.Committed {
+		report.Message = fmt.Sprintf("the local key was restored, but %d target(s) could not be "+
+			"reached and still trust the rotated-in key: %s. Re-run `sshmgr rollback %s` once "+
+			"they are reachable (VPN-gated hosts: connect the VPN first).",
+			len(unreached), strings.Join(unreached, ", "), keyName)
+	}
+	log.Audit(r.p.AuditLog(), "rollback", log.Field{Key: "key", Value: keyName},
+		log.Field{Key: "restored", Value: report.NewFingerprint},
+		log.Field{Key: "unreached", Value: len(unreached)})
 	return report, nil
 }
 
