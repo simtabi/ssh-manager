@@ -1,4 +1,4 @@
-# sshmgr v2 — status audit (2026-08-04, updated after Phase 5)
+# sshmgr v2 — status audit (2026-08-04, updated after Phase 6)
 
 Comprehensive handoff document for continuing this work in another tool (Claude
 Code CLI). Supersedes `docs/ssh-worklist.md` for anything about the v2
@@ -287,6 +287,47 @@ Commits: `55fa872`, `8d13219`, `b156e61`, `dee82c0`
   only its defaults (nil = expiry-only). Only blocking states reach the
   desktop; expiry still sets the cadence, so a dangling key alone stays weekly.
 
+### Phase 6 — Remaining bugs
+
+Commits: `28210ae`, `d3b37c8`, `a9ff78d`, `ce0f618`, `f5a1647`
+
+- **CRITICAL, fixed** — the rotation commit was four bare renames with no
+  rollback. Any one failing left the canonical path empty with the live key in
+  `old/` or `.staging/`. The outgoing pair is now preserved into `old/` by
+  **hard link** (the canonical path still points at it while the archive is
+  made) and the staged pair is renamed *over* the canonical path, which POSIX
+  defines as atomic — so a **crash** between any two steps also leaves a
+  complete pair, not just a clean error path. Failures put back what moved and
+  say whether the active key was touched.
+  **`Rollback` had the same bug in worse form** (it `os.Remove`d the live pair
+  before moving the predecessor in, so a failed rename lost a key that was
+  never archived) — also fixed; a failed `.pub` move now re-derives the public
+  key from the restored private one. Archive permissions are set *after* the
+  swap: before it, the archive shares an inode with the live key.
+- **HIGH, fixed** — `keygen --force`'s overwrite set was keyed by bare key
+  name, so confirming one key regenerated every same-named key in every
+  profile. Keyed and prompted by `KeyRef` now. This was the live-data-
+  destroying bug for this machine's naming scheme; the regression test
+  (`TestOverwriteIsScopedToOneProfile`) and an end-to-end check both cover it.
+- **HIGH, fixed** — `manifest.Save`/`inventory.Save` claimed atomic writes and
+  used `os.WriteFile`, which truncates first and keeps the file's existing
+  mode. Both go through `fs.WriteTextAtomic`.
+- **HIGH, fixed** — `deploy` took no lock and no snapshot; it now takes the
+  guard, which completes that item (the editor half landed with the Phase 4
+  follow-ups).
+- **MEDIUM, fixed** — rollback reported `Committed` with targets unreachable;
+  rotation skipped the inventory's archival step when the outgoing
+  fingerprint could not be read (leaving two records on one path); `keygen`
+  rejected a key selector; `netstat`'s bare-name filter spanned profiles;
+  expiry/audit/desktop-alert rows were labelled by basename; `query.byPath`
+  was last-wins by map order; the TUI discarded `inv.Save` errors after deploy
+  and rotate; the mutation guard proceeded silently when the lock could not be
+  taken (still best-effort, now warns).
+- **LOW, fixed** — `diff` and `recover` bare-name displays (diff also counted
+  a shared key once per host); two `basename` helpers splitting on `/` only;
+  stale package docs in `doctor` and the two "advisory lock not yet ported"
+  comments.
+
 All of the above is fully tested (`go test ./...` green) and committed on
 `sshmgr-v2`. No dry-run/simulation — every change compiles, vets, and passes
 its test suite.
@@ -298,52 +339,6 @@ its test suite.
 Full technical detail for each item is in the plan file linked above; summary
 below is enough to resume without re-reading it, but the plan has exact line
 numbers, code snippets, and reasoning for trickier ones.
-
-### Phase 6 — Remaining bugs (not started; verified still present as of this audit)
-
-- **Critical** — rotator commit (`rotator.go` ~L229-241) is a four-step
-  `os.Rename` sequence with no rollback; partial failure can leave the
-  canonical identity path empty while the live key sits in `old/` or
-  `.staging/`. Real lockout risk. *(Confirmed still present.)*
-- **High**:
-  - `keygen --force` overwrite map is keyed by bare basename
-    (`internal/cli/keygen.go` `overwrite := map[string]bool{}`, and
-    `reconciler.go` `Mint(... overwrite map[string]bool)`), so confirming
-    overwrite of `imani_github-ed25519` regenerates it in **both**
-    `personal` and `adelsaiq`. Needs keying by `manifest.KeyRef`.
-    *(Confirmed still present — this is the one live-data-destroying bug for
-    this machine's actual naming scheme.)*
-  - `inventory.Save`/`manifest.Save` still use plain `os.WriteFile`
-    (confirmed: `internal/core/inventory/inventory.go:127`,
-    `internal/core/manifest/manifest.go:925` — line moved in Phase 4), despite
-    package comments claiming atomicity, and `WriteFile` on an existing file
-    keeps its current mode. Route through `fs.WriteTextAtomic`. Now more
-    pressing: `lifecycle` writes the manifest and inventory back-to-back inside
-    one delete.
-  - `deploy` bypasses the mutation guard entirely — confirmed no
-    `snapshotBeforeMutation`/`lock.Acquire` call anywhere in
-    `internal/cli/deploy.go`. *(The editor half of this is closed: every
-    profile/host/key add·edit·delete verb takes the guard as of `baa5a50`.
-    `deploy` is what is left.)*
-  - ~~`doctor.OK()` ignoring orphans / the `.pub`-pair hole~~ — **closed in
-    Phase 5** (`8d13219`).
-- **Medium** — rollback reports `Committed = true` when targets were
-  unreachable (rotator.go ~L332-360); TUI swallows `inv.Save` errors
-  (tui.go:333,364); `netstat` bare-name filter spans profiles (netstat.go:32)
-  and `keygen` rejects `profile/key` (now `reconciler.planMatches`,
-  reconciler.go:286 — accepts a profile name or host alias, not the composite
-  form; `keysvc.matches` and `validate.selectorMatches` both already accept it,
-  so this is the odd one out); expiry table shows basename only
-  (cli/expiry.go:46-56); `query.byPath` is last-wins on duplicate paths
-  (query.go:91-94 — `keysvc.record` shows the fix: sort the fingerprints so the
-  tie breaks deterministically instead of by map order); rotator skips archival
-  when the fingerprint read fails (rotator.go:164-166); `knownhosts.go` proceeds
-  when lock acquisition fails.
-- **Low** — `profile/key` display sweeps in `diff.go`, `notifier.go`,
-  `recover.go`, deploy/rotate headers; stale comments at `doctor.go:35` and
-  `manifest.go` (line drifted after Phase 3 edits — re-check);
-  `editor.basename` splits on `/` only. *(`KeyRefs` claiming a sort it does not
-  do was fixed in Phase 4 when the doc comment was rewritten.)*
 
 ### Phase 7 — Portability and de-Python (not started)
 
@@ -405,8 +400,10 @@ so it builds on a stable service layer from the earlier phases.
   snapshot-no-keys, bundle-no-tmpdir-residue, known_hosts 0600+hashed,
   IdentitiesOnly-always-present, symlink-refused, providers.json 0600) — this
   phase is really about the *cross-cutting* fixtures: dup-basename coverage
-  against `keygen --force`/deploy/rotate/rollback (blocked on Phase 6's
-  `KeyRef`-keying fix) and migration-from-old-layout end-to-end. **Profile
+  against `keygen --force`/deploy/rotate/rollback (**unblocked**: Phase 6 keyed
+  overwrite by `KeyRef`, and `TestOverwriteIsScopedToOneProfile` covers the
+  keygen half - deploy/rotate/rollback still want the same treatment) and
+  migration-from-old-layout end-to-end. **Profile
   delete with/without `--purge` and pruning sparing foreign + still-live pins
   landed with Phase 4** (`internal/services/lifecycle/lifecycle_test.go`), as
   did `show`-never-prints-key-material (`internal/cli/show_test.go`) and
@@ -467,12 +464,16 @@ so it builds on a stable service layer from the earlier phases.
    `internal/services/lifecycle` owns all three deletions (profile, host, key)
    and `internal/services/keyaudit` owns every dangling-key state: a new
    deletion or a new state goes in those, not in a second copy.
-4. **Three invariants worth not breaking.** *Manifest edits render the config,
-   key-file commands do not* (`cli.applyManifestEdit`). *A record or file
-   survives while anything in `KeyRefs` owns it* — never re-derive "in use" by
-   walking hosts, since a declared key has none. *`keysvc` reports facts,
-   `keyaudit` interprets them* — a new "is this key OK" rule goes in keyaudit,
-   or the commands start disagreeing again.
+4. **Four invariants worth not breaking.**
+   - *A key is identified by `profile/key`, never by name alone.* Names are
+     unique per profile; every bug in the Phase 6 medium batch came from
+     forgetting that, including the one that destroyed key material.
+   - *Manifest edits render the config; key-file commands do not*
+     (`cli.applyManifestEdit`).
+   - *A record or file survives while anything in `KeyRefs` owns it* — never
+     re-derive "in use" by walking hosts, since a declared key has none.
+   - *`keysvc` reports facts, `keyaudit` interprets them* — a new "is this key
+     OK" rule goes in keyaudit, or the commands start disagreeing again.
 5. Every phase so far has been committed as its own commit(s) on
    `sshmgr-v2` with a real commit message (`git log sshmgr-v2` for the exact
    sequence) — keep that granularity; don't squash unrelated phases together.
