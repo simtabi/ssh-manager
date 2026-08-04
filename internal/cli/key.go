@@ -3,6 +3,7 @@ package cli
 import (
 	"fmt"
 	"io"
+	"os"
 	"runtime"
 	"strings"
 	"text/tabwriter"
@@ -13,6 +14,7 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
 	"github.com/simtabi/ssh-manager/internal/services/keysvc"
+	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/services/reconciler"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
@@ -21,9 +23,61 @@ import (
 // a host; these subcommands manage it in its own right - declare and mint one,
 // see what state every key is in, and take one away.
 func newKeyCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "key", Short: "Manage a profile's keys (add/list)"}
+	cmd := &cobra.Command{Use: "key", Short: "Manage a profile's keys (add/list/delete)"}
 	cmd.AddCommand(newKeyAddCmd())
 	cmd.AddCommand(newKeyListCmd())
+	cmd.AddCommand(newKeyDeleteCmd())
+	return cmd
+}
+
+func newKeyDeleteCmd() *cobra.Command {
+	var purge, revoke, yes, noKeyBackup bool
+	cmd := &cobra.Command{
+		Use:   "delete <profile/key>",
+		Short: "Delete a key (refuses while a host uses it)",
+		Long: "Delete a key (refuses while a host uses it).\n\n" +
+			"Without --purge the manifest declaration and the inventory record go away\n" +
+			"and the key files stay on disk, so an accidental delete costs nothing.\n" +
+			"--purge deletes the files too, after writing an encrypted backup.",
+		Args: cobra.ExactArgs(1),
+		RunE: func(c *cobra.Command, args []string) error {
+			p := paths.Resolve(nil, "", "")
+			m, err := manifest.Load(p.Manifest())
+			if err != nil {
+				return err
+			}
+			ref, err := m.ResolveKeySelector(args[0])
+			if err != nil {
+				return err
+			}
+			out := c.OutOrStdout()
+			what := fmt.Sprintf("Delete key %s?", ref)
+			if purge {
+				what = fmt.Sprintf("Delete key %s AND its files on disk?", ref)
+			}
+			if !yes && !confirm(c, what) {
+				os.Exit(1)
+			}
+			if purge {
+				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
+					return err
+				}
+			}
+			snapshotBeforeMutation(p)
+			res, err := lifecycle.New(p, runtime.GOOS == "darwin").
+				DeleteKey(ref, lifecycle.Options{Purge: purge, Revoke: revoke})
+			if err != nil {
+				return err
+			}
+			fmt.Fprintln(out, res.Format())
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&purge, "purge", false, "also delete the key files from disk")
+	cmd.Flags().BoolVar(&revoke, "revoke", false, "revoke the deployed public key from its targets first")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
+	cmd.Flags().BoolVar(&noKeyBackup, "no-key-backup", false,
+		"purge without writing an encrypted backup first (the key is then unrecoverable)")
 	return cmd
 }
 

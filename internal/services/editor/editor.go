@@ -121,13 +121,20 @@ func (e *Editor) DeleteProfile(name string, revoke bool) (DeleteResult, error) {
 		return DeleteResult{}, err
 	}
 	res := DeleteResult{Removed: "profile " + name}
+	// Every key the profile owns, not just the ones its hosts resolve to: a key
+	// the profile declares without a host has an inventory record too, and
+	// leaving it behind would point tracking at a profile that no longer exists.
+	refs, err := m.KeyRefs()
+	if err != nil {
+		return DeleteResult{}, err
+	}
 	affected := map[string]bool{}
-	for _, host := range m.Profiles[name].Hosts {
-		kn, err := m.ResolvedKeyName(name, host)
-		if err != nil {
-			return DeleteResult{}, err
+	for _, ref := range refs {
+		if ref.Profile == name {
+			affected[m.IdentityFile(ref.Profile, ref.KeyName)] = true
 		}
-		affected[m.IdentityFile(name, kn)] = true
+	}
+	for _, host := range m.Profiles[name].Hosts {
 		e.revokeHost(m, inv, name, host, revoke, &res)
 	}
 	m.DeleteProfile(name)
@@ -187,6 +194,82 @@ func (e *Editor) AddKey(profile, name string, keyType *string, rotateAfterDays *
 		log.Field{Key: "key", Value: name},
 		log.Field{Key: "host", Value: hostAlias})
 	return nil
+}
+
+// DeleteKey removes a key's declaration from its profile and drops its inventory
+// record. It refuses while any host still resolves to the key: deleting it then
+// would leave a Host block pointing at an IdentityFile that no longer exists,
+// which ssh reports as a bare permission denial. Key files on disk are the
+// caller's to remove (see the lifecycle service) so an accidental delete costs
+// nothing but a manifest edit.
+func (e *Editor) DeleteKey(ref manifest.KeyRef, revoke bool) (DeleteResult, error) {
+	m, err := e.load()
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	p, ok := m.Profiles[ref.Profile]
+	if !ok {
+		return DeleteResult{}, fmt.Errorf("unknown profile: %q", ref.Profile)
+	}
+	hosts, err := m.HostsForKey(ref)
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	if len(hosts) > 0 {
+		aliases := make([]string, 0, len(hosts))
+		for _, h := range hosts {
+			aliases = append(aliases, h.Alias)
+		}
+		return DeleteResult{}, fmt.Errorf("key %s is still used by %d host(s): %s - "+
+			"point them at another key (`sshmgr host edit <alias> --key-name ...`) or "+
+			"delete them first", ref, len(hosts), strings.Join(aliases, ", "))
+	}
+	kept := p.Keys[:0:0]
+	found := false
+	for _, k := range p.Keys {
+		if k.Name == ref.KeyName {
+			found = true
+			continue
+		}
+		kept = append(kept, k)
+	}
+	if !found {
+		return DeleteResult{}, fmt.Errorf("profile %q declares no key %q", ref.Profile, ref.KeyName)
+	}
+	p.Keys = kept
+	m.SetProfile(ref.Profile, p)
+
+	inv, err := inventory.Load(e.p.Inventory())
+	if err != nil {
+		return DeleteResult{}, err
+	}
+	res := DeleteResult{Removed: "key " + ref.String()}
+	ident := m.IdentityFile(ref.Profile, ref.KeyName)
+	for fp, rec := range inv.Keys {
+		if rec.Path != ident {
+			continue
+		}
+		if revoke {
+			for _, d := range rec.Deployments {
+				if removeFromTarget() {
+					res.Revoked = append(res.Revoked, d.Target)
+				}
+			}
+		}
+		res.PrunedKeys = append(res.PrunedKeys, basename(rec.Path))
+		delete(inv.Keys, fp)
+	}
+	if err := e.save(m); err != nil {
+		return DeleteResult{}, err
+	}
+	if err := inv.Save(e.p.Inventory()); err != nil {
+		return DeleteResult{}, err
+	}
+	log.Audit(e.p.AuditLog(), "key.delete",
+		log.Field{Key: "profile", Value: ref.Profile},
+		log.Field{Key: "key", Value: ref.KeyName},
+		log.Field{Key: "revoke", Value: revoke})
+	return res, nil
 }
 
 // --- hosts -----------------------------------------------------------------
