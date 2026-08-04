@@ -207,6 +207,31 @@ func (r *Reconciler) Mint(selector, passphrase string, overwrite map[string]bool
 	return minted, nil
 }
 
+// MintRef mints exactly one key, by reference. It returns nil when the private
+// key is already on disk: a command that adds a key must never regenerate an
+// identity that exists, since the replaced key is what remote targets trust.
+func (r *Reconciler) MintRef(ref manifest.KeyRef, passphrase string) (*MintedKey, error) {
+	if fs.Exists(r.privPath(ref.Profile, ref.KeyName)) {
+		return nil, nil
+	}
+	hosts, err := r.m.HostsForKey(ref)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.ensureTree(); err != nil {
+		return nil, err
+	}
+	mk, err := r.mintOne(plannedKey{Ref: ref, Hosts: hosts}, passphrase, false)
+	if err != nil {
+		return nil, err
+	}
+	if err := r.inv.Save(r.p.Inventory()); err != nil {
+		return nil, err
+	}
+	r.fixPerms()
+	return &mk, nil
+}
+
 // ExistingKeys lists key names that already have a private key on disk, deduped
 // and filtered to selector.
 func (r *Reconciler) ExistingKeys(selector string) ([]string, error) {

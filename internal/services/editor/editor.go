@@ -142,6 +142,53 @@ func (e *Editor) DeleteProfile(name string, revoke bool) (DeleteResult, error) {
 	return res, nil
 }
 
+// --- keys ------------------------------------------------------------------
+
+// AddKey declares a key on a profile and, when hostAlias is set, points that
+// host at it. Type and rotateAfterDays are optional overrides of the manifest
+// defaults. It only edits the manifest - minting the key file is the caller's
+// next step, so a failed edit never leaves a key on disk nothing refers to.
+func (e *Editor) AddKey(profile, name string, keyType *string, rotateAfterDays *int, hostAlias string) error {
+	m, err := e.load()
+	if err != nil {
+		return err
+	}
+	p, ok := m.Profiles[profile]
+	if !ok {
+		return fmt.Errorf("unknown profile: %q", profile)
+	}
+	for _, k := range p.Keys {
+		if k.Name == name {
+			return fmt.Errorf("profile %q already declares key %q", profile, name)
+		}
+	}
+	if hostAlias != "" {
+		// In a shared profile every host uses the profile's key_name, so wiring
+		// one host to a different key would silently do nothing.
+		if p.KeyScope == "shared" {
+			return fmt.Errorf("profile %q is shared - every host uses its key_name; "+
+				"use `sshmgr profile edit %s --key-name %s` to switch the whole profile",
+				profile, profile, name)
+		}
+		idx, host, err := findHost(m, profile, hostAlias)
+		if err != nil {
+			return err
+		}
+		host.KeyName = &name
+		p.Hosts[idx] = host
+	}
+	p.Keys = append(p.Keys, manifest.KeySpec{Name: name, Type: keyType, RotateAfterDays: rotateAfterDays})
+	m.SetProfile(profile, p)
+	if err := e.save(m); err != nil {
+		return err
+	}
+	log.Audit(e.p.AuditLog(), "key.add",
+		log.Field{Key: "profile", Value: profile},
+		log.Field{Key: "key", Value: name},
+		log.Field{Key: "host", Value: hostAlias})
+	return nil
+}
+
 // --- hosts -----------------------------------------------------------------
 
 // HostFields are the optional attributes for add/edit host (nil = unset/keep).

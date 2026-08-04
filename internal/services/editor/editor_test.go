@@ -3,6 +3,7 @@ package editor
 import (
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
@@ -109,3 +110,113 @@ func TestSaveValidatesBadEdit(t *testing.T) {
 		t.Error("an invalid alias should fail validation on save")
 	}
 }
+
+func TestAddKeyDeclaresAndWires(t *testing.T) {
+	ed, p := setup(t)
+
+	// Unwired: declared on the profile, referenced by no host.
+	if err := ed.AddKey("work", "work_spare-rsa", str("rsa"), intp(90), ""); err != nil {
+		t.Fatal(err)
+	}
+	m := reload(t, p)
+	keys := m.Profiles["work"].Keys
+	if len(keys) != 1 || keys[0].Name != "work_spare-rsa" {
+		t.Fatalf("declared keys = %+v", keys)
+	}
+	if keys[0].Type == nil || *keys[0].Type != "rsa" {
+		t.Errorf("type override not stored: %+v", keys[0])
+	}
+	if keys[0].RotateAfterDays == nil || *keys[0].RotateAfterDays != 90 {
+		t.Errorf("rotate override not stored: %+v", keys[0])
+	}
+	if hosts, _ := m.HostsForKey(manifest.KeyRef{Profile: "work", KeyName: "work_spare-rsa"}); len(hosts) != 0 {
+		t.Errorf("a key added without --host should be unwired, got hosts %+v", hosts)
+	}
+
+	// Wired: the named host now resolves to the new key.
+	if err := ed.AddKey("work", "work_gh2-ed25519", nil, nil, "gh"); err != nil {
+		t.Fatal(err)
+	}
+	m = reload(t, p)
+	kn, err := m.ResolvedKeyName("work", m.Profiles["work"].Hosts[0])
+	if err != nil {
+		t.Fatal(err)
+	}
+	if kn != "work_gh2-ed25519" {
+		t.Errorf("host key after wiring = %q, want work_gh2-ed25519", kn)
+	}
+	if spec, ok := m.KeySpecFor(manifest.KeyRef{Profile: "work", KeyName: "work_gh2-ed25519"}); !ok ||
+		spec.Type != nil || spec.RotateAfterDays != nil {
+		t.Errorf("unset overrides should stay unset: %+v ok=%v", spec, ok)
+	}
+}
+
+func TestAddKeyRejections(t *testing.T) {
+	ed, p := setup(t)
+	if err := ed.AddKey("work", "work_spare-ed25519", nil, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	cases := map[string]func() error{
+		"duplicate declaration": func() error { return ed.AddKey("work", "work_spare-ed25519", nil, nil, "") },
+		"unknown profile":       func() error { return ed.AddKey("nope", "k-ed25519", nil, nil, "") },
+		"unknown host":          func() error { return ed.AddKey("work", "k-ed25519", nil, nil, "nope") },
+		"unsafe name":           func() error { return ed.AddKey("work", "../escape", nil, nil, "") },
+		"unknown type":          func() error { return ed.AddKey("work", "k-ed25519", str("quantum"), nil, "") },
+	}
+	for name, fn := range cases {
+		if err := fn(); err == nil {
+			t.Errorf("%s: expected an error", name)
+		}
+	}
+	// A rejected edit must not have been persisted.
+	m := reload(t, p)
+	if len(m.Profiles["work"].Keys) != 1 {
+		t.Errorf("failed AddKey calls left keys = %+v", m.Profiles["work"].Keys)
+	}
+}
+
+// In a shared profile every host uses the profile's key_name, so wiring one host
+// to a different key would look like it worked and change nothing.
+func TestAddKeyRefusesToWireAHostInASharedProfile(t *testing.T) {
+	ed, p := setup(t)
+	if err := ed.AddProfile("team", "shared", str("team_all-ed25519")); err != nil {
+		t.Fatal(err)
+	}
+	if err := ed.AddHost("team", "box", HostFields{Hostname: str("h"), User: str("u")}); err != nil {
+		t.Fatal(err)
+	}
+	err := ed.AddKey("team", "team_second-ed25519", nil, nil, "box")
+	if err == nil {
+		t.Fatal("wiring a host in a shared profile should be refused")
+	}
+	if !strings.Contains(err.Error(), "profile edit") {
+		t.Errorf("the refusal should point at the command that does work: %v", err)
+	}
+	// Declaring without wiring stays legal.
+	if err := ed.AddKey("team", "team_second-ed25519", nil, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if m := reload(t, p); len(m.Profiles["team"].Keys) != 1 {
+		t.Error("the unwired declaration should have been stored")
+	}
+}
+
+// EditProfile rebuilds the profile it saves; declared keys must survive that.
+func TestEditProfileKeepsDeclaredKeys(t *testing.T) {
+	ed, p := setup(t)
+	if err := ed.AddKey("work", "work_spare-ed25519", nil, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if err := ed.EditProfile("work", str("shared"), str("work_shared-ed25519")); err != nil {
+		t.Fatal(err)
+	}
+	m := reload(t, p)
+	if len(m.Profiles["work"].Keys) != 1 {
+		t.Errorf("editing a profile dropped its declared keys: %+v", m.Profiles["work"])
+	}
+	if m.Profiles["work"].KeyScope != "shared" {
+		t.Error("the edit itself did not apply")
+	}
+}
+
+func intp(v int) *int { return &v }
