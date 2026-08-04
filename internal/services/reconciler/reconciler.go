@@ -124,15 +124,15 @@ func (r *Reconciler) Reconcile(dryRun bool, passphrase string) (*ReconcileResult
 	if err != nil {
 		return nil, err
 	}
-	for _, rk := range existing {
-		res.ExistingKeys = append(res.ExistingKeys, rk.KeyName)
+	for _, pk := range existing {
+		res.ExistingKeys = append(res.ExistingKeys, pk.Ref.KeyName)
 	}
 
 	if dryRun {
-		for _, rk := range toMint {
+		for _, pk := range toMint {
 			res.Minted = append(res.Minted, MintedKey{
-				KeyName: rk.KeyName, Profile: rk.Profile,
-				Fingerprint: "(new)", Path: r.privPath(rk.Profile, rk.KeyName),
+				KeyName: pk.Ref.KeyName, Profile: pk.Ref.Profile,
+				Fingerprint: "(new)", Path: r.privPath(pk.Ref.Profile, pk.Ref.KeyName),
 			})
 		}
 		c, err := r.cfg.Write(true)
@@ -146,8 +146,8 @@ func (r *Reconciler) Reconcile(dryRun bool, passphrase string) (*ReconcileResult
 	if err := r.ensureTree(); err != nil {
 		return nil, err
 	}
-	for _, rk := range toMint {
-		mk, err := r.mintOne(rk, passphrase, false)
+	for _, pk := range toMint {
+		mk, err := r.mintOne(pk, passphrase, false)
 		if err != nil {
 			return nil, err
 		}
@@ -182,16 +182,16 @@ func (r *Reconciler) Mint(selector, passphrase string, overwrite map[string]bool
 		return nil, err
 	}
 	var minted []MintedKey
-	for _, rk := range toMint {
-		mk, err := r.mintOne(rk, passphrase, false)
+	for _, pk := range toMint {
+		mk, err := r.mintOne(pk, passphrase, false)
 		if err != nil {
 			return nil, err
 		}
 		minted = append(minted, mk)
 	}
-	for _, rk := range existing {
-		if overwrite[rk.KeyName] {
-			mk, err := r.mintOne(rk, passphrase, true)
+	for _, pk := range existing {
+		if overwrite[pk.Ref.KeyName] {
+			mk, err := r.mintOne(pk, passphrase, true)
 			if err != nil {
 				return nil, err
 			}
@@ -215,38 +215,63 @@ func (r *Reconciler) ExistingKeys(selector string) ([]string, error) {
 		return nil, err
 	}
 	out := make([]string, 0, len(existing))
-	for _, rk := range existing {
-		out = append(out, rk.KeyName)
+	for _, pk := range existing {
+		out = append(out, pk.Ref.KeyName)
 	}
 	return out, nil
 }
 
-// planMint returns (keys-to-mint, keys-already-present), deduped by private path
-// and filtered to selector (a profile name or host alias) when given.
-func (r *Reconciler) planMint(selector string) (toMint, existing []manifest.ResolvedKey, err error) {
-	rks, err := r.m.IterResolved()
+// plannedKey is one key the reconciler may mint: the key itself plus the hosts
+// that reference it - none for a key its profile declares that no host uses yet,
+// which still has to be minted so the declaration means something.
+type plannedKey struct {
+	Ref   manifest.KeyRef
+	Hosts []manifest.Host
+}
+
+// planMint returns (keys-to-mint, keys-already-present), filtered to selector (a
+// profile name or a host alias) when given. It walks KeyRefs rather than
+// IterResolved so a declared-but-unwired key is planned too; KeyRefs is already
+// deduplicated per profile+name, so hosts sharing a key yield one plan entry.
+func (r *Reconciler) planMint(selector string) (toMint, existing []plannedKey, err error) {
+	refs, err := r.m.KeyRefs()
 	if err != nil {
 		return nil, nil, err
 	}
-	seen := map[string]bool{}
-	for _, rk := range rks {
-		if selector != "" && selector != rk.Profile && selector != rk.Host.Alias {
+	for _, ref := range refs {
+		hosts, err := r.m.HostsForKey(ref)
+		if err != nil {
+			return nil, nil, err
+		}
+		if !planMatches(selector, ref, hosts) {
 			continue
 		}
-		priv := r.privPath(rk.Profile, rk.KeyName)
-		if seen[priv] {
-			continue
-		}
-		seen[priv] = true
-		if fs.Exists(priv) {
-			existing = append(existing, rk)
+		pk := plannedKey{Ref: ref, Hosts: hosts}
+		if fs.Exists(r.privPath(ref.Profile, ref.KeyName)) {
+			existing = append(existing, pk)
 		} else {
-			toMint = append(toMint, rk)
+			toMint = append(toMint, pk)
 		}
 	}
 	return toMint, existing, nil
 }
 
+// planMatches reports whether a key is in scope for selector: everything when
+// empty, else the profile that owns it or any host alias that uses it.
+func planMatches(selector string, ref manifest.KeyRef, hosts []manifest.Host) bool {
+	if selector == "" || selector == ref.Profile {
+		return true
+	}
+	for _, h := range hosts {
+		if h.Alias == selector {
+			return true
+		}
+	}
+	return false
+}
+
+// ensureTree creates ~/.ssh, profiles/, and a directory for every profile that
+// owns a key - hosts or not, since a profile can now declare a key without one.
 func (r *Reconciler) ensureTree() error {
 	ssh := r.p.SSHDir
 	if err := fs.EnsureDir(ssh, perms.DirMode); err != nil {
@@ -255,7 +280,25 @@ func (r *Reconciler) ensureTree() error {
 	if err := fs.EnsureDir(filepath.Join(ssh, "profiles"), perms.DirMode); err != nil {
 		return err
 	}
+	wanted := map[string]bool{}
+	var order []string
+	remember := func(pname string) {
+		if !wanted[pname] {
+			wanted[pname] = true
+			order = append(order, pname)
+		}
+	}
 	for _, pname := range r.m.NonEmptyProfiles() {
+		remember(pname)
+	}
+	refs, err := r.m.KeyRefs()
+	if err != nil {
+		return err
+	}
+	for _, ref := range refs {
+		remember(ref.Profile)
+	}
+	for _, pname := range order {
 		if err := fs.EnsureDir(filepath.Join(ssh, "profiles", pname), perms.DirMode); err != nil {
 			return err
 		}
@@ -263,18 +306,26 @@ func (r *Reconciler) ensureTree() error {
 	return nil
 }
 
-func (r *Reconciler) mintOne(rk manifest.ResolvedKey, passphrase string, overwrite bool) (MintedKey, error) {
-	priv := r.privPath(rk.Profile, rk.KeyName)
+func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (MintedKey, error) {
+	ref := pk.Ref
+	priv := r.privPath(ref.Profile, ref.KeyName)
 	if err := fs.EnsureDir(filepath.Dir(priv), perms.DirMode); err != nil {
 		return MintedKey{}, err
 	}
-	comment := fmt.Sprintf("%s/%s %s", rk.Profile, rk.Host.Alias, inventory.Today())
-	gen, err := r.ks.Generate(priv, r.m.Defaults.KeyType, comment, passphrase, overwrite)
+	// The comment identifies the key in ssh-keygen -l output. A wired key names
+	// the host it serves; an unwired one has none, so it names itself.
+	subject := ref.KeyName
+	if len(pk.Hosts) > 0 {
+		subject = pk.Hosts[0].Alias
+	}
+	keyType := r.m.KeyTypeFor(ref)
+	comment := fmt.Sprintf("%s/%s %s", ref.Profile, subject, inventory.Today())
+	gen, err := r.ks.Generate(priv, keyType, comment, passphrase, overwrite)
 	if err != nil {
 		return MintedKey{}, err
 	}
 	created := inventory.Today()
-	ident := r.m.IdentityFile(rk.Profile, rk.KeyName)
+	ident := r.m.IdentityFile(ref.Profile, ref.KeyName)
 	// Drop any stale inventory entry at this path (an old fingerprint left behind
 	// when the previous key was deleted) so we never orphan it.
 	for fp, rec := range r.inv.Keys {
@@ -282,22 +333,23 @@ func (r *Reconciler) mintOne(rk manifest.ResolvedKey, passphrase string, overwri
 			delete(r.inv.Keys, fp)
 		}
 	}
-	exp, _ := inventory.ComputeExpiry(created, r.m.Defaults.RotateAfterDays)
+	rotate := r.m.RotateAfterDaysFor(ref)
+	exp, _ := inventory.ComputeExpiry(created, rotate)
 	r.inv.Record(gen.Fingerprint, inventory.KeyRecord{
-		Profile:         rk.Profile,
+		Profile:         ref.Profile,
 		Path:            ident,
-		Type:            r.m.Defaults.KeyType,
+		Type:            keyType,
 		Comment:         &comment,
 		Created:         &created,
-		RotateAfterDays: r.m.Defaults.RotateAfterDays,
+		RotateAfterDays: rotate,
 		ExpiresOn:       &exp,
 		Deployments:     nil, // empty == needs-redeploy
 	})
 	log.Audit(r.p.AuditLog(), "keygen",
-		log.Field{Key: "key", Value: rk.KeyName},
+		log.Field{Key: "key", Value: ref.KeyName},
 		log.Field{Key: "fingerprint", Value: gen.Fingerprint},
-		log.Field{Key: "profile", Value: rk.Profile})
-	return MintedKey{KeyName: rk.KeyName, Profile: rk.Profile, Fingerprint: gen.Fingerprint, Path: priv}, nil
+		log.Field{Key: "profile", Value: ref.Profile})
+	return MintedKey{KeyName: ref.KeyName, Profile: ref.Profile, Fingerprint: gen.Fingerprint, Path: priv}, nil
 }
 
 // fixPerms tightens both the ~/.ssh tree and the config home. Reconcile used to

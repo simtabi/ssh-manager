@@ -102,6 +102,95 @@ func TestReconcileMintsRendersAndIsIdempotent(t *testing.T) {
 	}
 }
 
+// A profile may declare a key no host references, and one whose type and
+// rotation differ from the manifest defaults. Both have to survive reconcile:
+// the unwired key must be minted (otherwise declaring it does nothing), and the
+// overrides must reach ssh-keygen and the inventory record rather than being
+// silently replaced by the defaults.
+const declaredKeysJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519", "rotate_after_days": 365},
+  "profiles": {
+    "work": {"key_scope": "per_service",
+      "keys": [{"name": "work_spare-rsa", "type": "rsa", "rotate_after_days": 90}],
+      "hosts": [{"alias": "gh", "hostname": "github.com", "user": "git"}]},
+    "vault": {"key_scope": "per_service",
+      "keys": [{"name": "vault_backup-ed25519"}],
+      "hosts": []}
+  }
+}`
+
+func TestReconcileMintsDeclaredKeysWithTheirOverrides(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(declaredKeysJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	ssh := t.TempDir()
+	p := paths.Paths{SSHDir: ssh, ConfigDir: t.TempDir()}
+	inv := inventory.New()
+
+	res, err := New(p, &m, inv, false).Reconcile(false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	// work's host key + work's declared spare + vault's declared key.
+	want := map[string]string{
+		"work_gh-ed25519":      filepath.Join(ssh, "profiles", "work", "work_gh-ed25519"),
+		"work_spare-rsa":       filepath.Join(ssh, "profiles", "work", "work_spare-rsa"),
+		"vault_backup-ed25519": filepath.Join(ssh, "profiles", "vault", "vault_backup-ed25519"),
+	}
+	if len(res.Minted) != len(want) {
+		t.Fatalf("minted %d (%+v), want %d", len(res.Minted), res.Minted, len(want))
+	}
+	for _, mk := range res.Minted {
+		path, ok := want[mk.KeyName]
+		if !ok {
+			t.Errorf("unexpected minted key %q", mk.KeyName)
+			continue
+		}
+		if mk.Path != path {
+			t.Errorf("%s minted at %q, want %q", mk.KeyName, mk.Path, path)
+		}
+		if _, err := os.Stat(mk.Path); err != nil {
+			t.Errorf("private key missing: %s", mk.Path)
+		}
+	}
+	// A profile with keys but no hosts still gets its 0700 directory.
+	if fi, err := os.Stat(filepath.Join(ssh, "profiles", "vault")); err != nil || !fi.IsDir() {
+		t.Errorf("hostless profile directory not created: %v", err)
+	}
+	byPath := map[string]inventory.KeyRecord{}
+	for _, rec := range inv.Keys {
+		byPath[rec.Path] = rec
+	}
+	spare := byPath["~/.ssh/profiles/work/work_spare-rsa"]
+	if spare.Type != "rsa" {
+		t.Errorf("declared type not honoured: recorded %q, want rsa", spare.Type)
+	}
+	if spare.RotateAfterDays != 90 {
+		t.Errorf("declared rotate_after_days not honoured: recorded %d, want 90", spare.RotateAfterDays)
+	}
+	inherited := byPath["~/.ssh/profiles/vault/vault_backup-ed25519"]
+	if inherited.Type != "ed25519" || inherited.RotateAfterDays != 365 {
+		t.Errorf("undeclared overrides should inherit defaults, got type=%q rotate=%d",
+			inherited.Type, inherited.RotateAfterDays)
+	}
+	// Reconcile stays idempotent with declared keys in play.
+	res2, err := New(p, &m, inv, false).Reconcile(false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res2.Minted) != 0 {
+		t.Errorf("second reconcile minted %d, want 0", len(res2.Minted))
+	}
+	if len(res2.ExistingKeys) != len(want) {
+		t.Errorf("second reconcile existing=%d, want %d", len(res2.ExistingKeys), len(want))
+	}
+}
+
 func TestReconcileDryRunMintsNothing(t *testing.T) {
 	if _, err := exec.LookPath("ssh-keygen"); err != nil {
 		t.Skip("ssh-keygen not on PATH")

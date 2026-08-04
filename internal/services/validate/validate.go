@@ -43,18 +43,18 @@ func New(m *manifest.Manifest, sshDir string) *Service {
 // several profiles validates every one of them - checking only the first would
 // report a broken key as clean.
 func (s *Service) ValidateKeys(selector string) ([]KeyCheck, error) {
-	resolved, err := s.m.IterResolved()
+	// KeyRefs, not IterResolved: it is already one entry per profile+name, and it
+	// covers a key its profile declares that no host uses - which still has files
+	// on disk to check.
+	refs, err := s.m.KeyRefs()
 	if err != nil {
 		return nil, err
 	}
-	seen := map[manifest.KeyRef]bool{}
 	var checks []KeyCheck
-	for _, rk := range resolved {
-		ref := manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
-		if seen[ref] || !selectorMatches(selector, ref) {
+	for _, ref := range refs {
+		if !selectorMatches(selector, ref) {
 			continue
 		}
-		seen[ref] = true
 		priv := filepath.Join(s.sshDir, "profiles", ref.Profile, ref.KeyName)
 		checks = append(checks, s.validateOne(ref.Profile, ref.KeyName, priv))
 	}
