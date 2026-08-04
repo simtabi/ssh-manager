@@ -4,7 +4,6 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
-	"strings"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
@@ -99,8 +98,8 @@ func TestRowsCoverDeclaredAndHostDerivedKeys(t *testing.T) {
 	if gh.Status != query.Deployed || gh.Fingerprint != "SHA256:gh" || gh.ExpiresOn != "2027-01-01" {
 		t.Errorf("inventory not joined onto the row: %+v", gh)
 	}
-	if len(gh.Notes()) != 0 {
-		t.Errorf("a wired, present, recorded key should have no notes, got %v", gh.Notes())
+	if !gh.PrivateOnDisk || !gh.PublicOnDisk || !gh.Recorded {
+		t.Errorf("a present, recorded pair should report as such: %+v", gh)
 	}
 }
 
@@ -113,54 +112,6 @@ func TestRowsResolveTypeAndRotationOverrides(t *testing.T) {
 	cold := byRef["vault/vault_cold-ed25519"]
 	if cold.Type != "ed25519" || cold.RotateAfterDays != 365 {
 		t.Errorf("defaults not inherited: type=%q rotate=%d", cold.Type, cold.RotateAfterDays)
-	}
-}
-
-func TestNotesReportEachDanglingCondition(t *testing.T) {
-	s := fixture(t)
-	byRef := rowsByRef(t, s, "")
-
-	// On disk, declared, but no host and no inventory record.
-	spare := byRef["work/work_spare-rsa"]
-	if got := strings.Join(spare.Notes(), ","); got != Unrecorded+","+Unwired {
-		t.Errorf("spare notes = %q, want %q", got, Unrecorded+","+Unwired)
-	}
-	// Declared, nothing on disk at all.
-	cold := byRef["vault/vault_cold-ed25519"]
-	if got := strings.Join(cold.Notes(), ","); got != Missing+","+Unwired {
-		t.Errorf("cold notes = %q, want %q", got, Missing+","+Unwired)
-	}
-	if cold.Status != query.NoKey {
-		t.Errorf("an unminted key should be %s, got %s", query.NoKey, cold.Status)
-	}
-
-	// Remove one half of a pair: half-pair, not missing.
-	if err := os.Remove(byRef["work/work_gh-ed25519"].PublicPath); err != nil {
-		t.Fatal(err)
-	}
-	if got := rowsByRef(t, s, "")["work/work_gh-ed25519"].Notes(); len(got) != 1 || got[0] != HalfPair {
-		t.Errorf("notes after removing the .pub = %v, want [%s]", got, HalfPair)
-	}
-}
-
-// A symlink where a key should be must not be followed: it exists as a link, so
-// the key is not "missing", and nothing here reads through it.
-func TestDiskChecksDoNotFollowSymlinks(t *testing.T) {
-	s := fixture(t)
-	cold := rowsByRef(t, s, "")["vault/vault_cold-ed25519"]
-	if err := os.MkdirAll(filepath.Dir(cold.PrivatePath), 0o700); err != nil {
-		t.Fatal(err)
-	}
-	if err := os.Symlink("/nonexistent/target", cold.PrivatePath); err != nil {
-		t.Fatal(err)
-	}
-	got := rowsByRef(t, s, "")["vault/vault_cold-ed25519"]
-	if !got.PrivateOnDisk {
-		t.Error("a dangling symlink is something on disk; Lstat should see it")
-	}
-	want := strings.Join([]string{HalfPair, Unrecorded, Unwired}, ",")
-	if notes := strings.Join(got.Notes(), ","); notes != want {
-		t.Errorf("notes = %q, want %q", notes, want)
 	}
 }
 

@@ -6,6 +6,7 @@ import (
 	"testing"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/internal/services/query"
 )
@@ -38,7 +39,7 @@ func TestKeyTableShowsStateAndDanglingNotes(t *testing.T) {
 	for _, want := range []string{
 		"KEY", "TYPE", "FINGERPRINT", "EXPIRES", "HOSTS", "STATE",
 		"work/work_gh-ed25519", "SHA256:abc", "2027-01-01", "gh,gh-alt", query.Deployed,
-		"vault/vault_cold-ed25519", query.NoKey, keysvc.Missing, keysvc.Unwired,
+		"vault/vault_cold-ed25519", query.NoKey, keyaudit.Missing, keyaudit.Unwired,
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("key table missing %q:\n%s", want, got)

@@ -3,6 +3,11 @@
 // query package answers the same questions host-first (list/view); this one is
 // key-first, because a key can now outlive - or precede - any host that uses it.
 //
+// It reports facts, not judgements: whether a file is there, whether a record
+// covers it, which hosts name it. Deciding that some combination of those facts
+// means a key is "dangling" belongs to one package so every command agrees, and
+// that package is keyaudit, which reads these rows.
+//
 // Read-only, and deliberately shallow on disk: it uses os.Lstat, so a symlink
 // planted where a key should be reports as what it is rather than being followed,
 // and it never reads private key material.
@@ -17,22 +22,6 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/internal/services/query"
-)
-
-// Dangling conditions a key can be in. Phase 5's keyaudit package will own the
-// full state machine (adding untracked and loose, which need a directory walk);
-// these are the ones decidable from the manifest, the inventory and a stat.
-const (
-	// Unwired: the profile owns the key but no host references it, so it is
-	// never rendered as an IdentityFile and never actually used.
-	Unwired = "unwired"
-	// Missing: the manifest says the key exists; the filesystem disagrees.
-	Missing = "missing"
-	// HalfPair: a private key with no .pub, or a .pub with no private key.
-	HalfPair = "half-pair"
-	// Unrecorded: the key file exists but no inventory record covers it, so
-	// expiry and rotation are blind to it.
-	Unrecorded = "unrecorded"
 )
 
 // Row is one key: what the manifest declares, what the inventory recorded, and
@@ -60,25 +49,6 @@ type Row struct {
 
 // Wired reports whether any host references this key.
 func (r Row) Wired() bool { return len(r.Hosts) > 0 }
-
-// Notes lists the dangling conditions this key is in, worst first. Empty means
-// the key is declared, present as a pair, tracked, and used by a host.
-func (r Row) Notes() []string {
-	var out []string
-	switch {
-	case !r.PrivateOnDisk && !r.PublicOnDisk:
-		out = append(out, Missing)
-	case !r.PrivateOnDisk || !r.PublicOnDisk:
-		out = append(out, HalfPair)
-	}
-	if r.PrivateOnDisk && !r.Recorded {
-		out = append(out, Unrecorded)
-	}
-	if !r.Wired() {
-		out = append(out, Unwired)
-	}
-	return out
-}
 
 // Service answers key-centric questions about one ~/.ssh tree.
 type Service struct {

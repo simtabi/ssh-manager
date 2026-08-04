@@ -13,6 +13,7 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/services/reconciler"
@@ -193,7 +194,7 @@ func writeKeyTable(out io.Writer, rows []keysvc.Row) {
 	fmt.Fprintln(tw, "KEY\tTYPE\tFINGERPRINT\tEXPIRES\tHOSTS\tSTATE")
 	for _, r := range rows {
 		state := r.Status
-		if notes := r.Notes(); len(notes) > 0 {
+		if notes := keyaudit.Notes(r); len(notes) > 0 {
 			state += "  " + strings.Join(notes, ",")
 		}
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",

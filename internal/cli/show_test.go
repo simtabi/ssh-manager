@@ -11,6 +11,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
@@ -155,7 +156,7 @@ func TestShowProfileFlagsAnUnwiredKey(t *testing.T) {
 	if !strings.Contains(got, "work/work_spare-ed25519") {
 		t.Errorf("a declared key should be listed even with no host:\n%s", got)
 	}
-	if !strings.Contains(got, "UNWIRED") || !strings.Contains(got, keysvc.Missing) {
+	if !strings.Contains(got, "UNWIRED") || !strings.Contains(got, keyaudit.Missing) {
 		t.Errorf("an unwired, unminted key should be called out:\n%s", got)
 	}
 }

@@ -10,6 +10,7 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/core/renderer"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -145,7 +146,7 @@ func showKey(out io.Writer, keys *keysvc.Service, ref manifest.KeyRef, indent st
 		fmt.Fprintf(out, indent+format+"\n", a...)
 	}
 	state := d.Status
-	if notes := d.Notes(); len(notes) > 0 {
+	if notes := keyaudit.Notes(d.Row); len(notes) > 0 {
 		state += "  " + strings.Join(notes, ",")
 	}
 	line("%s  (%s)  %s", ref, d.Type, state)
