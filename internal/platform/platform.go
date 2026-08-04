@@ -1,6 +1,11 @@
 // Package platform isolates the OS-specific behaviour sshmgr needs, so the rest
-// of the tree can stay free of runtime.GOOS branches. Today that is terminal
-// handling for reading secrets without echoing them.
+// of the tree can stay free of runtime.GOOS branches: terminal handling for
+// reading secrets without echoing them (here), and the OS predicates every other
+// package asks its questions through (os.go).
+//
+// The one deliberate exception is util/desktop, which dispatches to a different
+// notification backend per OS. That is a self-contained implementation choice
+// rather than a predicate leaking across the tree, so it keeps its own switch.
 package platform
 
 import (

@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"strings"
 	"text/tabwriter"
 
@@ -12,6 +11,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
 	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keysvc"
@@ -65,7 +65,7 @@ func newKeyDeleteCmd() *cobra.Command {
 				}
 			}
 			snapshotBeforeMutation(p)
-			res, err := lifecycle.New(p, runtime.GOOS == "darwin").
+			res, err := lifecycle.New(p, platform.EmitUseKeychain()).
 				DeleteKey(ref, lifecycle.Options{Purge: purge, Revoke: revoke})
 			if err != nil {
 				return err
@@ -127,7 +127,7 @@ func newKeyAddCmd() *cobra.Command {
 				return err
 			}
 			ref := manifest.KeyRef{Profile: profile, KeyName: name}
-			minted, err := reconciler.New(p, m, inv, runtime.GOOS == "darwin").MintRef(ref, pw)
+			minted, err := reconciler.New(p, m, inv, platform.EmitUseKeychain()).MintRef(ref, pw)
 			if err != nil {
 				return err
 			}

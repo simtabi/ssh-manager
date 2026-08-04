@@ -5,13 +5,13 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/bundler"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
@@ -158,7 +158,7 @@ func newRestoreCmd() *cobra.Command {
 				}
 			}
 			if m, e := manifest.Load(p.Manifest()); e == nil {
-				_, _ = configsvc.New(p.SSHDir, m, runtime.GOOS == "darwin").Write(false)
+				_, _ = configsvc.New(p.SSHDir, m, platform.EmitUseKeychain()).Write(false)
 			}
 			fmt.Fprintln(c.OutOrStdout(), res.Format())
 			return nil

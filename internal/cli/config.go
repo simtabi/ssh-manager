@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -23,7 +23,7 @@ func loadConfigService() (paths.Paths, *manifest.Manifest, *configsvc.Service, e
 	if err != nil {
 		return paths.Paths{}, nil, nil, err
 	}
-	return p, m, configsvc.New(p.SSHDir, m, runtime.GOOS == "darwin"), nil
+	return p, m, configsvc.New(p.SSHDir, m, platform.EmitUseKeychain()), nil
 }
 
 // migrateLegacyKnownHosts merges any known_hosts left over under profiles/*/

@@ -4,7 +4,6 @@ import (
 	"errors"
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
@@ -35,7 +34,7 @@ func newReconcileCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r := reconciler.New(p, m, inv, runtime.GOOS == "darwin")
+			r := reconciler.New(p, m, inv, platform.EmitUseKeychain())
 			out := c.OutOrStdout()
 
 			if dryRun {

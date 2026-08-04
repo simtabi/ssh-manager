@@ -6,15 +6,41 @@ package preflight
 
 import (
 	"os/exec"
-	"runtime"
 	"strings"
+
+	"github.com/simtabi/ssh-manager/internal/platform"
 )
 
-// HardBins must be present; OptionalBins degrade gracefully. Same lists as v1.
+// HardBins must be present; OptionalBins degrade gracefully.
+//
+// ssh-copy-id is hard on Unix and optional on Windows: Microsoft's OpenSSH port
+// does not ship it, so requiring it there made preflight fail - and doctor with
+// it - on every stock Windows machine, for a tool the generic ssh provider only
+// uses as one deployment path among several. It is still listed there, so a
+// user who has it installed keeps the better path and one who does not is told
+// what they are missing rather than that their install is broken.
 var (
-	HardBins     = []string{"ssh-keygen", "ssh-add", "ssh-copy-id", "ssh-keyscan"}
-	OptionalBins = []string{"age", "sops", "gitleaks", "gh", "glab", "age-plugin-yubikey"}
+	HardBins     = hardBins()
+	OptionalBins = optionalBins()
 )
+
+const copyID = "ssh-copy-id"
+
+func hardBins() []string {
+	bins := []string{"ssh-keygen", "ssh-add", "ssh-keyscan"}
+	if !platform.IsWindows() {
+		bins = append(bins, copyID)
+	}
+	return bins
+}
+
+func optionalBins() []string {
+	bins := []string{"age", "sops", "gitleaks", "gh", "glab", "age-plugin-yubikey"}
+	if platform.IsWindows() {
+		bins = append([]string{copyID}, bins...)
+	}
+	return bins
+}
 
 // Report is the preflight result.
 type Report struct {
@@ -49,23 +75,9 @@ func missing(bins []string) []string {
 	return out
 }
 
-func firstClass() bool {
-	switch runtime.GOOS {
-	case "darwin", "linux", "windows":
-		return true
-	default:
-		return false
-	}
-}
+func firstClass() bool { return platform.FirstClass() }
 
-func osName() string {
-	pretty := map[string]string{"darwin": "macOS", "linux": "Linux", "windows": "Windows"}
-	n := pretty[runtime.GOOS]
-	if n == "" {
-		n = runtime.GOOS
-	}
-	return runtime.GOOS + " (" + n + ")"
-}
+func osName() string { return platform.OSName() }
 
 // Format renders the human-readable preflight block.
 func Format(r Report) string {

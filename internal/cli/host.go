@@ -3,11 +3,11 @@ package cli
 import (
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
 	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -133,7 +133,7 @@ func newHostCmd() *cobra.Command {
 				}
 			}
 			snapshotBeforeMutation(p)
-			res, err := lifecycle.New(p, runtime.GOOS == "darwin").
+			res, err := lifecycle.New(p, platform.EmitUseKeychain()).
 				DeleteHost(profile, alias, lifecycle.Options{Purge: purge, Revoke: doRevoke})
 			if err != nil {
 				return err

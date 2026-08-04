@@ -2,11 +2,11 @@ package cli
 
 import (
 	"fmt"
-	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
 
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/initsvc"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
@@ -24,7 +24,7 @@ func newInitCmd() *cobra.Command {
 			if force && backup {
 				stamp = time.Now().Format("20060102-150405")
 			}
-			res, err := initsvc.New(p, runtime.GOOS == "darwin").Run(force, backup, stamp)
+			res, err := initsvc.New(p, platform.EmitUseKeychain()).Run(force, backup, stamp)
 			if err != nil {
 				return err
 			}

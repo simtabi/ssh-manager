@@ -4,13 +4,13 @@ import (
 	"fmt"
 	"io"
 	"os"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/snapshots"
@@ -85,7 +85,7 @@ func applyManifestEdit(c *cobra.Command, p paths.Paths) error {
 	if err := fs.EnsureDir(p.SSHDir, perms.DirMode); err != nil {
 		return err
 	}
-	res, err := configsvc.New(p.SSHDir, m, runtime.GOOS == "darwin").Write(false)
+	res, err := configsvc.New(p.SSHDir, m, platform.EmitUseKeychain()).Write(false)
 	if err != nil {
 		return fmt.Errorf("the manifest edit was saved, but the config could not be re-rendered "+
 			"(fix this, then run `sshmgr reconcile`): %w", err)

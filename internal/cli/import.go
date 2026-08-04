@@ -5,12 +5,12 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/importer"
 	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -31,7 +31,7 @@ func newImportCmd() *cobra.Command {
 				configPath = args[0]
 			}
 			p := paths.Resolve(nil, "", "")
-			imp := importer.New(p, runtime.GOOS == "darwin")
+			imp := importer.New(p, platform.EmitUseKeychain())
 
 			if dryRun {
 				res, err := imp.Run(configPath, true)

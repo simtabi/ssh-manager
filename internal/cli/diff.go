@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -27,7 +27,7 @@ func newDiffCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			svc := configsvc.New(p.SSHDir, m, runtime.GOOS == "darwin")
+			svc := configsvc.New(p.SSHDir, m, platform.EmitUseKeychain())
 			chk, err := svc.Check(true)
 			if err != nil {
 				return err

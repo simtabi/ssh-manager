@@ -1,6 +1,10 @@
 package importer
 
-import "testing"
+import (
+	"os"
+	"path/filepath"
+	"testing"
+)
 
 func find(hosts []*ParsedHost, alias string) *ParsedHost {
 	for _, h := range hosts {
@@ -70,5 +74,27 @@ func TestInferProviderAndProfileFromIdentity(t *testing.T) {
 	}
 	if got := profileFromIdentity("~/.ssh/id_ed25519"); got != "imported" {
 		t.Errorf("profileFromIdentity = %q want imported", got)
+	}
+}
+
+// An ssh config written on Windows says `~\.ssh\id_ed25519`. Honouring only
+// "~/" left that as a literal path starting with a tilde, which then failed to
+// glob - so the key was silently skipped and the host imported with no identity.
+func TestExpanduserAcceptsBothSeparators(t *testing.T) {
+	home, err := os.UserHomeDir()
+	if err != nil {
+		t.Skip("no home directory")
+	}
+	cases := map[string]string{
+		"~":                    home,
+		"~/.ssh/id_ed25519":    filepath.Join(home, ".ssh", "id_ed25519"),
+		`~\.ssh\id_ed25519`:    filepath.Join(home, ".ssh", "id_ed25519"),
+		"/etc/ssh/ssh_config":  "/etc/ssh/ssh_config",
+		"~notauser/.ssh/thing": "~notauser/.ssh/thing", // another user's ~ is not ours to expand
+	}
+	for in, want := range cases {
+		if got := expanduser(in); got != want {
+			t.Errorf("expanduser(%q) = %q, want %q", in, got, want)
+		}
 	}
 }

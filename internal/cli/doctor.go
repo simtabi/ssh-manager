@@ -3,11 +3,11 @@ package cli
 import (
 	"fmt"
 	"os"
-	"runtime"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/doctor"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
@@ -25,7 +25,7 @@ func newDoctorCmd() *cobra.Command {
 			p := paths.Resolve(nil, "", "")
 			// A missing/invalid manifest is non-fatal: drift checks are skipped.
 			m, _ := manifest.Load(p.Manifest())
-			svc := doctor.New(p, m, runtime.GOOS == "darwin")
+			svc := doctor.New(p, m, platform.EmitUseKeychain())
 
 			out := c.OutOrStdout()
 			if fix {

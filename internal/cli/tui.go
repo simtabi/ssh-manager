@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/deployer"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
@@ -228,7 +228,7 @@ func (t *tui) showConfig() {
 		t.print("no manifest")
 		return
 	}
-	out, err := configsvc.New(t.p.SSHDir, m, runtime.GOOS == "darwin").Show("")
+	out, err := configsvc.New(t.p.SSHDir, m, platform.EmitUseKeychain()).Show("")
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
@@ -271,7 +271,7 @@ func (t *tui) reconcile() {
 		return
 	}
 	inv, _ := inventory.Load(t.p.Inventory())
-	emit := runtime.GOOS == "darwin"
+	emit := platform.EmitUseKeychain()
 	dry, err := reconciler.New(t.p, m, inv, emit).Reconcile(true, "")
 	if err != nil {
 		t.print("error: " + err.Error())

@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/notifier"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 	"github.com/simtabi/ssh-manager/internal/util/scheduler"
@@ -71,7 +71,7 @@ func schedulerExe() string {
 			exe = "sshmgr"
 		}
 	}
-	if runtime.GOOS == "windows" {
+	if platform.IsWindows() {
 		return `"` + exe + `"`
 	}
 	return shellQuote(exe)

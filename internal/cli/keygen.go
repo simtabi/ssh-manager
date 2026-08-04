@@ -3,13 +3,13 @@ package cli
 import (
 	"fmt"
 	"os"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/reconciler"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -38,7 +38,7 @@ func newKeygenCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			r := reconciler.New(p, m, inv, runtime.GOOS == "darwin")
+			r := reconciler.New(p, m, inv, platform.EmitUseKeychain())
 			out := c.OutOrStdout()
 
 			existing, err := r.ExistingKeys(target)
