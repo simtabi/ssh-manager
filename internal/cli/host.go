@@ -3,10 +3,12 @@ package cli
 import (
 	"fmt"
 	"os"
+	"runtime"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/services/editor"
+	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
@@ -85,30 +87,47 @@ func newHostCmd() *cobra.Command {
 	edit.Flags().StringVar(&eKeyName, "key-name", "", "")
 	cmd.AddCommand(edit)
 
-	var yes, revoke bool
+	var yes, revoke, purge, noKeyBackup bool
 	del := &cobra.Command{
 		Use:   "delete <profile> <alias>",
-		Short: "Delete a host (prompts to revoke + prune)",
-		Args:  cobra.ExactArgs(2),
+		Short: "Delete a host, its config block and its pins",
+		Long: "Delete a host, its config block and its pins.\n\n" +
+			"The key the host used is reported, not assumed: another host may still\n" +
+			"use it, or the profile may still declare it. --purge deletes its files\n" +
+			"only in the remaining case, where the key left the manifest with the host\n" +
+			"and nothing tracks it any more.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			if !yes && !confirm(c, fmt.Sprintf("Delete host %q from %q?", args[1], args[0])) {
+			profile, alias := args[0], args[1]
+			if !yes && !confirm(c, fmt.Sprintf("Delete host %q from %q?", alias, profile)) {
 				os.Exit(1)
 			}
 			doRevoke := revoke
 			if !yes {
 				doRevoke = confirm(c, "Revoke the deployed public key from its targets first?")
 			}
-			ed := editor.New(paths.Resolve(nil, "", ""))
-			res, err := ed.DeleteHost(args[0], args[1], doRevoke)
+			p := paths.Resolve(nil, "", "")
+			out := c.OutOrStdout()
+			if purge {
+				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
+					return err
+				}
+			}
+			snapshotBeforeMutation(p)
+			res, err := lifecycle.New(p, runtime.GOOS == "darwin").
+				DeleteHost(profile, alias, lifecycle.Options{Purge: purge, Revoke: doRevoke})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), res.Format())
+			fmt.Fprintln(out, res.Format())
 			return nil
 		},
 	}
 	del.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation prompts")
 	del.Flags().BoolVar(&revoke, "revoke", false, "also revoke the deployed key from targets (with --yes)")
+	del.Flags().BoolVar(&purge, "purge", false, "also delete the key files, if the host was the only thing naming the key")
+	del.Flags().BoolVar(&noKeyBackup, "no-key-backup", false,
+		"purge without writing an encrypted backup first (the key is then unrecoverable)")
 	cmd.AddCommand(del)
 
 	return cmd

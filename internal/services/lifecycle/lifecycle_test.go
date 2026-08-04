@@ -283,3 +283,158 @@ func TestDeleteUnknownTargets(t *testing.T) {
 		t.Error("deleting an undeclared key should error")
 	}
 }
+
+// Deleting a host has to finish the same way deleting a profile does: the Host
+// block goes out of the rendered config immediately, not at the next reconcile.
+func TestDeleteHostRerendersAndPrunes(t *testing.T) {
+	p := fixture(t)
+	// personal is the only other profile resolving github.com; remove it first so
+	// the pin genuinely has no host left once gh-work goes.
+	if _, err := New(p, false).DeleteProfile("personal", Options{}); err != nil {
+		t.Fatal(err)
+	}
+	res, err := New(p, false).DeleteHost("work", "gh-work", Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := os.ReadFile(filepath.Join(p.SSHDir, "config"))
+	if err != nil {
+		t.Fatalf("config not re-rendered: %v", err)
+	}
+	if strings.Contains(string(cfg), "gh-work") {
+		t.Errorf("the deleted host's block is still rendered:\n%s", cfg)
+	}
+	if res.PrunedPins != 1 {
+		t.Errorf("pruned %d pins, want 1 once no host resolves github.com", res.PrunedPins)
+	}
+	// The profile survives, so its directory must too - even though the purge
+	// path could have found it empty.
+	if !onDisk(filepath.Join(p.SSHDir, "profiles", "work")) {
+		t.Error("deleting a host removed its profile's directory")
+	}
+}
+
+// Three things can become of the key a deleted host used, and the difference
+// decides whether --purge may touch its files at all.
+func TestDeleteHostClassifiesTheKeyItLeavesBehind(t *testing.T) {
+	t.Run("still used by another host: nothing to report", func(t *testing.T) {
+		p := fixture(t)
+		// Point a second host at work's key, then delete the first.
+		addHostToWork(t, p, `{"alias":"gh-alt","hostname":"gitlab.com","user":"git","key_name":"work_gh-ed25519"}`)
+		res, err := New(p, false).DeleteHost("work", "gh-work", Options{Purge: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.UnwiredKeys) != 0 || len(res.OrphanedKeys) != 0 {
+			t.Errorf("a key another host still uses is not stranded: %+v", res)
+		}
+		if len(res.RemovedFiles) != 0 {
+			t.Error("--purge must not touch a key another host still uses")
+		}
+		if !onDisk(filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")) {
+			t.Fatal("a key in use was deleted")
+		}
+	})
+
+	t.Run("still declared: unwired, and --purge still leaves it", func(t *testing.T) {
+		p := fixture(t)
+		declareKeyOnWork(t, p, "work_gh-ed25519")
+		res, err := New(p, false).DeleteHost("work", "gh-work", Options{Purge: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.UnwiredKeys) != 1 || res.UnwiredKeys[0] != "work/work_gh-ed25519" {
+			t.Errorf("unwired keys = %v, want the declared key", res.UnwiredKeys)
+		}
+		if !onDisk(filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")) {
+			t.Error("--purge deleted a key the profile still declares")
+		}
+		for _, want := range []string{"UNWIRED", "key delete work/work_gh-ed25519 --purge", "--key-name work_gh-ed25519"} {
+			if !strings.Contains(res.Format(), want) {
+				t.Errorf("the summary should offer both ways out, missing %q:\n%s", want, res.Format())
+			}
+		}
+	})
+
+	t.Run("nothing else named it: orphaned, and --purge takes the files", func(t *testing.T) {
+		p := fixture(t)
+		priv := filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")
+
+		// Without --purge the files stay, and the summary says the key left the
+		// manifest - which is the state doctor reports as an orphan.
+		res, err := New(p, false).DeleteHost("work", "gh-work", Options{})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(res.OrphanedKeys) != 1 || !onDisk(priv) {
+			t.Fatalf("expected an orphaned key still on disk: %+v", res)
+		}
+		if !strings.Contains(res.Format(), "left the manifest") {
+			t.Errorf("the summary should explain what happened:\n%s", res.Format())
+		}
+	})
+
+	t.Run("orphaned with --purge", func(t *testing.T) {
+		p := fixture(t)
+		priv := filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")
+		res, err := New(p, false).DeleteHost("work", "gh-work", Options{Purge: true})
+		if err != nil {
+			t.Fatal(err)
+		}
+		if onDisk(priv) || onDisk(priv+".pub") {
+			t.Error("--purge should have removed the orphaned pair")
+		}
+		// The rotation predecessor in old/ goes with it.
+		if onDisk(filepath.Join(p.SSHDir, "profiles", "work", "old", "work_gh-ed25519")) {
+			t.Error("--purge left the rotation predecessor behind")
+		}
+		if len(res.RemovedFiles) != 3 {
+			t.Errorf("removed %v, want the pair plus the old/ predecessor", res.RemovedFiles)
+		}
+		// work still declares work_spare-ed25519, so neither it nor the directory go.
+		if !onDisk(filepath.Join(p.SSHDir, "profiles", "work", "work_spare-ed25519")) {
+			t.Error("--purge crossed from the deleted host's key to another key")
+		}
+	})
+}
+
+func TestDeleteHostUnknownTargets(t *testing.T) {
+	p := fixture(t)
+	svc := New(p, false)
+	if _, err := svc.DeleteHost("nope", "gh-work", Options{}); err == nil {
+		t.Error("an unknown profile should error")
+	}
+	if _, err := svc.DeleteHost("work", "nope", Options{}); err == nil {
+		t.Error("an unknown alias should error")
+	}
+}
+
+// addHostToWork appends a raw host object to the fixture's work profile, which
+// is the first "hosts" array in the manifest.
+func addHostToWork(t *testing.T, p paths.Paths, hostJSON string) {
+	t.Helper()
+	patchManifest(t, p, `"hosts": [`, `"hosts": [`+hostJSON+`,`)
+}
+
+// declareKeyOnWork adds a keys entry for an existing key name. work is the only
+// profile in the fixture with a keys list.
+func declareKeyOnWork(t *testing.T, p paths.Paths, name string) {
+	t.Helper()
+	patchManifest(t, p, `"keys": [`, `"keys": [{"name": "`+name+`"},`)
+}
+
+func patchManifest(t *testing.T, p paths.Paths, needle, replacement string) {
+	t.Helper()
+	body, err := os.ReadFile(p.Manifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	patched := strings.Replace(string(body), needle, replacement, 1)
+	if patched == string(body) {
+		t.Fatalf("fixture manifest does not contain %q", needle)
+	}
+	write(t, p.Manifest(), patched, 0o600)
+	if _, err := manifest.Load(p.Manifest()); err != nil {
+		t.Fatalf("patched manifest is invalid: %v", err)
+	}
+}

@@ -51,6 +51,14 @@ type Result struct {
 	UnmanagedLeft []string // directories left in place, holding files we did not create
 	ConfigWritten []string // config files re-rendered
 	PrunedPins    int      // known_hosts lines removed
+
+	// UnwiredKeys are keys the deletion left with no host, but which their
+	// profile still declares - so they remain sshmgr's, just unused.
+	UnwiredKeys []string
+	// OrphanedKeys are keys the deletion removed from the manifest entirely,
+	// because nothing declared them and only the deleted host named them. Their
+	// files are still on disk and nothing tracks them any more.
+	OrphanedKeys []string
 }
 
 // Format renders the human-readable summary.
@@ -69,6 +77,16 @@ func (r Result) Format() string {
 		lines = append(lines, fmt.Sprintf("  pruned known_hosts: %d line(s) no host needs any more", r.PrunedPins))
 	}
 	add("re-rendered", r.ConfigWritten)
+	for _, ref := range r.UnwiredKeys {
+		lines = append(lines, fmt.Sprintf("  %s is now UNWIRED: its profile still declares it, but no "+
+			"host uses it.", ref))
+		lines = append(lines, fmt.Sprintf("    wire it with `sshmgr host edit <profile> <alias> "+
+			"--key-name %s`, or remove it with `sshmgr key delete %s --purge`.", keyNameOf(ref), ref))
+	}
+	for _, ref := range r.OrphanedKeys {
+		lines = append(lines, fmt.Sprintf("  %s left the manifest with the host: only that host named "+
+			"it, and no keys entry declared it.", ref))
+	}
 	if len(r.KeptFiles) > 0 {
 		lines = append(lines, fmt.Sprintf("  kept %d key file(s) on disk: %s",
 			len(r.KeptFiles), strings.Join(r.KeptFiles, ", ")))
@@ -122,6 +140,113 @@ func (s *Service) DeleteProfile(name string, opt Options) (Result, error) {
 		return res, err
 	}
 	return res, nil
+}
+
+// DeleteHost removes one host: its manifest entry, its Host block in the
+// rendered config, and any known_hosts pin no remaining host needs.
+//
+// Keys are not the host's to take - a key can outlive the host that used it -
+// so what happens to the key it named depends on what the manifest says after
+// the delete. Still used by another host: nothing to report. Still declared in
+// the profile's keys list: UNWIRED, reported with the two ways out, files
+// untouched even under Purge, because the profile still owns it. Neither: the
+// key left the manifest along with the host, its files are now tracked by
+// nothing, and Purge is what removes them.
+func (s *Service) DeleteHost(profile, alias string, opt Options) (Result, error) {
+	before, err := manifest.Load(s.p.Manifest())
+	if err != nil {
+		return Result{}, err
+	}
+	host, err := findHost(before, profile, alias)
+	if err != nil {
+		return Result{}, err
+	}
+	kname, err := before.ResolvedKeyName(profile, host)
+	if err != nil {
+		return Result{}, err
+	}
+	ref := manifest.KeyRef{Profile: profile, KeyName: kname}
+	files, err := s.filesFor(before, ref)
+	if err != nil {
+		return Result{}, err
+	}
+
+	del, err := editor.New(s.p).DeleteHost(profile, alias, opt.Revoke)
+	if err != nil {
+		return Result{}, err
+	}
+	res := Result{
+		Removed: fmt.Sprintf("host %s (profile %s)", alias, profile),
+		Revoked: del.Revoked, PrunedRecords: del.PrunedKeys,
+	}
+
+	after, err := manifest.Load(s.p.Manifest())
+	if err != nil {
+		return res, err
+	}
+	stranded, err := classify(after, ref)
+	if err != nil {
+		return res, err
+	}
+	var purgeable []string
+	switch stranded {
+	case keyUnwired:
+		res.UnwiredKeys = append(res.UnwiredKeys, ref.String())
+	case keyOrphaned:
+		res.OrphanedKeys = append(res.OrphanedKeys, ref.String())
+		purgeable = files
+	}
+	// "" for the profile directory: the profile still exists, so removing its
+	// directory is never this command's business even when the purge empties it.
+	if err := s.finish(&res, purgeable, "", opt); err != nil {
+		return res, err
+	}
+	return res, nil
+}
+
+// strandState is what became of a key once the host that named it was deleted.
+type strandState int
+
+const (
+	keyStillUsed strandState = iota // another host resolves to it
+	keyUnwired                      // the profile still declares it; nothing uses it
+	keyOrphaned                     // gone from the manifest entirely
+)
+
+func classify(after *manifest.Manifest, ref manifest.KeyRef) (strandState, error) {
+	hosts, err := after.HostsForKey(ref)
+	if err != nil {
+		return keyStillUsed, err
+	}
+	if len(hosts) > 0 {
+		return keyStillUsed, nil
+	}
+	if _, declared := after.KeySpecFor(ref); declared {
+		return keyUnwired, nil
+	}
+	return keyOrphaned, nil
+}
+
+func findHost(m *manifest.Manifest, profile, alias string) (manifest.Host, error) {
+	prof, ok := m.Profiles[profile]
+	if !ok {
+		return manifest.Host{}, fmt.Errorf("unknown profile: %q", profile)
+	}
+	for _, h := range prof.Hosts {
+		if h.Alias == alias {
+			return h, nil
+		}
+	}
+	return manifest.Host{}, fmt.Errorf("unknown host %q in profile %q", alias, profile)
+}
+
+// keyNameOf is the key half of a "profile/key" reference, for building the
+// command that fixes an unwired key.
+func keyNameOf(ref string) string {
+	if _, name, ok := strings.Cut(ref, "/"); ok {
+		return name
+	}
+	return ref
 }
 
 // DeleteKey removes one key: its declaration, its inventory record and, under
@@ -180,9 +305,11 @@ func (s *Service) finish(res *Result, files []string, profileDir string, opt Opt
 }
 
 // purgeOrKeep deletes the key files under Purge and records what was left
-// otherwise. Under Purge it also removes the profile directory, but only once
-// every file in it is accounted for - a file sshmgr did not create is reported
-// and left alone, since deciding it is disposable is not this command's call.
+// otherwise. With a profileDir it also removes that directory under Purge, but
+// only once every file in it is accounted for - a file sshmgr did not create is
+// reported and left alone, since deciding it is disposable is not this command's
+// call. An empty profileDir means the profile survives the deletion, so no
+// directory is touched at all.
 func (s *Service) purgeOrKeep(res *Result, files []string, profileDir string, opt Options) error {
 	if !opt.Purge {
 		for _, f := range files {
@@ -200,6 +327,9 @@ func (s *Service) purgeOrKeep(res *Result, files []string, profileDir string, op
 			return fmt.Errorf("could not remove %s: %w", f, err)
 		}
 		res.RemovedFiles = append(res.RemovedFiles, f)
+	}
+	if profileDir == "" {
+		return nil
 	}
 	// old/ holds rotation predecessors of the keys just removed; drop it when the
 	// purge emptied it, then the profile directory itself.
@@ -246,6 +376,20 @@ func (s *Service) profileKeyFiles(m *manifest.Manifest, profile string) ([]strin
 		files = append(files, s.keyFiles(row)...)
 	}
 	return files, nil
+}
+
+// filesFor lists the paths one key occupies, resolved against a manifest that
+// still knows about it.
+func (s *Service) filesFor(m *manifest.Manifest, ref manifest.KeyRef) ([]string, error) {
+	inv, err := inventory.Load(s.p.Inventory())
+	if err != nil {
+		return nil, err
+	}
+	row, err := keysvc.New(m, inv, s.p.SSHDir).Row(ref)
+	if err != nil {
+		return nil, err
+	}
+	return s.keyFiles(row), nil
 }
 
 // keyFiles lists the paths one key can occupy: the pair, and the predecessor
