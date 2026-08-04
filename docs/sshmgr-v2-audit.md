@@ -1,4 +1,4 @@
-# sshmgr v2 — status audit (2026-08-04, updated after Phase 4)
+# sshmgr v2 — status audit (2026-08-04, updated after Phase 5)
 
 Comprehensive handoff document for continuing this work in another tool (Claude
 Code CLI). Supersedes `docs/ssh-worklist.md` for anything about the v2
@@ -248,6 +248,45 @@ something beyond it.
 - `--purge` now names the files it declines to delete instead of only saying the
   directory still holds some.
 
+### Phase 5 — No dangling keys
+
+Commits: `55fa872`, `8d13219`, `b156e61`, `dee82c0`
+
+- **New `internal/services/keyaudit`** computes all seven states —
+  `untracked`, `unwired`, `missing`, `half-pair`, `unrecorded`,
+  `stale-inventory`, `loose` — from manifest + inventory + `os.Lstat`, reading
+  no private key material (only `.pub` bodies, and only to confirm they parse).
+  Every `Finding` carries the command that resolves it. Findings are grouped by
+  severity and sorted within a state, so two runs over one tree report
+  identically despite the inventory being a map.
+- **Severity**: `untracked`, `unwired`, `half-pair` fail; the rest warn;
+  `--strict` escalates everything. **`missing` is deliberately non-blocking** —
+  it is the normal state of a key between `host add` and the reconcile that
+  mints it, so failing on it would make doctor red during ordinary work.
+- **`keysvc` now reports facts, `keyaudit` interprets them.** The four state
+  constants and `Row.Notes` moved out of `keysvc`; `key list` and `show` call
+  `keyaudit.Notes`, so no command can call a key fine while another calls it
+  dangling.
+- **doctor acts on what it reports.** `OK()` includes the audit (it used to
+  list orphans and still say "clean"), the report gains a grouped dangling
+  section, the JSON gains `dangling_keys` with a per-finding `blocking` flag,
+  and `--strict` is wired for CI. `orphan_keys` keeps its name and meaning,
+  now sourced from `untracked` — **which closes the `.pub` hole**: the old
+  check skipped any private key without a `.pub` sibling, so a private key
+  with no public half was the one thing it could not see.
+- **Inline surfacing**: `reconcile` warns after it finishes; `host edit` and
+  `profile edit` warn when re-pointing a host strands the key it used to name
+  (**a gap found by the tests here** — that path stranded keys as silently as
+  `host delete` once did); `key add` already prints its own UNWIRED message.
+  Only blocking states interrupt.
+- **`clean` fixes the one state that is safe to fix unattended**: a
+  `stale-inventory` record is a JSON entry pointing at a key nothing owns, so
+  dropping it destroys no key material. Everything else involves a file, so
+  clean names what it is leaving behind rather than saying nothing.
+- **The notifier covers dangling keys**, taking the whole manifest instead of
+  only its defaults (nil = expiry-only). Only blocking states reach the
+  desktop; expiry still sets the cadence, so a dangling key alone stays weekly.
+
 All of the above is fully tested (`go test ./...` green) and committed on
 `sshmgr-v2`. No dry-run/simulation — every change compiles, vets, and passes
 its test suite.
@@ -259,30 +298,6 @@ its test suite.
 Full technical detail for each item is in the plan file linked above; summary
 below is enough to resume without re-reading it, but the plan has exact line
 numbers, code snippets, and reasoning for trickier ones.
-
-### Phase 5 — No dangling keys (not started)
-
-- New package `internal/services/keyaudit` computing seven dangling states
-  from manifest + inventory + disk (`Lstat` only, never reads key contents):
-  **untracked**, **unwired**, **missing**, **half-pair**, **unrecorded**,
-  **stale-inventory**, **loose**. Shared by `doctor`, `key list`, `show`,
-  `clean`, and the notifier.
-  **Start from `internal/services/keysvc` (Phase 4), don't duplicate it**: it
-  already computes four of the seven (`unwired`, `missing`, `half-pair`,
-  `unrecorded`) under those exact names, with the `Lstat`-only/never-read-key-
-  material rule, and `key list`/`show` consume them. The three it does not have
-  (**untracked**, **stale-inventory**, **loose**) all need a directory walk
-  rather than a manifest-driven lookup, which is the real reason to promote it
-  to `keyaudit` — either extend `keysvc` in place or have `keyaudit` wrap it.
-- `doctor` gains a dangling-keys section; **untracked/unwired/half-pair**
-  fail `OK()`, the rest warn; `--strict` escalates everything (for CI).
-  Currently `doctor.OK()` ignores orphans entirely, and orphan detection
-  skips any private key lacking a `.pub` sibling — both are live bugs to fix
-  as part of this, not new behavior.
-- Inline surfacing: `reconcile` and `key add` warn on creation, `key list`/
-  `show` mark each key, `host delete` warns when it strands a key. Notifier
-  needs to take manifest + ssh dir so the daily notification covers dangling
-  counts.
 
 ### Phase 6 — Remaining bugs (not started; verified still present as of this audit)
 
@@ -310,8 +325,8 @@ numbers, code snippets, and reasoning for trickier ones.
     `internal/cli/deploy.go`. *(The editor half of this is closed: every
     profile/host/key add·edit·delete verb takes the guard as of `baa5a50`.
     `deploy` is what is left.)*
-  - `doctor.OK()` ignoring orphans / the `.pub`-pair hole — folded into
-    Phase 5.
+  - ~~`doctor.OK()` ignoring orphans / the `.pub`-pair hole~~ — **closed in
+    Phase 5** (`8d13219`).
 - **Medium** — rollback reports `Committed = true` when targets were
   unreachable (rotator.go ~L332-360); TUI swallows `inv.Save` errors
   (tui.go:333,364); `netstat` bare-name filter spans profiles (netstat.go:32)
@@ -423,7 +438,10 @@ so it builds on a stable service layer from the earlier phases.
   `~/.ssh/config` before accepting (that file has drifted from what any
   renderer version has emitted — see `docs/ssh-worklist.md` for the specific
   divergences recorded 2026-08-02).
-- `sshmgr doctor` until the dangling report is empty (depends on Phase 5).
+- `sshmgr doctor` until the dangling report is empty (Phase 5 built the report;
+  `doctor --strict` is the strictest form). Expect `loose` findings for the
+  pre-sshmgr keys already in `~/.ssh` — decide per key whether to `import` it or
+  leave it; loose never blocks except under `--strict`.
 - Re-add the simtabi public key to its GitHub account (`github-simtabi`
   currently fails auth — key not deployed/removed from that account, not a
   tool bug).
@@ -445,15 +463,16 @@ so it builds on a stable service layer from the earlier phases.
    `PruneCandidates`/`AdoptCandidates` previews — add any new prune/adopt
    predicate there, not in a second copy, or `--dry-run` starts lying.
 3. **`internal/platform` already exists** (Phase 1) — extend it in Phase 7
-   rather than creating a second platform package. Same rule for
-   `internal/services/keysvc` (Phase 4) and Phase 5's `keyaudit`.
-   `internal/services/lifecycle` now owns all three deletions (profile, host,
-   key); a fourth belongs there too.
-4. **Two invariants worth not breaking**, both load-bearing as of the Phase 4
-   follow-ups: *manifest edits render the config, key-file commands do not*
-   (`cli.applyManifestEdit`), and *a record/file survives while anything in
-   `KeyRefs` owns it* — never re-derive "in use" by walking hosts, since a
-   declared key has none.
+   rather than creating a second platform package. Likewise
+   `internal/services/lifecycle` owns all three deletions (profile, host, key)
+   and `internal/services/keyaudit` owns every dangling-key state: a new
+   deletion or a new state goes in those, not in a second copy.
+4. **Three invariants worth not breaking.** *Manifest edits render the config,
+   key-file commands do not* (`cli.applyManifestEdit`). *A record or file
+   survives while anything in `KeyRefs` owns it* — never re-derive "in use" by
+   walking hosts, since a declared key has none. *`keysvc` reports facts,
+   `keyaudit` interprets them* — a new "is this key OK" rule goes in keyaudit,
+   or the commands start disagreeing again.
 5. Every phase so far has been committed as its own commit(s) on
    `sshmgr-v2` with a real commit message (`git log sshmgr-v2` for the exact
    sequence) — keep that granularity; don't squash unrelated phases together.
