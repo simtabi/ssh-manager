@@ -1,0 +1,33 @@
+Read docs/sshmgr-v2-audit.md in full — it's the authoritative status tracker
+for an in-progress refactor of this repo (branch: sshmgr-v2). It records what
+is already done (Phases 1-3: secret handling, artifact privacy, layout
+refactor) and what remains (Phases 4-11: profile/key lifecycle commands,
+dangling-key detection, a catalogue of known bugs, de-Pythonizing, packaging/
+distribution, TUI parity, tests/docs, and applying the result to this
+machine's real ~/.ssh). Do not trust the plan file's own frontmatter
+checklist referenced at the top of the audit — it's stale; trust the audit
+document instead.
+
+Confirm you're on sshmgr-v2 with a clean working tree, then run
+`gofmt -l . && go build ./... && go vet ./... && go test ./...` to confirm
+the baseline is green before changing anything.
+
+Continue with Phase 4 (Profile, key, and host lifecycle) next, in the order
+laid out in the audit: the manifest schema change (first-class `keys` list on
+Profile, KeyRefs() union fix) first, since the new commands depend on it,
+then `sshmgr key add/list/delete`, `sshmgr profile delete --purge`,
+`sshmgr show`, and `sshmgr clean` (wiring up the already-built
+knownhosts.Prune/Adopt). Full technical detail, exact code locations, and
+worked examples for every phase are in
+/Users/imanimanyara/.cursor/plans/sshmgr_v2_layout_refactor_8e1d97ac.plan.md
+if you need more than the audit's summary.
+
+Work in small, buildable, fully-tested commits the same way the existing
+history on this branch does (`git log --oneline main..sshmgr-v2`) — one
+logical change per commit, gofmt/build/vet/test all green before each commit,
+descriptive commit messages explaining why not just what. Update
+docs/sshmgr-v2-audit.md's DONE/REMAINING sections as you complete each phase
+so the tracker stays authoritative for whoever picks this up next.
+
+Ask me before starting Phase 11 (applying the result to my actual ~/.ssh on
+this machine) since that touches my real, working SSH setup.
