@@ -73,7 +73,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 		}
 	}
 	lines = append(lines, "", "=== expiry ===")
-	states, err := notifier.New(p, m.Defaults).States(now)
+	states, err := notifier.New(p, m).States(now)
 	if err != nil {
 		return "", err
 	}
@@ -99,7 +99,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 	}
 	if notify {
 		status := "not sent (not due, disabled, or no notifier backend)"
-		if notifier.New(p, m.Defaults).Notify(now, false) {
+		if notifier.New(p, m).Notify(now, false) {
 			status = "sent"
 		}
 		lines = append(lines, "", "desktop notification: "+status)

@@ -47,7 +47,7 @@ func newNotifyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if notifier.New(p, m.Defaults).Test() {
+			if notifier.New(p, m).Test() {
 				fmt.Fprintln(c.OutOrStdout(), "sent a test desktop notification.")
 			} else {
 				fmt.Fprintln(os.Stderr, "no notification backend found (install notify-send / terminal-notifier).")

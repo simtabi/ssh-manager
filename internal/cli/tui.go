@@ -242,7 +242,7 @@ func (t *tui) expiry() {
 		t.print("no manifest")
 		return
 	}
-	states, err := notifier.New(t.p, m.Defaults).States(time.Now())
+	states, err := notifier.New(t.p, m).States(time.Now())
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
@@ -393,7 +393,7 @@ func (t *tui) snapshots() {
 
 func (t *tui) banner() {
 	if m := t.manifest(); m != nil {
-		if text := notifier.New(t.p, m.Defaults).Banner(time.Now()); text != "" {
+		if text := notifier.New(t.p, m).Banner(time.Now()); text != "" {
 			t.print(text)
 		}
 	}

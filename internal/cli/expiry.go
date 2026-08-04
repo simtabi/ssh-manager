@@ -26,7 +26,7 @@ func newExpiryCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			states, err := notifier.New(p, m.Defaults).States(time.Now())
+			states, err := notifier.New(p, m).States(time.Now())
 			if err != nil {
 				return err
 			}

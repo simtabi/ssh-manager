@@ -14,20 +14,29 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/expiry"
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/util/desktop"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
-// Notifier computes and fires expiry reminders.
+// Notifier computes and fires the reminders.
 type Notifier struct {
 	p        paths.Paths
+	m        *manifest.Manifest // nil when there is no manifest to audit against
 	defaults manifest.Defaults
 }
 
-// New builds a Notifier.
-func New(p paths.Paths, defaults manifest.Defaults) *Notifier {
-	return &Notifier{p: p, defaults: defaults}
+// New builds a Notifier over a manifest. It takes the whole manifest rather than
+// just its defaults because the daily alert covers dangling keys as well as
+// expiry, and deciding a key is dangling needs the profiles and hosts. m may be
+// nil, in which case only expiry is reported.
+func New(p paths.Paths, m *manifest.Manifest) *Notifier {
+	n := &Notifier{p: p, m: m}
+	if m != nil {
+		n.defaults = m.Defaults
+	}
+	return n
 }
 
 // dateOf is the calendar date of now at UTC midnight (matches Python now.date()).
@@ -64,8 +73,36 @@ func (n *Notifier) Banner(now time.Time) string {
 	return strings.Join(lines, "\n")
 }
 
+// Dangling returns the blocking dangling-key findings, or none when there is no
+// manifest to audit against. Only the blocking ones: a daily desktop alert is
+// for a key that has stopped working, not for one that has yet to be minted.
+func (n *Notifier) Dangling() []keyaudit.Finding {
+	if n.m == nil {
+		return nil
+	}
+	inv, err := inventory.Load(n.p.Inventory())
+	if err != nil {
+		return nil
+	}
+	rep, err := keyaudit.New(n.m, inv, n.p.SSHDir).Audit(false)
+	if err != nil {
+		return nil
+	}
+	var out []keyaudit.Finding
+	for _, f := range rep.Findings {
+		if keyaudit.Blocking(f.State) {
+			out = append(out, f)
+		}
+	}
+	return out
+}
+
 // Notify fires the cadence-gated desktop alert. Returns true if one was sent.
-// Mirrors Notifier.notify.
+//
+// It covers dangling keys as well as expiry. An expiring key eventually stops
+// working; a dangling one already has, and it was the only class of problem the
+// daily reminder could not tell you about - so the one surface that reaches a
+// user who is not running sshmgr now reports both.
 func (n *Notifier) Notify(now time.Time, force bool) bool {
 	states, _ := n.States(now)
 	var attention []expiry.Status
@@ -74,9 +111,12 @@ func (n *Notifier) Notify(now time.Time, force bool) bool {
 			attention = append(attention, s)
 		}
 	}
-	if len(attention) == 0 {
+	dangling := n.Dangling()
+	if len(attention) == 0 && len(dangling) == 0 {
 		return false
 	}
+	// Expiry sets the pace when it is the urgent half; a dangling key does not
+	// get worse by the day, so on its own it stays weekly.
 	interval := 7 * 24 * time.Hour
 	if expiry.Cadence(states) == "daily" {
 		interval = 24 * time.Hour
@@ -99,7 +139,21 @@ func (n *Notifier) Notify(now time.Time, force bool) bool {
 		}
 		parts = append(parts, fmt.Sprintf("%s (%dd)", s.KeyName, days))
 	}
-	if !desktop.Notify("ssh-manager - keys due for rotation", strings.Join(parts, "; ")) {
+	for i, f := range dangling {
+		if i >= 3 {
+			parts = append(parts, fmt.Sprintf("+%d more dangling", len(dangling)-i))
+			break
+		}
+		parts = append(parts, fmt.Sprintf("%s is %s", f.Subject, f.State))
+	}
+	title := "ssh-manager - keys due for rotation"
+	switch {
+	case len(attention) == 0:
+		title = "ssh-manager - dangling keys"
+	case len(dangling) > 0:
+		title = "ssh-manager - keys need attention"
+	}
+	if !desktop.Notify(title, strings.Join(parts, "; ")) {
 		return false // no backend - don't mark notified, retry later
 	}
 	n.write(n.p.NotifyCache(), map[string]any{"notified": now.Format(time.RFC3339)})
