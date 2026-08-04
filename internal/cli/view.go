@@ -47,15 +47,15 @@ func newViewCmd() *cobra.Command {
 }
 
 func renderProfileSummary(out io.Writer, s *query.ProfileSummary) {
-	fmt.Fprintf(out, "profile %s  (key_scope: %s)\n", s.Name, s.KeyScope)
+	_, _ = fmt.Fprintf(out, "profile %s  (key_scope: %s)\n", s.Name, s.KeyScope)
 	for _, r := range s.Rows {
-		fmt.Fprintf(out, "  %s  %s  [%s]  %s  (%s)\n", r.Alias, r.Hostname, r.ProviderLabel, r.KeyName, r.Status)
+		_, _ = fmt.Fprintf(out, "  %s  %s  [%s]  %s  (%s)\n", r.Alias, r.Hostname, r.ProviderLabel, r.KeyName, r.Status)
 	}
 }
 
 func renderHostDetail(out io.Writer, d *query.HostDetail) {
-	fmt.Fprintf(out, "%s  (profile %s)\n", d.Alias, d.Profile)
-	row := func(k, v string) { fmt.Fprintf(out, "  %-13s %s\n", k+":", v) }
+	_, _ = fmt.Fprintf(out, "%s  (profile %s)\n", d.Alias, d.Profile)
+	row := func(k, v string) { _, _ = fmt.Fprintf(out, "  %-13s %s\n", k+":", v) }
 	row("hostname", d.Hostname)
 	row("user", d.User)
 	row("port", fmt.Sprintf("%d", d.Port))
@@ -84,19 +84,19 @@ func renderHostDetail(out io.Writer, d *query.HostDetail) {
 		row("requires_vpn", v)
 	}
 	if d.RawOptions.Len() > 0 {
-		fmt.Fprintln(out, "  options:")
+		_, _ = fmt.Fprintln(out, "  options:")
 		for _, k := range d.RawOptions.Keys() {
-			fmt.Fprintf(out, "    %s %s\n", k, d.RawOptions.Get(k))
+			_, _ = fmt.Fprintf(out, "    %s %s\n", k, d.RawOptions.Get(k))
 		}
 	}
 	if len(d.Deployments) > 0 {
-		fmt.Fprintln(out, "  deployments:")
+		_, _ = fmt.Fprintln(out, "  deployments:")
 		for _, dep := range d.Deployments {
 			flag := "unverified"
 			if dep.Verified {
 				flag = "verified"
 			}
-			fmt.Fprintf(out, "    - %s via %s (%s)\n", dep.Target, dep.Method, flag)
+			_, _ = fmt.Fprintf(out, "    - %s via %s (%s)\n", dep.Target, dep.Method, flag)
 		}
 	}
 }

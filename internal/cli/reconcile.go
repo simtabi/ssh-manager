@@ -42,7 +42,7 @@ func newReconcileCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(out, res.Format())
+				_, _ = fmt.Fprintln(out, res.Format())
 				return nil
 			}
 
@@ -65,7 +65,7 @@ func newReconcileCmd() *cobra.Command {
 			if !noPin {
 				res.Pinned = knownhosts.New(p.SSHDir).AutoPin(m, nil, os.Getenv)
 			}
-			fmt.Fprintln(out, res.Format())
+			_, _ = fmt.Fprintln(out, res.Format())
 			// Reconcile is the command that leaves the tree in its intended state,
 			// so it is where a key that will never be used should be noticed -
 			// rather than at the next doctor run, days later.

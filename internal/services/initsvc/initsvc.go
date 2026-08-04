@@ -138,7 +138,7 @@ func (s *Service) backupFile(path, backupDir string) {
 	if err != nil {
 		return
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	dst := filepath.Join(backupDir, filepath.Base(path))
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, homeperms.FileMode)
 	if err != nil {

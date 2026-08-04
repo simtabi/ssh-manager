@@ -34,17 +34,6 @@ Type=oneshot
 ExecStart=%COMMAND%
 `
 
-const timerUnit = `[Unit]
-Description=ssh-manager key-expiry notifier (daily)
-
-[Timer]
-OnCalendar=*-*-* 09:00:00
-Persistent=true
-
-[Install]
-WantedBy=timers.target
-`
-
 // buildPlist renders the launchd plist for a command (label + argv array).
 func buildPlist(label, command string) string {
 	var args []string

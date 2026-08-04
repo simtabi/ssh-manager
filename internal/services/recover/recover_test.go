@@ -63,8 +63,8 @@ func TestSnippet(t *testing.T) {
 	pubBody := "AAAAC3NzaC1lZDI1NTE5AAAAIKBhbiwvJigPhtwCSedPrebJ6NRC27KYLY3l/okYRnNA"
 	pub := "ssh-ed25519 " + pubBody + " a comment\n"
 	dir := filepath.Join(p.SSHDir, "profiles", "work")
-	os.MkdirAll(dir, 0o700)
-	os.WriteFile(filepath.Join(dir, "k.pub"), []byte(pub), 0o644)
+	_ = os.MkdirAll(dir, 0o700)
+	_ = os.WriteFile(filepath.Join(dir, "k.pub"), []byte(pub), 0o644)
 
 	got, err := Script(p, &m, "k")
 	if err != nil {

@@ -49,8 +49,9 @@ func Migrate(p paths.Paths, force bool, stamp string) (Result, error) {
 		return Result{Moved: true, Legacy: legacy, Home: home, Message: fmt.Sprintf("migrated %s -> %s", legacy, home)}, nil
 	}
 	if !force {
-		return Result{}, fmt.Errorf("both %s and %s exist. Inspect them, then re-run "+
-			"`sshmgr migrate --force` to back up the current home and replace it with the legacy one.", legacy, home)
+		return Result{}, fmt.Errorf("both %s and %s exist - inspect them, then re-run "+
+			"`sshmgr migrate --force` to back up the current home and replace it with the legacy one",
+			legacy, home)
 	}
 	backup := filepath.Join(filepath.Dir(home), filepath.Base(home)+".replaced-"+stamp)
 	if err := os.Rename(home, backup); err != nil {
@@ -110,13 +111,13 @@ func copyTree(src, dst string) error {
 		if err != nil {
 			return err
 		}
-		defer in.Close()
+		defer func() { _ = in.Close() }()
 		out, err := os.OpenFile(target, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, fi.Mode().Perm())
 		if err != nil {
 			return err
 		}
 		if _, err := io.Copy(out, in); err != nil {
-			out.Close()
+			_ = out.Close()
 			return err
 		}
 		return out.Close()

@@ -39,7 +39,7 @@ func newValidateCmd() *cobra.Command {
 			}
 			out := c.OutOrStdout()
 			if len(checks) == 0 {
-				fmt.Fprintln(out, "no managed keys to validate")
+				_, _ = fmt.Fprintln(out, "no managed keys to validate")
 				return nil
 			}
 			failed := 0
@@ -53,15 +53,15 @@ func newValidateCmd() *cobra.Command {
 				if ch.Fingerprint != nil {
 					fp = "  " + *ch.Fingerprint
 				}
-				fmt.Fprintf(out, "%s  %s [%s]%s\n", status, ch.KeyName, ch.Profile, fp)
+				_, _ = fmt.Fprintf(out, "%s  %s [%s]%s\n", status, ch.KeyName, ch.Profile, fp)
 				for _, issue := range ch.Issues {
-					fmt.Fprintf(out, "        - %s\n", issue)
+					_, _ = fmt.Fprintf(out, "        - %s\n", issue)
 				}
 				for _, note := range ch.Notes {
-					fmt.Fprintf(out, "        (%s)\n", note)
+					_, _ = fmt.Fprintf(out, "        (%s)\n", note)
 				}
 			}
-			fmt.Fprintf(out, "\n%d key(s) checked, %d failed\n", len(checks), failed)
+			_, _ = fmt.Fprintf(out, "\n%d key(s) checked, %d failed\n", len(checks), failed)
 			if failed > 0 {
 				os.Exit(1)
 			}

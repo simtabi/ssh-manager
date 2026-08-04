@@ -54,7 +54,7 @@ func Audit(auditLog, event string, fields ...Field) {
 	if err != nil {
 		return
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	_, _ = f.WriteString(b.String())
 	if isNew {
 		_ = os.Chmod(auditLog, 0o600)

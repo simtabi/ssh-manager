@@ -55,7 +55,7 @@ func newDiffCmd() *cobra.Command {
 			}
 			lines = append(lines, missing...)
 			lines = append(lines, fmt.Sprintf("  %d key(s) already present", present))
-			fmt.Fprintln(c.OutOrStdout(), strings.Join(lines, "\n"))
+			_, _ = fmt.Fprintln(c.OutOrStdout(), strings.Join(lines, "\n"))
 			return nil
 		},
 	}

@@ -92,7 +92,7 @@ func RequestJSON(method, rawURL string, headers map[string]string, body any) (an
 			return nil, errf("%s %s failed: %v", method, rawURL, err)
 		}
 		raw, _ := io.ReadAll(resp.Body)
-		resp.Body.Close()
+		_ = resp.Body.Close()
 		if resp.StatusCode >= 400 {
 			if idempotent[method] && retryStatus[resp.StatusCode] && attempt < retries {
 				time.Sleep(retryWait(resp, attempt))

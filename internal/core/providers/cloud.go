@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -433,7 +434,8 @@ func scwProject() string                        { return os.Getenv("SCW_PROJECT_
 func (scwOps) listKeys(token string) ([]RemoteKey, error) {
 	project := scwProject()
 	if project == "" {
-		return nil, fmt.Errorf("Scaleway requires SCW_PROJECT_ID (the project the keys belong to) - set it alongside SCW_SECRET_KEY")
+		return nil, errors.New("the Scaleway adapter requires SCW_PROJECT_ID (the project the keys " +
+			"belong to) - set it alongside SCW_SECRET_KEY")
 	}
 	var out []RemoteKey
 	page, done := 1, false

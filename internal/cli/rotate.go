@@ -58,7 +58,7 @@ func newRotateCmd() *cobra.Command {
 					return err
 				}
 			}
-			fmt.Fprintln(c.OutOrStdout(), report.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
 			if !report.Committed {
 				os.Exit(1)
 			}
@@ -101,7 +101,7 @@ func newRollbackCmd() *cobra.Command {
 			if err := inv.Save(p.Inventory()); err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), report.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
 			return nil
 		},
 	}

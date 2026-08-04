@@ -48,7 +48,7 @@ func newDeployCmd() *cobra.Command {
 			if err := inv.Save(p.Inventory()); err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), report.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
 			// A failed automated deploy / unreachable host is non-zero; a manual
 			// target that still needs a paste is not (exit 0).
 			if report.AnyError() {

@@ -70,7 +70,7 @@ func newKeyDeleteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(out, res.Format())
+			_, _ = fmt.Fprintln(out, res.Format())
 			return nil
 		},
 	}
@@ -133,14 +133,14 @@ func newKeyAddCmd() *cobra.Command {
 			}
 			switch {
 			case minted != nil:
-				fmt.Fprintf(out, "minted %s  %s  (needs-redeploy)\n", ref, minted.Fingerprint)
+				_, _ = fmt.Fprintf(out, "minted %s  %s  (needs-redeploy)\n", ref, minted.Fingerprint)
 			default:
-				fmt.Fprintf(out, "declared %s (a key already exists at that path; left untouched)\n", ref)
+				_, _ = fmt.Fprintf(out, "declared %s (a key already exists at that path; left untouched)\n", ref)
 			}
 			if host != "" {
-				fmt.Fprintf(out, "wired to host %s\n", host)
+				_, _ = fmt.Fprintf(out, "wired to host %s\n", host)
 			} else {
-				fmt.Fprintf(out, "UNWIRED: no host uses %s yet. Wire it with:\n"+
+				_, _ = fmt.Fprintf(out, "UNWIRED: no host uses %s yet. Wire it with:\n"+
 					"  sshmgr host edit %s <alias> --key-name %s\n", ref, profile, name)
 			}
 			return applyManifestEdit(c, p)
@@ -187,17 +187,17 @@ func newKeyListCmd() *cobra.Command {
 // parity).
 func writeKeyTable(out io.Writer, rows []keysvc.Row) {
 	if len(rows) == 0 {
-		fmt.Fprintln(out, "no keys in the manifest (add one with `sshmgr key add`)")
+		_, _ = fmt.Fprintln(out, "no keys in the manifest (add one with `sshmgr key add`)")
 		return
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "KEY\tTYPE\tFINGERPRINT\tEXPIRES\tHOSTS\tSTATE")
+	_, _ = fmt.Fprintln(tw, "KEY\tTYPE\tFINGERPRINT\tEXPIRES\tHOSTS\tSTATE")
 	for _, r := range rows {
 		state := r.Status
 		if notes := keyaudit.Notes(r); len(notes) > 0 {
 			state += "  " + strings.Join(notes, ",")
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\n",
 			r.Ref, r.Type, dash(r.Fingerprint), dash(r.ExpiresOn), dash(strings.Join(r.Hosts, ",")), state)
 	}
 	_ = tw.Flush()

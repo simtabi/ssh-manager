@@ -55,9 +55,9 @@ func newKeygenCmd() *cobra.Command {
 				for _, ref := range existing {
 					names = append(names, ref.String())
 				}
-				fmt.Fprintf(out, "%d key(s) already exist in %q: %s\n", len(existing), target, strings.Join(names, ", "))
+				_, _ = fmt.Fprintf(out, "%d key(s) already exist in %q: %s\n", len(existing), target, strings.Join(names, ", "))
 				if !force {
-					fmt.Fprintln(out, "  existing keys will be SKIPPED - re-run with --force to "+
+					_, _ = fmt.Fprintln(out, "  existing keys will be SKIPPED - re-run with --force to "+
 						"overwrite (the replaced key is kept in the profile's old/ dir).")
 				} else {
 					for _, ref := range existing {
@@ -96,11 +96,11 @@ func newKeygenCmd() *cobra.Command {
 				knownhosts.New(p.SSHDir).AutoPin(m, profs, os.Getenv)
 			}
 			if len(minted) == 0 {
-				fmt.Fprintf(out, "no keys minted for %q (all present; --force to overwrite)\n", target)
+				_, _ = fmt.Fprintf(out, "no keys minted for %q (all present; --force to overwrite)\n", target)
 				return nil
 			}
 			for _, mk := range minted {
-				fmt.Fprintf(out, "minted %s  %s  (needs-redeploy)\n", mk.KeyName, mk.Fingerprint)
+				_, _ = fmt.Fprintf(out, "minted %s  %s  (needs-redeploy)\n", mk.KeyName, mk.Fingerprint)
 			}
 			return nil
 		},

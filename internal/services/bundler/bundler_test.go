@@ -112,7 +112,7 @@ func TestRestoreRefusesOnChecksumMismatch(t *testing.T) {
 		t.Fatal(err)
 	}
 	// Corrupt the bundle after the sidecar was written.
-	os.WriteFile(res.AgePath, []byte("tampered"), 0o600)
+	_ = os.WriteFile(res.AgePath, []byte("tampered"), 0o600)
 	if _, err := New(ssh, cfg, fakeCipher{}).Restore(res.AgePath, "", fakeFP); err == nil ||
 		!strings.Contains(err.Error(), "checksum mismatch") {
 		t.Errorf("tampered bundle should fail checksum, got %v", err)

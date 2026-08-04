@@ -74,10 +74,10 @@ func newCleanCmd() *cobra.Command {
 				reportRecords(out, "would drop", stale)
 				residue := snapshots.FindTempArtifacts(p.SSHDir)
 				for _, r := range residue {
-					fmt.Fprintf(out, "would remove residue: %s\n", r)
+					_, _ = fmt.Fprintf(out, "would remove residue: %s\n", r)
 				}
 				if len(adoptable)+len(prunable)+len(stale)+len(residue) == 0 {
-					fmt.Fprintln(out, "nothing to clean")
+					_, _ = fmt.Fprintln(out, "nothing to clean")
 				}
 				reportRemaining(out, audit)
 				return nil
@@ -109,7 +109,7 @@ func newCleanCmd() *cobra.Command {
 				reportRecords(out, fmt.Sprintf("dropped %d", len(stale)), stale)
 			}
 			if n == 0 && len(stale) == 0 && (!adopt || len(adoptable) == 0) {
-				fmt.Fprintln(out, "nothing to clean")
+				_, _ = fmt.Fprintln(out, "nothing to clean")
 			}
 			reportRemaining(out, audit)
 			return nil
@@ -127,9 +127,9 @@ func reportRecords(out io.Writer, label string, findings []keyaudit.Finding) {
 	if len(findings) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "%s stale inventory record(s):\n", label)
+	_, _ = fmt.Fprintf(out, "%s stale inventory record(s):\n", label)
 	for _, f := range findings {
-		fmt.Fprintf(out, "  %s  %s\n", f.Subject, f.Detail)
+		_, _ = fmt.Fprintf(out, "  %s  %s\n", f.Subject, f.Detail)
 	}
 }
 
@@ -146,9 +146,9 @@ func reportRemaining(out io.Writer, audit keyaudit.Report) {
 	if len(rest) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "\n%d dangling key(s) left alone (they involve key files; see `sshmgr doctor`):\n", len(rest))
+	_, _ = fmt.Fprintf(out, "\n%d dangling key(s) left alone (they involve key files; see `sshmgr doctor`):\n", len(rest))
 	for _, f := range rest {
-		fmt.Fprintf(out, "  %s  %s\n", f.State, f.Subject)
+		_, _ = fmt.Fprintf(out, "  %s  %s\n", f.State, f.Subject)
 	}
 }
 
@@ -156,8 +156,8 @@ func report(out io.Writer, label string, entries []knownhosts.Entry) {
 	if len(entries) == 0 {
 		return
 	}
-	fmt.Fprintf(out, "%s known_hosts line(s):\n", label)
+	_, _ = fmt.Fprintf(out, "%s known_hosts line(s):\n", label)
 	for _, e := range entries {
-		fmt.Fprintf(out, "  %s  %s  %s\n", e.Name(), e.Keytype, e.Fingerprint)
+		_, _ = fmt.Fprintf(out, "  %s  %s  %s\n", e.Name(), e.Keytype, e.Fingerprint)
 	}
 }

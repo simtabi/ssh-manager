@@ -50,11 +50,11 @@ func newStdinPrompter(out io.Writer) *stdinPrompter {
 }
 
 func (s *stdinPrompter) Select(message string, choices []string) (string, bool) {
-	fmt.Fprintln(s.out, message+":")
+	_, _ = fmt.Fprintln(s.out, message+":")
 	for i, ch := range choices {
-		fmt.Fprintf(s.out, "  %d) %s\n", i+1, ch)
+		_, _ = fmt.Fprintf(s.out, "  %d) %s\n", i+1, ch)
 	}
-	fmt.Fprint(s.out, "> ")
+	_, _ = fmt.Fprint(s.out, "> ")
 	line, err := s.in.ReadString('\n')
 	if err != nil && line == "" {
 		return "", false
@@ -67,7 +67,7 @@ func (s *stdinPrompter) Select(message string, choices []string) (string, bool) 
 }
 
 func (s *stdinPrompter) Confirm(message string) bool {
-	fmt.Fprintf(s.out, "%s [y/N] ", message)
+	_, _ = fmt.Fprintf(s.out, "%s [y/N] ", message)
 	line, _ := s.in.ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
@@ -405,7 +405,7 @@ func (t *tui) banner() {
 	}
 }
 
-func (t *tui) print(text string) { fmt.Fprintln(t.out, text) }
+func (t *tui) print(text string) { _, _ = fmt.Fprintln(t.out, text) }
 
 // keyNames lists keys as "profile/key" selectors. The composite form is used
 // even when a name is unique, so the picker never hides which profile a key

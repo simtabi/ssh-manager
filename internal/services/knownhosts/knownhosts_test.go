@@ -55,7 +55,7 @@ func TestEnsureAndAddDedup(t *testing.T) {
 func TestHostInKnownHosts(t *testing.T) {
 	dir := t.TempDir()
 	kh := filepath.Join(dir, "known_hosts")
-	os.WriteFile(kh, []byte(
+	_ = os.WriteFile(kh, []byte(
 		"# comment\n"+
 			"github.com,140.82.0.1 ssh-ed25519 AAAA\n"+
 			"[example.com]:2222 ssh-rsa BBBB\n"+
@@ -116,7 +116,9 @@ func TestAutoPinDisabledAndAlreadyTrusted(t *testing.T) {
 	}
 
 	// Enabled but the host is already trusted -> skipped (no network needed).
-	os.WriteFile(s.Path(), []byte("github.com ssh-ed25519 AAAA\n"), 0o600)
+	if err := os.WriteFile(s.Path(), []byte("github.com ssh-ed25519 AAAA\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	on := func(string) string { return "" }
 	if got := s.AutoPin(&m, nil, on); len(got) != 0 {
 		t.Errorf("already-trusted host should not be re-pinned, got %v", got)

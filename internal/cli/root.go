@@ -61,7 +61,7 @@ func newVersionCmd() *cobra.Command {
 		Short: "Print the ssh-manager version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "sshmgr %s\n", version.Version)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sshmgr %s\n", version.Version)
 			return nil
 		},
 	}

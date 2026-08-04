@@ -37,7 +37,7 @@ func Serving() bool { return os.Getenv(modeVar) == "1" }
 // Serve writes the passphrase for ssh-keygen to read and reports the process
 // exit code.
 func Serve(w io.Writer) int {
-	fmt.Fprintln(w, os.Getenv(secretVar))
+	_, _ = fmt.Fprintln(w, os.Getenv(secretVar))
 	return 0
 }
 

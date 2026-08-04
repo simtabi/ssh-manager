@@ -39,7 +39,7 @@ func newKnownHostsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), report.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
 			return nil
 		},
 	}
@@ -89,7 +89,7 @@ func newKnownHostsCmd() *cobra.Command {
 			}
 			out := c.OutOrStdout()
 			if len(targets) == 0 {
-				fmt.Fprintln(out, "give a HOST or use --all")
+				_, _ = fmt.Fprintln(out, "give a HOST or use --all")
 				return fmt.Errorf("no target")
 			}
 			byProfile := map[string][]string{}
@@ -99,7 +99,7 @@ func newKnownHostsCmd() *cobra.Command {
 					if label == "" {
 						label = "global"
 					}
-					fmt.Fprintf(out, "[%s] %s  %s  %s\n", label, sk.Host, sk.Keytype, sk.Fingerprint)
+					_, _ = fmt.Fprintf(out, "[%s] %s  %s  %s\n", label, sk.Host, sk.Keytype, sk.Fingerprint)
 					if yes || confirm(c, fmt.Sprintf("  trust this %s key for %s?", sk.Keytype, sk.Host)) {
 						byProfile[t.Profile] = append(byProfile[t.Profile], sk.Line)
 					}
@@ -116,7 +116,7 @@ func newKnownHostsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(out, "pinned %d host key(s) into known_hosts\n", total)
+			_, _ = fmt.Fprintf(out, "pinned %d host key(s) into known_hosts\n", total)
 			return nil
 		},
 	}

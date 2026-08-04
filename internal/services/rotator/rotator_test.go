@@ -99,7 +99,9 @@ func TestRotateThenRollback(t *testing.T) {
 
 func TestRotateMissingKey(t *testing.T) {
 	var m manifest.Manifest
-	json.Unmarshal([]byte(manifestJSON), &m)
+	if err := json.Unmarshal([]byte(manifestJSON), &m); err != nil {
+		t.Fatal(err)
+	}
 	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
 	if _, err := New(p, &m, inventory.New()).Rotate("vcs_panel-ed25519", true, ""); err == nil {
 		t.Error("rotating an absent key should error")

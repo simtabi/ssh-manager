@@ -65,10 +65,12 @@ func TestValidateKeys(t *testing.T) {
 		}
 	}
 	// Introduce defects.
-	os.Remove(keyPath(t, m, ssh, "missing"))          // private key gone
-	os.Remove(keyPath(t, m, ssh, "missing") + ".pub") // and its pub
-	if runtime.GOOS != "windows" {                    // perms are POSIX-only
-		os.Chmod(keyPath(t, m, ssh, "badperms"), 0o644)
+	_ = os.Remove(keyPath(t, m, ssh, "missing"))          // private key gone
+	_ = os.Remove(keyPath(t, m, ssh, "missing") + ".pub") // and its pub
+	if runtime.GOOS != "windows" {                        // perms are POSIX-only
+		if err := os.Chmod(keyPath(t, m, ssh, "badperms"), 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 	// Swap mismatch's .pub for a different valid public key.
 	other := filepath.Join(t.TempDir(), "other")
@@ -76,9 +78,9 @@ func TestValidateKeys(t *testing.T) {
 		t.Fatal(err)
 	}
 	otherPub, _ := os.ReadFile(other + ".pub")
-	os.WriteFile(keyPath(t, m, ssh, "mismatch")+".pub", otherPub, 0o644)
+	_ = os.WriteFile(keyPath(t, m, ssh, "mismatch")+".pub", otherPub, 0o644)
 	// Corrupt malformed's .pub.
-	os.WriteFile(keyPath(t, m, ssh, "malformed")+".pub", []byte("not a key\n"), 0o644)
+	_ = os.WriteFile(keyPath(t, m, ssh, "malformed")+".pub", []byte("not a key\n"), 0o644)
 
 	checks, err := New(m, ssh).ValidateKeys("")
 	if err != nil {

@@ -32,7 +32,7 @@ func newNotifyCmd() *cobra.Command {
 			if err := scheduler.Install(command, scheduler.Label); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "installed scheduled notifier: %s\n", command)
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "installed scheduled notifier: %s\n", command)
 			return nil
 		},
 	})
@@ -48,7 +48,7 @@ func newNotifyCmd() *cobra.Command {
 				return err
 			}
 			if notifier.New(p, m).Test() {
-				fmt.Fprintln(c.OutOrStdout(), "sent a test desktop notification.")
+				_, _ = fmt.Fprintln(c.OutOrStdout(), "sent a test desktop notification.")
 			} else {
 				fmt.Fprintln(os.Stderr, "no notification backend found (install notify-send / terminal-notifier).")
 			}

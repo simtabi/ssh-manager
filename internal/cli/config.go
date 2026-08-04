@@ -36,7 +36,7 @@ func migrateLegacyKnownHosts(c *cobra.Command, p paths.Paths, dryRun bool) error
 		return nil
 	}
 	if dryRun {
-		fmt.Fprintf(c.OutOrStdout(), "would migrate: %d legacy known_hosts file(s) into the single store\n", len(legacy))
+		_, _ = fmt.Fprintf(c.OutOrStdout(), "would migrate: %d legacy known_hosts file(s) into the single store\n", len(legacy))
 		return nil
 	}
 	snapshotBeforeMutation(p)
@@ -45,7 +45,7 @@ func migrateLegacyKnownHosts(c *cobra.Command, p paths.Paths, dryRun bool) error
 		return err
 	}
 	if len(rep.Removed) > 0 {
-		fmt.Fprintf(c.OutOrStdout(), "migrated %d known_hosts line(s) from %s into the single store\n",
+		_, _ = fmt.Fprintf(c.OutOrStdout(), "migrated %d known_hosts line(s) from %s into the single store\n",
 			rep.Merged, strings.Join(rep.Removed, ", "))
 	}
 	return nil
@@ -71,7 +71,7 @@ func newConfigCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), res.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 			if !res.InSync() {
 				os.Exit(1)
 			}
@@ -102,13 +102,13 @@ func newConfigCmd() *cobra.Command {
 			}
 			out := c.OutOrStdout()
 			if len(res.Written) > 0 {
-				fmt.Fprintf(out, "%s: %s\n", verb, strings.Join(res.Written, ", "))
+				_, _ = fmt.Fprintf(out, "%s: %s\n", verb, strings.Join(res.Written, ", "))
 			}
 			if len(res.Pruned) > 0 {
-				fmt.Fprintf(out, "pruned: %s\n", strings.Join(res.Pruned, ", "))
+				_, _ = fmt.Fprintf(out, "pruned: %s\n", strings.Join(res.Pruned, ", "))
 			}
 			if len(res.Written) == 0 && len(res.Pruned) == 0 {
-				fmt.Fprintln(out, "config: already in sync")
+				_, _ = fmt.Fprintln(out, "config: already in sync")
 			}
 			return nil
 		},
@@ -130,7 +130,7 @@ func newConfigCmd() *cobra.Command {
 				alias = args[0]
 			}
 			out, err := svc.Show(alias)
-			fmt.Fprint(c.OutOrStdout(), out)
+			_, _ = fmt.Fprint(c.OutOrStdout(), out)
 			return err
 		},
 	})

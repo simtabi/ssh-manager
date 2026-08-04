@@ -1,0 +1,28 @@
+# golangci-lint gate. Run: make lint  (CI runs it on every OS in the matrix).
+#
+# The standard linter set, with no path exclusions. In particular _test.go files
+# are held to the same bar as the rest: an unchecked error in a test is how a
+# test comes to assert nothing at all and still pass.
+#
+# Build tags are the one thing to know about this gate. golangci-lint analyses a
+# single GOOS per run, so a file behind `//go:build linux` is invisible on macOS
+# - which makes `unused` report anything only that file references as dead code,
+# and means findings inside platform files are simply never seen. CI therefore
+# runs the linter on ubuntu, macOS and Windows rather than once, and code shared
+# with a build-tagged file lives in that file rather than beside it.
+version: "2"
+
+# Report everything. golangci-lint caps repeats by default (max-same-issues: 3),
+# which quietly hides most of a recurring finding - a cap is an exemption with
+# extra steps.
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+
+linters:
+  default: standard # errcheck, govet, ineffassign, staticcheck, unused
+  exclusions:
+    # "generated" is golangci's own default and only skips machine-written
+    # files; no rules of our own.
+    generated: lax

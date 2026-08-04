@@ -46,7 +46,7 @@ func newHostCmd() *cobra.Command {
 			// The block renders now; the key it points at does not exist until
 			// something mints it, so say so rather than leaving ssh to report it
 			// as a permission denial.
-			fmt.Fprintf(c.OutOrStdout(), "added host %s to %s (run `sshmgr reconcile` to mint its "+
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "added host %s to %s (run `sshmgr reconcile` to mint its "+
 				"key)\n", args[1], args[0])
 			return applyManifestEdit(c, p)
 		},
@@ -82,9 +82,9 @@ func newHostCmd() *cobra.Command {
 			if err := editor.New(p).EditHost(args[0], args[1], f); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "edited host %s\n", args[1])
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "edited host %s\n", args[1])
 			if c.Flags().Changed("key-name") {
-				fmt.Fprintln(c.OutOrStdout(), "  the key it now names may not exist yet - "+
+				_, _ = fmt.Fprintln(c.OutOrStdout(), "  the key it now names may not exist yet - "+
 					"run `sshmgr reconcile` to mint it")
 			}
 			if err := applyManifestEdit(c, p); err != nil {
@@ -138,7 +138,7 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(out, res.Format())
+			_, _ = fmt.Fprintln(out, res.Format())
 			return nil
 		},
 	}

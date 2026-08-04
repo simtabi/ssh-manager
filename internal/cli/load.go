@@ -38,7 +38,7 @@ func newLoadCmd() *cobra.Command {
 			if len(added) > 0 {
 				names = strings.Join(added, ", ")
 			}
-			fmt.Fprintf(c.OutOrStdout(), "loaded %d key(s) into the agent: %s\n", len(added), names)
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "loaded %d key(s) into the agent: %s\n", len(added), names)
 			return nil
 		},
 	}

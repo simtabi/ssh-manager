@@ -122,7 +122,8 @@ func (n *Notifier) Notify(now time.Time, force bool) bool {
 		interval = 24 * time.Hour
 	}
 	last := parseT(n.read(n.p.NotifyCache())["notified"])
-	if !(force || last.IsZero() || now.Sub(last) >= interval) {
+	// Not yet due: something fired recently and this run was not forced.
+	if !force && !last.IsZero() && now.Sub(last) < interval {
 		return false
 	}
 	if !n.defaults.ExpiryCheck.DesktopNotify {

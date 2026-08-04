@@ -33,7 +33,7 @@ func newAuditCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), report)
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report)
 			return nil
 		},
 	}

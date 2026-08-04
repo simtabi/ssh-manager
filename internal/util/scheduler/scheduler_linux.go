@@ -10,6 +10,21 @@ import (
 	"strings"
 )
 
+// timerUnit is the systemd timer that drives the notifier. It lives here rather
+// than beside the .service template in scheduler.go because only this file uses
+// it: a constant referenced solely from a build-tagged file reads as dead code
+// to every tool analysing any other GOOS.
+const timerUnit = `[Unit]
+Description=ssh-manager key-expiry notifier (daily)
+
+[Timer]
+OnCalendar=*-*-* 09:00:00
+Persistent=true
+
+[Install]
+WantedBy=timers.target
+`
+
 // Install registers a daily job: a systemd --user timer if available, else cron.
 func Install(command, label string) error {
 	switch {

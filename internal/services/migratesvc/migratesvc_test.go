@@ -65,7 +65,7 @@ func TestMigrateBothExist(t *testing.T) {
 	if err := os.MkdirAll(cfg, 0o700); err != nil {
 		t.Fatal(err)
 	}
-	os.WriteFile(filepath.Join(cfg, "manifest.json"), []byte("standard"), 0o600)
+	_ = os.WriteFile(filepath.Join(cfg, "manifest.json"), []byte("standard"), 0o600)
 
 	// No force -> error.
 	if _, err := Migrate(p, false, "TS"); err == nil || !strings.Contains(err.Error(), "both") {

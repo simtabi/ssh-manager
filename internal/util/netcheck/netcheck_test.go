@@ -69,12 +69,12 @@ func TestTCPReachable(t *testing.T) {
 	if err != nil {
 		t.Skip("cannot listen on loopback")
 	}
-	defer ln.Close()
+	defer func() { _ = ln.Close() }()
 	port := ln.Addr().(*net.TCPAddr).Port
 	if !TCPReachable("127.0.0.1", port, 2*time.Second) {
 		t.Error("open listener should be reachable")
 	}
-	ln.Close()
+	_ = ln.Close()
 	if TCPReachable("127.0.0.1", port, 500*time.Millisecond) {
 		t.Error("closed port should be unreachable")
 	}

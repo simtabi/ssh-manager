@@ -164,7 +164,7 @@ func (b *Bundler) encryptTo(agePath, recipient string) ([]string, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer out.Close()
+	defer func() { _ = out.Close() }()
 
 	type built struct {
 		members []string
@@ -267,7 +267,7 @@ func addFile(tw *tar.Writer, path, arc string) error {
 	if err != nil {
 		return err
 	}
-	defer src.Close()
+	defer func() { _ = src.Close() }()
 	_, err = io.Copy(tw, src)
 	return err
 }
@@ -303,7 +303,7 @@ func (b *Bundler) decrypt(bundlePath, identityFile string) ([]member, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 
 	pr, pw := io.Pipe()
 	done := make(chan error, 1)
@@ -407,7 +407,7 @@ func readTarGz(r io.Reader) ([]member, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(io.LimitReader(gz, maxBundleBytes))
 	var members []member
 	for {
@@ -449,13 +449,13 @@ func writeBytesAtomic(path string, data []byte) error {
 		return err
 	}
 	tmpName := tmp.Name()
-	defer os.Remove(tmpName)
+	defer func() { _ = os.Remove(tmpName) }()
 	if _, err := tmp.Write(data); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Sync(); err != nil {
-		tmp.Close()
+		_ = tmp.Close()
 		return err
 	}
 	if err := tmp.Close(); err != nil {
@@ -469,7 +469,7 @@ func sha256File(path string) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	h := sha256.New()
 	if _, err := io.Copy(h, f); err != nil {
 		return "", err

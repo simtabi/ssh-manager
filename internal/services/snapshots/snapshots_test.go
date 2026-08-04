@@ -41,7 +41,7 @@ func TestSnapshotRoundTrip(t *testing.T) {
 	}
 
 	// Mutate the config, then restore and confirm the original is back.
-	os.WriteFile(filepath.Join(ssh, "config"), []byte("CHANGED\n"), 0o600)
+	_ = os.WriteFile(filepath.Join(ssh, "config"), []byte("CHANGED\n"), 0o600)
 	if err := Restore(tarball, ssh); err != nil {
 		t.Fatalf("restore: %v", err)
 	}
@@ -103,9 +103,11 @@ func TestCleanTempArtifacts(t *testing.T) {
 	base := t.TempDir()
 	ssh := filepath.Join(base, ".ssh")
 	writeTree(t, ssh)
-	os.WriteFile(filepath.Join(ssh, ".config.123.tmp"), []byte("x"), 0o600)
-	os.MkdirAll(filepath.Join(ssh, "profiles/work/.staging"), 0o700)
-	os.WriteFile(filepath.Join(ssh, "profiles/work/.staging/k"), []byte("x"), 0o600)
+	_ = os.WriteFile(filepath.Join(ssh, ".config.123.tmp"), []byte("x"), 0o600)
+	if err := os.MkdirAll(filepath.Join(ssh, "profiles/work/.staging"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(ssh, "profiles/work/.staging/k"), []byte("x"), 0o600)
 
 	removed := CleanTempArtifacts(ssh)
 	if len(removed) != 2 {

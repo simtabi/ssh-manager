@@ -17,12 +17,12 @@ func members(t *testing.T, tarball string) map[string]string {
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	out := map[string]string{}
 	tr := tar.NewReader(gz)
 	for {

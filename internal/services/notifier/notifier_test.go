@@ -54,14 +54,18 @@ func TestNotifyGating(t *testing.T) {
 		Profile: "w", Path: "~/.ssh/profiles/w/k", Type: "ed25519",
 		RotateAfterDays: 365, ExpiresOn: ptr("2020-01-01"),
 	})
-	inv.Save(p.Inventory())
+	if err := inv.Save(p.Inventory()); err != nil {
+		t.Fatal(err)
+	}
 	if n.Notify(time.Now(), true) {
 		t.Error("desktop_notify=false should gate the alert to false")
 	}
 
 	// No keys at all -> no attention -> false.
 	n2, p2 := setup(t, true)
-	inventory.New().Save(p2.Inventory())
+	if err := inventory.New().Save(p2.Inventory()); err != nil {
+		t.Fatal(err)
+	}
 	if n2.Notify(time.Now(), true) {
 		t.Error("empty inventory should not fire a notification")
 	}

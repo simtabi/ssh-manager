@@ -31,7 +31,7 @@ func newDoctorCmd() *cobra.Command {
 			if fix {
 				for _, change := range svc.FixPerms() {
 					if !jsonOut {
-						fmt.Fprintln(out, "fixed perms:", change)
+						_, _ = fmt.Fprintln(out, "fixed perms:", change)
 					}
 				}
 			}
@@ -41,9 +41,9 @@ func newDoctorCmd() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(out, string(b))
+				_, _ = fmt.Fprintln(out, string(b))
 			} else {
-				fmt.Fprintln(out, rep.Format())
+				_, _ = fmt.Fprintln(out, rep.Format())
 			}
 			if !rep.OK() {
 				os.Exit(1)

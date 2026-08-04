@@ -37,7 +37,7 @@ func newNetCmd() *cobra.Command {
 			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
 			gatedDown := false
 			for _, r := range rows {
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Status.Icon(), r.Profile, r.Alias, r.Status.Message())
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", r.Status.Icon(), r.Profile, r.Alias, r.Status.Message())
 				if !r.Status.Reachable && r.Status.RequiresVPN {
 					gatedDown = true
 				}

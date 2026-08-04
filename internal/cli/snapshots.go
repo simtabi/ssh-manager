@@ -49,7 +49,7 @@ func newSnapshotsCmd() *cobra.Command {
 			snaps := snapshots.List(p.SnapshotsDir())
 			out := c.OutOrStdout()
 			if len(snaps) == 0 {
-				fmt.Fprintln(out, "no snapshots yet")
+				_, _ = fmt.Fprintln(out, "no snapshots yet")
 				return nil
 			}
 			legacy := 0
@@ -63,13 +63,13 @@ func newSnapshotsCmd() *cobra.Command {
 					note = "\tholds private keys"
 					legacy++
 				}
-				fmt.Fprintf(out, "%s\t%8d bytes%s\n", filepath.Base(s), size, note)
+				_, _ = fmt.Fprintf(out, "%s\t%8d bytes%s\n", filepath.Base(s), size, note)
 			}
 			// Snapshots written by older versions archived the whole tree. They are
 			// not deleted automatically - they may be the only copy of something -
 			// but the user should know what is sitting there.
 			if legacy > 0 {
-				fmt.Fprintf(out, "\n%d snapshot(s) predate key exclusion and contain unencrypted private keys.\n"+
+				_, _ = fmt.Fprintf(out, "\n%d snapshot(s) predate key exclusion and contain unencrypted private keys.\n"+
 					"Remove them once you no longer need them: sshmgr snapshots prune --keep 0\n", legacy)
 			}
 			return nil
@@ -99,7 +99,7 @@ func newSnapshotsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "restored from %s\n", filepath.Base(chosen))
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "restored from %s\n", filepath.Base(chosen))
 			return nil
 		},
 	}
@@ -114,7 +114,7 @@ func newSnapshotsCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, _ []string) error {
 			p := paths.Resolve(nil, "", "")
 			removed := snapshots.Prune(p.SnapshotsDir(), keep)
-			fmt.Fprintf(c.OutOrStdout(), "pruned %d snapshot(s)\n", removed)
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "pruned %d snapshot(s)\n", removed)
 			return nil
 		},
 	}
@@ -126,7 +126,7 @@ func newSnapshotsCmd() *cobra.Command {
 
 // confirm reads a y/N answer from stdin.
 func confirm(c *cobra.Command, prompt string) bool {
-	fmt.Fprintf(c.OutOrStdout(), "%s [y/N] ", prompt)
+	_, _ = fmt.Fprintf(c.OutOrStdout(), "%s [y/N] ", prompt)
 	r := bufio.NewReader(os.Stdin)
 	line, _ := r.ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {

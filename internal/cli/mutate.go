@@ -42,17 +42,16 @@ var heldLock func()
 func snapshotBeforeMutation(p paths.Paths) string {
 	if heldLock == nil {
 		rel, err := lock.Acquire(p.LockFile())
-		switch {
-		case err == nil:
-			heldLock = rel
-		default:
+		if err != nil {
 			// Best-effort stays best-effort - refusing to work because a lock file
 			// cannot be made would strand the user on a read-only or exotic
 			// filesystem - but not silent. Acquire blocks while another process
 			// holds the lock, so an error here means the lock itself is broken,
 			// and the serialization the guard promises is simply not happening.
-			fmt.Fprintf(os.Stderr, "sshmgr: WARNING: could not take the advisory lock at %s, so "+
-				"a concurrent sshmgr command could interleave with this one: %v\n", p.LockFile(), err)
+			_, _ = fmt.Fprintf(os.Stderr, "sshmgr: WARNING: could not take the advisory lock at %s, "+
+				"so a concurrent sshmgr command could interleave with this one: %v\n", p.LockFile(), err)
+		} else {
+			heldLock = rel
 		}
 	}
 	snapshots.CleanTempArtifacts(p.SSHDir)
@@ -92,10 +91,10 @@ func applyManifestEdit(c *cobra.Command, p paths.Paths) error {
 	}
 	out := c.OutOrStdout()
 	if len(res.Written) > 0 {
-		fmt.Fprintf(c.OutOrStdout(), "re-rendered %s\n", strings.Join(res.Written, ", "))
+		_, _ = fmt.Fprintf(c.OutOrStdout(), "re-rendered %s\n", strings.Join(res.Written, ", "))
 	}
 	if len(res.Pruned) > 0 {
-		fmt.Fprintf(out, "removed stale %s\n", strings.Join(res.Pruned, ", "))
+		_, _ = fmt.Fprintf(out, "removed stale %s\n", strings.Join(res.Pruned, ", "))
 	}
 	return nil
 }
@@ -116,14 +115,14 @@ func warnDangling(out io.Writer, p paths.Paths, m *manifest.Manifest) {
 	if err != nil || rep.OK() {
 		return
 	}
-	fmt.Fprintln(out)
+	_, _ = fmt.Fprintln(out)
 	for _, f := range rep.Findings {
 		if !keyaudit.Blocking(f.State) {
 			continue
 		}
-		fmt.Fprintf(out, "WARNING: %s is %s - %s\n", f.Subject, f.State, f.Detail)
+		_, _ = fmt.Fprintf(out, "WARNING: %s is %s - %s\n", f.Subject, f.State, f.Detail)
 		if f.Fix != "" {
-			fmt.Fprintf(out, "  -> %s\n", f.Fix)
+			_, _ = fmt.Fprintf(out, "  -> %s\n", f.Fix)
 		}
 	}
 }

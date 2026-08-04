@@ -1,6 +1,7 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -47,10 +48,10 @@ func newBundleCmd() *cobra.Command {
 				return err
 			}
 			out := c.OutOrStdout()
-			fmt.Fprintln(out, res.Format())
+			_, _ = fmt.Fprintln(out, res.Format())
 			if keep > 0 {
 				for _, pruned := range pruneBundles(dest, keep) {
-					fmt.Fprintf(out, "pruned %s\n", pruned)
+					_, _ = fmt.Fprintf(out, "pruned %s\n", pruned)
 				}
 			}
 			return nil
@@ -75,23 +76,23 @@ func backupKeysBeforeDestroying(p paths.Paths, out io.Writer, skip bool) error {
 	recipient := os.Getenv("SSH_MANAGER_AGE_RECIPIENT")
 	if skip {
 		if recipient == "" {
-			fmt.Fprintln(out, "WARNING: proceeding without a key backup - anything this "+
+			_, _ = fmt.Fprintln(out, "WARNING: proceeding without a key backup - anything this "+
 				"destroys is unrecoverable.")
 		}
 		return nil
 	}
 	if recipient == "" {
-		return fmt.Errorf("this destroys key material and there is no encrypted backup to fall " +
-			"back on.\nSet SSH_MANAGER_AGE_RECIPIENT to an age recipient (age-keygen -o " +
+		return errors.New("this destroys key material and there is no encrypted backup to fall " +
+			"back on; set SSH_MANAGER_AGE_RECIPIENT to an age recipient (age-keygen -o " +
 			"<identity>) so a bundle can be written first, or pass --no-key-backup to accept " +
-			"that the replaced key is gone for good.")
+			"that the replaced key is gone for good")
 	}
 	res, err := bundler.New(p.SSHDir, p.ConfigDir, bundler.AgeCipher{}).
 		Bundle(recipient, p.DistDir(), time.Now().Format("20060102-150405"))
 	if err != nil {
 		return fmt.Errorf("could not back up keys before proceeding: %w", err)
 	}
-	fmt.Fprintf(out, "key backup: %s\n", res.AgePath)
+	_, _ = fmt.Fprintf(out, "key backup: %s\n", res.AgePath)
 	return nil
 }
 
@@ -160,7 +161,7 @@ func newRestoreCmd() *cobra.Command {
 			if m, e := manifest.Load(p.Manifest()); e == nil {
 				_, _ = configsvc.New(p.SSHDir, m, platform.EmitUseKeychain()).Write(false)
 			}
-			fmt.Fprintln(c.OutOrStdout(), res.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 			return nil
 		},
 	}

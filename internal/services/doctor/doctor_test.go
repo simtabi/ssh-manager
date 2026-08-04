@@ -88,8 +88,10 @@ func TestDoctorReportSubchecks(t *testing.T) {
 		t.Fatal(err)
 	}
 	oldDir := filepath.Join(ssh, "profiles", "work", "old")
-	os.MkdirAll(oldDir, 0o700)
-	os.WriteFile(filepath.Join(oldDir, "work_gh-ed25519"), []byte("x"), 0o600) // 1 archived predecessor
+	if err := os.MkdirAll(oldDir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	_ = os.WriteFile(filepath.Join(oldDir, "work_gh-ed25519"), []byte("x"), 0o600) // 1 archived predecessor
 
 	rep = New(p, m, false).Run(false)
 	if !has(rep.OrphanKeys, "profiles/work/work_stray-ed25519") {
@@ -108,7 +110,9 @@ func TestDoctorReportSubchecks(t *testing.T) {
 				ghKey = filepath.Join(ssh, "profiles", "work", k)
 			}
 		}
-		os.Chmod(ghKey, 0o644)
+		if err := os.Chmod(ghKey, 0o644); err != nil {
+			t.Fatal(err)
+		}
 		rep = New(p, m, false).Run(false)
 		if len(rep.PermIssues) == 0 {
 			t.Error("expected a perm issue after loosening a key")

@@ -40,7 +40,7 @@ func newProfileCmd() *cobra.Command {
 			if err := editor.New(p).AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "added profile %s (no hosts yet - add one with "+
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "added profile %s (no hosts yet - add one with "+
 				"`sshmgr host add %s <alias>`)\n", args[0], args[0])
 			return applyManifestEdit(c, p)
 		},
@@ -63,7 +63,7 @@ func newProfileCmd() *cobra.Command {
 			}
 			// Changing key_scope or key_name changes which key each host resolves
 			// to, and that key may not exist yet.
-			fmt.Fprintf(c.OutOrStdout(), "edited profile %s (run `sshmgr reconcile` to mint any key "+
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "edited profile %s (run `sshmgr reconcile` to mint any key "+
 				"this now points at)\n", args[0])
 			if err := applyManifestEdit(c, p); err != nil {
 				return err
@@ -116,7 +116,7 @@ func newProfileCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(out, res.Format())
+			_, _ = fmt.Fprintln(out, res.Format())
 			return nil
 		},
 	}

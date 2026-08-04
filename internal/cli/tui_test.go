@@ -31,10 +31,12 @@ func tuiWith(t *testing.T, selects ...string) (*tui, *bytes.Buffer) {
 	t.Helper()
 	base := t.TempDir()
 	cfg := filepath.Join(base, "cfg")
-	os.MkdirAll(cfg, 0o700)
+	if err := os.MkdirAll(cfg, 0o700); err != nil {
+		t.Fatal(err)
+	}
 	mj := `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
 	  "work":{"key_scope":"per_service","hosts":[{"alias":"gh","hostname":"github.com","user":"git"}]}}}`
-	os.WriteFile(filepath.Join(cfg, "manifest.json"), []byte(mj), 0o600)
+	_ = os.WriteFile(filepath.Join(cfg, "manifest.json"), []byte(mj), 0o600)
 	p := paths.Paths{SSHDir: filepath.Join(base, ".ssh"), ConfigDir: cfg}
 	var buf bytes.Buffer
 	return &tui{p: p, pr: &scriptPrompter{selects: selects}, out: &buf}, &buf

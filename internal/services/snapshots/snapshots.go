@@ -54,12 +54,12 @@ func HoldsKeyMaterial(tarball string) bool {
 	if err != nil {
 		return false
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return false
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	for {
 		hdr, err := tr.Next()
@@ -149,7 +149,7 @@ func Snapshot(sshDir, snapshotsDir string, retain int, stamp string) (string, er
 		return "", err
 	}
 	if err := writeTarGz(f, sshDir); err != nil {
-		f.Close()
+		_ = f.Close()
 		return "", err
 	}
 	if err := f.Close(); err != nil {
@@ -202,7 +202,7 @@ func writeTarGz(w io.Writer, sshDir string) error {
 				return err
 			}
 			_, copyErr := io.Copy(tw, src)
-			src.Close()
+			_ = src.Close()
 			if copyErr != nil {
 				return copyErr
 			}
@@ -267,12 +267,12 @@ func extractTarGz(tarball, destParent string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	// Read all members first (fail early if corrupt) before destroying the target.
 	type member struct {
@@ -375,7 +375,7 @@ func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, er
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	safe := filepath.Join(tmp, filepath.Base(chosen))
 	if err := copyFile(chosen, safe); err != nil {
 		return "", err
@@ -397,13 +397,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	return out.Close()

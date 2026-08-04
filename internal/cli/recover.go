@@ -29,7 +29,7 @@ func newRecoverCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(c.OutOrStdout(), script)
+			_, _ = fmt.Fprint(c.OutOrStdout(), script)
 			return nil
 		},
 	}

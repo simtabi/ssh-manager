@@ -46,7 +46,7 @@ func TestLoadMissingIsEmpty(t *testing.T) {
 func TestLoadDefaultsAndForbid(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "inventory.json")
-	os.WriteFile(p, []byte(`{"version":1,"keys":{"SHA256:abc":{
+	_ = os.WriteFile(p, []byte(`{"version":1,"keys":{"SHA256:abc":{
 		"profile":"work","path":"~/.ssh/profiles/work/work_unc-ed25519",
 		"created":"2026-01-01","deployments":[{"target":"unc","method":"ssh-copy-id","verified":true}]}}}`), 0o600)
 	inv, err := Load(p)
@@ -62,7 +62,7 @@ func TestLoadDefaultsAndForbid(t *testing.T) {
 	}
 
 	// unknown field is rejected
-	os.WriteFile(p, []byte(`{"keys":{"k":{"profile":"p","path":"x","bogus":1}}}`), 0o600)
+	_ = os.WriteFile(p, []byte(`{"keys":{"k":{"profile":"p","path":"x","bogus":1}}}`), 0o600)
 	if _, err := Load(p); err == nil {
 		t.Error("unknown field should be rejected")
 	}

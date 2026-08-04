@@ -67,17 +67,17 @@ func newShowCmd() *cobra.Command {
 
 func showProfile(out io.Writer, m *manifest.Manifest, keys *keysvc.Service, kh *knownhosts.Service,
 	name string, prof manifest.Profile) error {
-	fmt.Fprintf(out, "profile %s  (key_scope: %s", name, prof.KeyScope)
+	_, _ = fmt.Fprintf(out, "profile %s  (key_scope: %s", name, prof.KeyScope)
 	if prof.KeyName != nil && *prof.KeyName != "" {
-		fmt.Fprintf(out, ", key_name: %s", *prof.KeyName)
+		_, _ = fmt.Fprintf(out, ", key_name: %s", *prof.KeyName)
 	}
-	fmt.Fprintln(out, ")")
+	_, _ = fmt.Fprintln(out, ")")
 
 	rows, err := keys.Rows("")
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "\nkeys:")
+	_, _ = fmt.Fprintln(out, "\nkeys:")
 	found := 0
 	for _, row := range rows {
 		if row.Ref.Profile != name {
@@ -89,12 +89,12 @@ func showProfile(out io.Writer, m *manifest.Manifest, keys *keysvc.Service, kh *
 		}
 	}
 	if found == 0 {
-		fmt.Fprintln(out, "  (none)")
+		_, _ = fmt.Fprintln(out, "  (none)")
 	}
 
-	fmt.Fprintln(out, "\nhosts:")
+	_, _ = fmt.Fprintln(out, "\nhosts:")
 	if len(prof.Hosts) == 0 {
-		fmt.Fprintln(out, "  (none)")
+		_, _ = fmt.Fprintln(out, "  (none)")
 		return nil
 	}
 	for _, host := range prof.Hosts {
@@ -102,7 +102,7 @@ func showProfile(out io.Writer, m *manifest.Manifest, keys *keysvc.Service, kh *
 		if err != nil {
 			return err
 		}
-		fmt.Fprintf(out, "  %s  ->  %s  (%s)\n", host.Alias, hostPort(host), kname)
+		_, _ = fmt.Fprintf(out, "  %s  ->  %s  (%s)\n", host.Alias, hostPort(host), kname)
 		writePins(out, kh, "    ", host)
 	}
 	return nil
@@ -110,27 +110,27 @@ func showProfile(out io.Writer, m *manifest.Manifest, keys *keysvc.Service, kh *
 
 func showHost(out io.Writer, m *manifest.Manifest, keys *keysvc.Service, kh *knownhosts.Service,
 	profile string, host manifest.Host) error {
-	fmt.Fprintf(out, "host %s  (profile %s)\n", host.Alias, profile)
+	_, _ = fmt.Fprintf(out, "host %s  (profile %s)\n", host.Alias, profile)
 
 	block, err := renderer.RenderHostBlockFor(m, profile, host)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "\nconfig (as rendered from the manifest; `sshmgr diff` compares it to the file):")
+	_, _ = fmt.Fprintln(out, "\nconfig (as rendered from the manifest; `sshmgr diff` compares it to the file):")
 	for _, line := range strings.Split(strings.TrimRight(block, "\n"), "\n") {
-		fmt.Fprintln(out, "  "+line)
+		_, _ = fmt.Fprintln(out, "  "+line)
 	}
 
 	kname, err := m.ResolvedKeyName(profile, host)
 	if err != nil {
 		return err
 	}
-	fmt.Fprintln(out, "\nkey:")
+	_, _ = fmt.Fprintln(out, "\nkey:")
 	if err := showKey(out, keys, manifest.KeyRef{Profile: profile, KeyName: kname}, "  "); err != nil {
 		return err
 	}
 
-	fmt.Fprintln(out, "\nknown_hosts:")
+	_, _ = fmt.Fprintln(out, "\nknown_hosts:")
 	writePins(out, kh, "  ", host)
 	return nil
 }
@@ -143,7 +143,7 @@ func showKey(out io.Writer, keys *keysvc.Service, ref manifest.KeyRef, indent st
 		return err
 	}
 	line := func(format string, a ...any) {
-		fmt.Fprintf(out, indent+format+"\n", a...)
+		_, _ = fmt.Fprintf(out, indent+format+"\n", a...)
 	}
 	state := d.Status
 	if notes := keyaudit.Notes(d.Row); len(notes) > 0 {
@@ -205,7 +205,7 @@ func showKey(out io.Writer, keys *keysvc.Service, ref manifest.KeyRef, indent st
 func writePins(out io.Writer, kh *knownhosts.Service, indent string, host manifest.Host) {
 	entries := kh.EntriesFor(knownHostsToken(host))
 	if len(entries) == 0 {
-		fmt.Fprintf(out, "%snot pinned (run `sshmgr knownhosts pin %s`)\n", indent, host.Alias)
+		_, _ = fmt.Fprintf(out, "%snot pinned (run `sshmgr knownhosts pin %s`)\n", indent, host.Alias)
 		return
 	}
 	for _, e := range entries {
@@ -221,7 +221,7 @@ func writePins(out io.Writer, kh *knownhosts.Service, indent string, host manife
 		if e.Marker != "" {
 			marker = e.Marker + " "
 		}
-		fmt.Fprintf(out, "%s%s%s  %s  %s  [%s, %s]\n", indent, marker, e.Token, e.Keytype, e.Fingerprint, form, owner)
+		_, _ = fmt.Fprintf(out, "%s%s%s  %s  %s  [%s, %s]\n", indent, marker, e.Token, e.Keytype, e.Fingerprint, form, owner)
 	}
 }
 

@@ -9,7 +9,7 @@ PKG     := ./cmd/sshmgr
 VERSION := $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/internal/version.Version=$(VERSION)
 
-.PHONY: help build test vet fmt fmt-check lint check e2e feature-check \
+.PHONY: help build test vet fmt fmt-check lint lint-all check e2e feature-check \
         cross dist clean doctor reconcile render rotate bundle
 
 help:  ## list targets
@@ -31,12 +31,20 @@ fmt: ## gofmt every file in place
 fmt-check: ## fail if anything is unformatted (what CI gates on)
 	@test -z "$$(gofmt -l cmd internal)" || { gofmt -l cmd internal; exit 1; }
 
-lint: ## golangci-lint, if installed
-	@command -v golangci-lint >/dev/null 2>&1 \
-		&& golangci-lint run \
-		|| echo "golangci-lint not installed - skipping (go vet still runs in 'make check')"
+lint: ## golangci-lint (install: go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest)
+	@command -v golangci-lint >/dev/null 2>&1 || { \
+		echo "golangci-lint is not installed. Install it with:"; \
+		echo "  go install github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest"; \
+		exit 1; }
+	golangci-lint run ./...
 
-check: fmt-check vet test ## everything CI gates on
+lint-all: ## lint every GOOS - one run only sees one, so build-tagged files hide
+	@for os in darwin linux windows; do \
+		echo "--- GOOS=$$os ---"; \
+		GOOS=$$os golangci-lint run ./... || exit 1; \
+	done
+
+check: fmt-check vet lint test ## everything CI gates on
 
 e2e: build ## end-to-end smoke in a throwaway sandbox
 	SSHMGR=$(CURDIR)/$(BIN) .build/e2e.sh
