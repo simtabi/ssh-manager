@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -127,12 +128,17 @@ func TestSaveIsAtomicAndReassertsMode(t *testing.T) {
 	if err := inv.Save(path); err != nil {
 		t.Fatal(err)
 	}
-	fi, err := os.Stat(path)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if fi.Mode().Perm() != 0o600 {
-		t.Errorf("mode = %o after save, want 600", fi.Mode().Perm())
+	// Windows has no mode bits to reassert - permissions there are ACLs, which
+	// internal/util/perms handles separately. The atomicity half below is the
+	// part that applies everywhere.
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if fi.Mode().Perm() != 0o600 {
+			t.Errorf("mode = %o after save, want 600", fi.Mode().Perm())
+		}
 	}
 	// No temp file left beside it, and the content is complete.
 	entries, err := os.ReadDir(dir)

@@ -2,8 +2,12 @@ package cli
 
 import (
 	"bytes"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
+
+	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
 // Every prompt and every message belongs to the command that raised it, not to
@@ -99,5 +103,29 @@ func TestCommandsWriteToTheirOwnStreams(t *testing.T) {
 		if out.Len() == 0 && errOut.Len() == 0 {
 			t.Errorf("%v wrote nothing to the command's streams; it went somewhere else", args)
 		}
+	}
+}
+
+// editHome must isolate the home on every platform. paths.home() reads
+// USERPROFILE on Windows and HOME elsewhere, so setting only HOME left the
+// whole internal/cli suite resolving ~/.ssh to the developer's real home - which
+// went unnoticed because CI had never run the Go suite on Windows. Eleven tests
+// failed there the first time it did.
+func TestEditHomeIsolatesTheHomeOnEveryPlatform(t *testing.T) {
+	p := editHome(t)
+
+	for _, v := range []string{"HOME", "USERPROFILE"} {
+		got := os.Getenv(v)
+		if got == "" {
+			t.Errorf("%s is unset; the home is not isolated on the platform that reads it", v)
+			continue
+		}
+		if !strings.HasPrefix(filepath.ToSlash(p.SSHDir), filepath.ToSlash(got)) {
+			t.Errorf("%s = %q but SSHDir is %q; they must agree", v, got, p.SSHDir)
+		}
+	}
+	// And the resolver agrees, through the same code the commands use.
+	if got := paths.Resolve(nil, "", "").SSHDir; got != p.SSHDir {
+		t.Errorf("paths.Resolve gives %q, the fixture says %q", got, p.SSHDir)
 	}
 }

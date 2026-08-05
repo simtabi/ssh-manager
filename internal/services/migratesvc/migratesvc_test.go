@@ -16,6 +16,7 @@ func setup(t *testing.T) (paths.Paths, string, string) {
 	t.Helper()
 	base := t.TempDir()
 	t.Setenv("HOME", base)
+	t.Setenv("USERPROFILE", base) // paths.home() reads this on Windows
 	cfg := filepath.Join(base, "ssh-manager")
 	legacy := filepath.Join(base, "sshmgr")
 	return paths.Paths{ConfigDir: cfg, SSHDir: filepath.Join(base, ".ssh")}, cfg, legacy

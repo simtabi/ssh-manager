@@ -27,7 +27,11 @@ func editHome(t *testing.T) paths.Paths {
 	if err := os.MkdirAll(cfg, 0o700); err != nil {
 		t.Fatal(err)
 	}
+	// Both, not just HOME: paths.home() reads USERPROFILE on Windows, so setting
+	// HOME alone left every one of these tests resolving ~/.ssh to the developer's
+	// real home - reconciling, rendering and minting keys into it.
 	t.Setenv("HOME", home)
+	t.Setenv("USERPROFILE", home)
 	t.Setenv("SSH_MANAGER_HOME", cfg)
 	// Snapshots and auto-pin both reach for the network/filesystem otherwise.
 	t.Setenv("SSH_MANAGER_AUTO_PIN", "0")

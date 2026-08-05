@@ -33,6 +33,7 @@ func TestMigrateTightensLooseLegacyModes(t *testing.T) {
 
 	// FirstLegacyHome resolves ~/.sshmgr, so point HOME at the fixture.
 	t.Setenv("HOME", base)
+	t.Setenv("USERPROFILE", base) // paths.home() reads this on Windows
 	res, err := Migrate(p, false, "20260101")
 	if err != nil {
 		t.Fatal(err)
