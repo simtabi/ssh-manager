@@ -118,3 +118,55 @@ func TestRestoreRefusesOnChecksumMismatch(t *testing.T) {
 		t.Errorf("tampered bundle should fail checksum, got %v", err)
 	}
 }
+
+// Restore overlays; it never clears the destination first.
+//
+// This is the property that stops a restore from being a way to lose keys. A
+// bundle holds what it holds; a key on disk that the bundle does not contain -
+// minted after the bundle was taken, or belonging to a profile added since -
+// must survive, because the bundle has no copy to put back.
+func TestRestoreOverlaysAndKeepsWhatItCannotReplace(t *testing.T) {
+	ssh, cfg := writeSrc(t)
+	dest := t.TempDir()
+	res, err := New(ssh, cfg, fakeCipher{}).Bundle("age1recipient", dest, "20260101-000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	// A destination that already holds a key the bundle knows nothing about,
+	// and a newer version of one it does.
+	base2 := t.TempDir()
+	ssh2, cfg2 := filepath.Join(base2, ".ssh"), filepath.Join(base2, "cfg")
+	mk := func(p, c string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(c), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	newer := filepath.Join(ssh2, "profiles", "later", "later_key-ed25519")
+	mk(newer, "MINTED-AFTER-THE-BUNDLE\n")
+	mk(filepath.Join(ssh2, "profiles", "work", "work_a-ed25519"), "STALE\n")
+
+	if _, err := New(ssh2, cfg2, fakeCipher{}).Restore(res.AgePath, "", fakeFP); err != nil {
+		t.Fatal(err)
+	}
+
+	// The key the bundle never had is still there, unchanged.
+	got, err := os.ReadFile(newer)
+	if err != nil {
+		t.Fatalf("restore deleted a key the bundle had no copy of: %v", err)
+	}
+	if string(got) != "MINTED-AFTER-THE-BUNDLE\n" {
+		t.Errorf("an untouched key was modified: %q", got)
+	}
+	// The key the bundle did have was replaced by the bundle's copy.
+	got, err = os.ReadFile(filepath.Join(ssh2, "profiles", "work", "work_a-ed25519"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != "PRIV-A\n" {
+		t.Errorf("the bundled key was not laid back over the stale one: %q", got)
+	}
+}

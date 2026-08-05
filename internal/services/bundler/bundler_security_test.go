@@ -2,6 +2,7 @@ package bundler
 
 import (
 	"archive/tar"
+	"bytes"
 	"compress/gzip"
 	"io"
 	"os"
@@ -210,5 +211,80 @@ func TestRestoreRefusesEscapingMembers(t *testing.T) {
 				t.Error("a file was written outside the managed tree")
 			}
 		})
+	}
+}
+
+// A bundle is decompressed before it is inspected, so its expanded size is
+// bounded. Without the limit a small .age file could expand to gigabytes -
+// restore reads every member into memory before touching disk, on purpose, so
+// a corrupt archive is rejected before it can destroy anything.
+func TestOversizedArchiveIsRejectedNotExpanded(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+
+	// Well past maxBundleBytes, but all zeros, so the compressed form is tiny -
+	// which is exactly the shape of a decompression bomb.
+	const size = int64(maxBundleBytes) + (8 << 20)
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "ssh/config", Mode: 0o600, Size: size, Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	chunk := make([]byte, 1<<20)
+	for written := int64(0); written < size; written += int64(len(chunk)) {
+		n := int64(len(chunk))
+		if remaining := size - written; remaining < n {
+			n = remaining
+		}
+		if _, err := tw.Write(chunk[:n]); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	// The point: a tiny file that claims to hold far more than the limit.
+	if buf.Len() > 1<<20 {
+		t.Fatalf("the fixture should compress small, got %d bytes", buf.Len())
+	}
+
+	if _, err := readTarGz(&buf); err == nil {
+		t.Error("an archive expanding past the limit should be rejected")
+	}
+}
+
+// A well-formed archive under the limit still reads, so the bound does not
+// reject ordinary bundles.
+func TestOrdinaryArchiveStillReads(t *testing.T) {
+	var buf bytes.Buffer
+	gz := gzip.NewWriter(&buf)
+	tw := tar.NewWriter(gz)
+	body := []byte("Host gh\n    HostName github.com\n")
+	if err := tw.WriteHeader(&tar.Header{
+		Name: "ssh/config", Mode: 0o600, Size: int64(len(body)), Typeflag: tar.TypeReg,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := tw.Write(body); err != nil {
+		t.Fatal(err)
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	members, err := readTarGz(&buf)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(members) != 1 {
+		t.Fatalf("got %d members, want 1", len(members))
 	}
 }

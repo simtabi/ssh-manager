@@ -259,3 +259,69 @@ func TestRollbackKeepsAKeyInPlaceThroughout(t *testing.T) {
 		t.Error("a rollback that restored the key should report committed")
 	}
 }
+
+// The abort path, which had no test. Rotation stages a new key, deploys it, and
+// commits only if every target verified. When one does not, the staged key is
+// discarded, pulled back off any target it reached, and the active key is left
+// exactly as it was - this is the safety net that stops a half-working rotation
+// from replacing a key that currently works.
+//
+// The web-panel provider deploys manually and cannot self-verify, so rotating
+// without --allow-unverified takes this path deterministically and offline.
+func TestFailedVerificationDiscardsTheStagedKey(t *testing.T) {
+	p, m, inv, keyName := setupRotated(t)
+	pdir := filepath.Join(p.SSHDir, "profiles", "vcs")
+	curPriv := filepath.Join(pdir, keyName)
+
+	before, err := os.ReadFile(curPriv)
+	if err != nil {
+		t.Fatal(err)
+	}
+	beforePub, err := os.ReadFile(curPriv + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	invBefore := len(inv.Keys)
+
+	report, err := New(p, m, inv).Rotate(keyName, false, "") // no --allow-unverified
+	if err != nil {
+		t.Fatal(err)
+	}
+	if report.Committed {
+		t.Fatal("a rotation that could not verify must not commit")
+	}
+	if !strings.Contains(report.Message, "verification failed") {
+		t.Errorf("the report should say why it stopped: %q", report.Message)
+	}
+	if !strings.Contains(report.Message, "--allow-unverified") {
+		t.Errorf("the report should name the way forward: %q", report.Message)
+	}
+
+	// The active key is untouched, byte for byte.
+	after, err := os.ReadFile(curPriv)
+	if err != nil {
+		t.Fatalf("the active key is gone after an aborted rotation: %v", err)
+	}
+	if string(after) != string(before) {
+		t.Error("an aborted rotation replaced the active private key")
+	}
+	afterPub, err := os.ReadFile(curPriv + ".pub")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(afterPub) != string(beforePub) {
+		t.Error("an aborted rotation replaced the active public key")
+	}
+
+	// Nothing was archived: there is no predecessor, because nothing was replaced.
+	if _, err := os.Stat(filepath.Join(pdir, "old", keyName)); err == nil {
+		t.Error("an aborted rotation left an archived predecessor")
+	}
+	// And the staged key is gone rather than left behind holding key material.
+	if _, err := os.Stat(filepath.Join(pdir, ".staging")); err == nil {
+		t.Error(".staging survived an abort; it holds a private key")
+	}
+	if len(inv.Keys) != invBefore {
+		t.Errorf("inventory changed on an aborted rotation: %d -> %d", invBefore, len(inv.Keys))
+	}
+}
