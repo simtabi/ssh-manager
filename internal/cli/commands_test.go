@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -23,6 +24,25 @@ import (
 // A row that needs more than a few assertions, or a fixture of its own, gets its
 // own test in its own file - as show_test.go and key_test.go already do. This
 // table is for the uniform cases, not a universal solvent.
+
+// assertMode checks a POSIX permission bit, and does nothing on Windows, where
+// permissions are ACLs rather than mode bits - internal/util/perms covers those
+// separately. Use this rather than a bare Mode().Perm() comparison: an
+// unguarded one passes everywhere it is written and fails only on the CI leg
+// nobody runs locally, which is how this file broke the Windows build once.
+func assertMode(t *testing.T, path string, want os.FileMode, why string) {
+	t.Helper()
+	if runtime.GOOS == "windows" {
+		return
+	}
+	fi, err := os.Stat(path)
+	if err != nil {
+		t.Fatalf("%s: %v", filepath.Base(path), err)
+	}
+	if got := fi.Mode().Perm(); got != want {
+		t.Errorf("%s is %04o, want %04o - %s", filepath.Base(path), got, want, why)
+	}
+}
 
 func needBin(t *testing.T, names ...string) {
 	t.Helper()
@@ -174,15 +194,12 @@ func TestCommandSurfaceC29KnownHosts(t *testing.T) {
 		run(t, "knownhosts", "init", "--all")
 
 		store := filepath.Join(p.SSHDir, "known_hosts")
-		fi, err := os.Stat(store)
-		if err != nil {
+		if _, err := os.Stat(store); err != nil {
 			t.Fatalf("no trust store was created: %v", err)
 		}
 		// 0600, not 0644: the store is an inventory of every host the user talks
 		// to, which is also why the names in it are hashed.
-		if mode := fi.Mode().Perm(); mode != 0o600 {
-			t.Errorf("known_hosts is %04o, want 0600", mode)
-		}
+		assertMode(t, store, 0o600, "the trust store lists every host the user talks to")
 		// One store, not one per profile - the v2 layout change.
 		if _, err := os.Stat(filepath.Join(p.SSHDir, "profiles", "work", "known_hosts")); err == nil {
 			t.Error("a per-profile trust store was created; there is one store now")
