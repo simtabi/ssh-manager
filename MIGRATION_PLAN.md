@@ -39,6 +39,17 @@ about what can be verified. Recorded in `OPEN_QUESTIONS.md` (Q1).
 
 ---
 
+## Corrections to Phase 1
+
+Recorded rather than quietly edited, because an inventory whose errors are
+invisible is not evidence.
+
+| # | Claim in the Phase 1 matrix | Reality | Fixed |
+|---|---|---|---|
+| 1 | K6 `internal/core/authkeys`: "No test files in package" | `authkeys_test.go` existed at the baseline commit, added in `af96ff7`. Mis-transcribed when building the matrix. | Row K6 now cites the pre-existing tests plus the ones added in Phase 3. The other 13 TODO rows were re-checked and are correct. |
+
+---
+
 ## Prior art
 
 Every migration-related artifact found in the repo, on branches, and in history.
@@ -147,9 +158,12 @@ not before.**
 
 ## Feature matrix
 
-Status legend: `PU` = PORTED_UNVERIFIED, `V` = VERIFIED, `D` = DROPPED,
-`T` = TODO. **Every row below is `PU` or `T`** — no row can be `V` before
-Phase 3 runs, per the rules.
+Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
+
+**Counts as of the latest Phase 3 batch: VERIFIED 4 · PORTED_UNVERIFIED 77 ·
+TODO 10 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
+or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
+were all green with it — the gate is `make check`.
 
 "Go tests present" in Evidence means test files exist and passed `go test ./...`
 at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
@@ -209,7 +223,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | K3 | SSH config renderer | `core/renderer.py` (132) | `internal/core/renderer` | PU | `renderer_test.go` |
 | K4 | Expiry engine | `core/expiry.py` (92) | `internal/core/expiry` | PU | `expiry_test.go` |
 | K5 | Key-name grammar | `core/key.py` (53) | `internal/core/key` | PU | `key_test.go` |
-| K6 | authorized_keys parsing | `core/authorized_keys.py` (120) | `internal/core/authkeys` | **T** | No test files in package |
+| K6 | authorized_keys parsing | `core/authorized_keys.py` (120) | `internal/core/authkeys` | **VERIFIED** | `authkeys_test.go`: `TestValidityAndBody`, `TestSameKeyAndCount`, `TestAddRemove` (pre-existing, audited); `TestLengthPrefixPastTheBlobIsRejected`, `TestTypeTokenMustMatchTheEncodedWireType`, `TestAddRemoveNormaliseFileEdges`, `TestCRLFInputIsNormalised` (added). **Bug fixed**: 32-bit integer overflow in the wire-blob bounds check — see Deviations D10 |
 
 ### Services
 
@@ -266,18 +280,18 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 |---|---|---|---|---|---|
 | U1 | Paths / XDG resolution | `util/paths.py` (143) | `internal/util/paths` | PU | `paths_test.go` |
 | U2 | Permissions | `util/perms.py` (55) | `internal/util/perms` | PU | `perms_test.go` |
-| U3 | Filesystem (atomic write, snapshots) | `util/fs.py` (155) | `internal/util/fs` | **T** | No test files |
+| U3 | Filesystem (atomic write, snapshots) | `util/fs.py` (155) | `internal/util/fs` | **VERIFIED** | `fs_test.go`: `TestWriteTextAtomicWritesContentAndMode`, `…DoesNotTranslateNewlines`, `…ReplacesAndLeavesNoResidue`, `…ReassertsModeOnAnExistingFile`, `…CreatesTheParent`, `TestTempFileNameIsSweepable`, `TestEnsureDirForcesModeOnANewAndAnExistingDir`, `TestExists` |
 | U4 | Advisory lock | `util/lock.py` (58) | `internal/util/lock` | PU | `lock_test.go` |
 | U5 | Audit log | `util/log.py` (47) | `internal/util/log` | PU | `log_test.go` |
 | U6 | Network probe | `util/net.py` (124) | `internal/util/netcheck` | PU | `netcheck_test.go` |
 | U7 | Secrets (.env loading) | `util/secrets.py` (50) | `internal/util/secrets` | PU | `secrets_test.go` |
 | U8 | Subprocess helper | `util/proc.py` (77) | *dissolved* into `os/exec` at call sites | PU | Redesign R2 |
-| U9 | HTTP+JSON client | `util/http.py` (123) | `internal/util/httpjson` | **T** | No test files |
+| U9 | HTTP+JSON client | `util/http.py` (123) | `internal/util/httpjson` | **VERIFIED** | `httpjson_test.go`: `TestRequestJSONSendsHeadersAndParsesTheBody`, `TestEmptyResponsesBecomeAnEmptyMap`, `TestRetriesIdempotentRequests`, `TestDoesNotRetryNonIdempotentRequests`, `TestClientErrorsFailImmediatelyAndReportTheBody`, `TestErrorBodyIsTruncated`, `TestRetryAfterIsHonouredAndCapped`, `TestNonJSONResponseIsAnError`, `TestRedirectPolicyRefusesDowngradeAndStripsCredentials` (4 subtests) |
 | U10 | JSON store | `util/jsonstore.py` (32) | *dissolved* into `manifest`/`inventory` Save/Load | PU | Redesign R3 |
 | U11 | Error taxonomy | `util/errors.py` (27) | Go `error` values | PU | Redesign R4 |
 | U12 | Presentation layer (rich) | `render.py` (208) | *dissolved* into per-command `Format()`/`write*Table` | PU | Redesign R5 |
 | U13 | Config-home perms enumeration | `facade.py` | `internal/util/homeperms` | PU | `homeperms_test.go` |
-| U14 | askpass helper | `facade.py` | `internal/util/askpass` | **T** | No test files |
+| U14 | askpass helper | **none** — replaces `services/keystore.py:47-56` (`-N <passphrase>` in argv) | `internal/util/askpass` | **VERIFIED** | `askpass_test.go`: `TestServingGatesOnTheExactMarker`, `TestServeWritesTheSecretAndOneNewline`, `TestEnvironCarriesTheHandshake`, `TestEnvironDropsInheritedValuesRatherThanShadowingThem`, `TestSecretTravelsOnlyInTheEnvironment`. Security deviation — see D9 |
 
 ### Cross-cutting
 
@@ -342,6 +356,8 @@ Constructs that must not be transliterated.
 | D6 | `GenericSSH` falls back to plain `ssh` when `ssh-copy-id` is absent | Windows OpenSSH does not ship `ssh-copy-id`. |
 | D7 | `doctor --strict` | CI gate for dangling keys; no Python counterpart. |
 | D8 | Key identity is `profile/key`, not a bare name | Python allowed ambiguous bare names; fixed as a correctness bug. |
+| D9 | Passphrases reach `ssh-keygen` through the askpass protocol, not `-N` | The Python passed the passphrase in argv (`keystore.py:47-56`), which is world-readable via `ps` and `/proc/<pid>/cmdline` for the life of the process. `internal/util/askpass` re-executes sshmgr as its own helper and passes the secret in the environment. |
+| D10 | `authkeys` rejects a wire-blob length prefix above `MaxInt32` | Python's ints are arbitrary-precision, so the bounds check could not overflow. Go's `int` is 32 bits on the 386/armv6/armv7 builds sshmgr ships, where the original `4+int(n) > len(blob)` wrapped negative and panicked on a crafted `authorized_keys` line. Checked in `uint64` now. |
 
 > **D4 is the most important entry here.** A large part of this migration is
 > *not* a like-for-like port: the on-disk layout was intentionally redesigned.
