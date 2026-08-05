@@ -160,8 +160,9 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 11 · PORTED_UNVERIFIED 77 ·
-TODO 3 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
+**Counts as of the latest Phase 3 batch: VERIFIED 14 · PORTED_UNVERIFIED 76 ·
+TODO 0 · DROPPED 0.** Every row that had no test at any level is now closed;
+what remains is auditing the 76 rows whose Go code predates this run. A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
 
@@ -189,9 +190,9 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | C6 | `migrate` (config home) | `cli.py:169-184` | `internal/cli/migrate.go` | PU | `internal/services/migratesvc/*_test.go` |
 | C7 | `import` | `cli.py:185-199` | `internal/cli/import.go` | PU | `internal/services/importer/importer_test.go` |
 | C8 | `reconcile [--dry-run] [--no-pin] [--passphrase]` | `cli.py:200-220` | `internal/cli/reconcile.go` | PU | `internal/services/reconciler/reconciler_test.go` |
-| C9 | `diff` | `cli.py:221-229` | `internal/cli/diff.go` | **T** | No Go test |
+| C9 | `diff` | `cli.py:221-229` | `internal/cli/diff.go` | **VERIFIED** | `mutate_test.go::TestDiffReportsDriftWithoutTouchingAnything`, `::TestDiffCountsAKeyOnceNotOncePerHost` |
 | C10 | `keygen [--force] [--yes] [--passphrase] [--no-pin]` | `cli.py:230-274` | `internal/cli/keygen.go` | PU | `reconciler_test.go::TestOverwriteIsScopedToOneProfile`; `cli/mutate_test.go::TestKeygenAcceptsAKeySelector` |
-| C11 | `deploy <key> [target]` | `cli.py:275-293` | `internal/cli/deploy.go` | **T** | No Go test for the CLI verb |
+| C11 | `deploy <key> [target]` | `cli.py:275-293` | `internal/cli/deploy.go` | **VERIFIED** | `mutate_test.go::TestDeployRefusesAnUnmintedKey`, `::TestVerbsRejectUnknownSelectors`; service layer at row S4 |
 | C12 | `list [--profile] [--provider] [--type] [--tag]` | `cli.py:294-309` | `internal/cli/list.go` | PU | `internal/services/query/query_test.go` |
 | C13 | `view <selector>` | `cli.py:310-322` | `internal/cli/view.go` | PU | `query_test.go` |
 | C14 | `load <profile>` | `cli.py:323-332` | `internal/cli/load.go` | PU | `internal/services/agent/agent_test.go` |
@@ -199,7 +200,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | C16 | `rollback <key> [--yes]` | `cli.py:354-365` | `internal/cli/rotate.go` | PU | `rotator_test.go::TestRotateThenRollback` |
 | C17 | `expiry` | `cli.py:366-375` | `internal/cli/expiry.go` | PU | `internal/core/expiry/expiry_test.go` |
 | C18 | `providers [--export]` | `cli.py:376-400` | `internal/cli/providers.go` | PU | `internal/core/providers/providers_test.go` |
-| C19 | `net [selector]` | `cli.py:401-413` | `internal/cli/net.go` | **T** | `netstat` has no test files |
+| C19 | `net [selector]` | `cli.py:401-413` | `internal/cli/net.go` | **VERIFIED** | `mutate_test.go::TestNetReportsEveryHost`, `::TestNetFailsOnlyWhenAGatedHostIsDown`; service layer at row S21 |
 | C20 | `validate [selector]` | `cli.py:414-428` | `internal/cli/validate.go` | PU | `internal/services/validate/validate_test.go` |
 | C21 | `audit [--notify]` | `cli.py:429-437` | `internal/cli/audit.go` | PU | `internal/services/notifier/notifier_test.go` |
 | C22 | `bundle` | `cli.py:438-453` | `internal/cli/bundle.go` | PU | `internal/services/bundler/bundler_test.go` |
