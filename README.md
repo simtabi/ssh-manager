@@ -44,18 +44,18 @@ sshmgr diff                  # manifest vs. on-disk reality
 # reconcile auto-pins reachable hosts' known_hosts; for a VPN-gated host, connect
 # the VPN then pin it (fingerprint-verified). doctor flags any host still unpinned.
 sshmgr knownhosts pin --all        # review fingerprints + pin (needed for VPN-gated hosts)
-sshmgr deploy work_unc-ed25519     # install the pubkey on its target (ssh-copy-id/gh/REST/manual)
+sshmgr deploy work_hpc-ed25519     # install the pubkey on its target (ssh-copy-id/gh/REST/manual)
 sshmgr validate                    # check every keypair: parses, pub matches priv, perms ok
 sshmgr providers                   # configured providers + which have credentials set
 sshmgr list --type vcs             # filterable tree across profiles
 sshmgr audit                       # where each key is deployed + expiry (+ recent activity)
 sshmgr expiry                      # per-key rotation-age table
-sshmgr rotate work_unc-ed25519     # zero-downtime staged rotation (single-old archive)
+sshmgr rotate work_hpc-ed25519     # zero-downtime staged rotation (single-old archive)
 sshmgr notify install              # scheduled desktop reminders before keys are due
 sshmgr bundle -o ~/Backups         # age-encrypted backup (keys + state; never .env)
 sshmgr restore ~/Backups/ssh-manager-*.age   # true recovery of the same keys on a new machine
 sshmgr snapshots restore           # one-command undo of ~/.ssh from a local backup
-sshmgr recover work_unc-ed25519    # break-glass: snippet to paste into a locked-out console
+sshmgr recover work_hpc-ed25519    # break-glass: snippet to paste into a locked-out console
 sshmgr tui                         # interactive arrow-key UI over everything above
 ```
 

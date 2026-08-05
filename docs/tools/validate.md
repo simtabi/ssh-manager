@@ -24,7 +24,7 @@ without the passphrase, but the key is valid.
 ```sh
 sshmgr validate                     # all keys
 sshmgr validate work                # one profile
-sshmgr validate work_unc-ed25519    # one key
+sshmgr validate work_hpc-ed25519    # one key
 ```
 
 Example: a corrupted `.pub`, a mismatched pair, or loose perms each surface as a

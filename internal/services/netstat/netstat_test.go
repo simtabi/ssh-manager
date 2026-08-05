@@ -175,7 +175,7 @@ func TestVPNMetadataIsCarriedThrough(t *testing.T) {
 	  "version": 1, "defaults": {"key_type": "ed25519"},
 	  "profiles": {"work": {"key_scope": "per_service", "hosts": [
 	    {"alias": "gated", "hostname": "127.0.0.1", "user": "u", "port": %d,
-	     "requires_vpn": true, "vpn_name": "UNC VPN", "vpn_url": "https://vpn.unc.edu"}
+	     "requires_vpn": true, "vpn_name": "Campus VPN", "vpn_url": "https://vpn.example.edu"}
 	  ]}}
 	}`, closedPort(t))
 	var m manifest.Manifest
@@ -190,7 +190,7 @@ func TestVPNMetadataIsCarriedThrough(t *testing.T) {
 		t.Fatalf("got %d rows", len(rows))
 	}
 	st := rows[0].Status
-	if !st.RequiresVPN || st.VPNName != "UNC VPN" || st.VPNURL != "https://vpn.unc.edu" {
+	if !st.RequiresVPN || st.VPNName != "Campus VPN" || st.VPNURL != "https://vpn.example.edu" {
 		t.Errorf("VPN metadata lost: %+v", st)
 	}
 	if msg := st.Message(); msg == "" {

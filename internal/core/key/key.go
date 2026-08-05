@@ -71,7 +71,7 @@ func AlgoOf(name string) (string, error) {
 }
 
 // DeriveKeyName derives a canonical key name from a profile + host alias. The
-// alias is the service token (e.g. "sc.its.unc.edu" -> "sc-its-unc-edu").
+// alias is the service token (e.g. "hpc.example.edu" -> "sc-its-hpc-edu").
 func DeriveKeyName(profile, alias, algo string) (string, error) {
 	return BuildKeyName(profile, alias, algo)
 }

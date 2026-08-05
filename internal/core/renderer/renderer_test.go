@@ -97,10 +97,10 @@ func TestRenderAllInline(t *testing.T) {
 
 	// A representative host block: alias, port only when non-default, identity,
 	// IdentitiesOnly bound next to it.
-	if !strings.Contains(got, "Host unc\n    HostName sc.its.unc.edu\n    User uncgit\n    Port 443\n"+
-		"    IdentityFile ~/.ssh/profiles/work/work_unc-ed25519\n    IdentitiesOnly yes\n"+
+	if !strings.Contains(got, "Host hpc\n    HostName hpc.example.edu\n    User researcher\n    Port 443\n"+
+		"    IdentityFile ~/.ssh/profiles/work/work_hpc-ed25519\n    IdentitiesOnly yes\n"+
 		"    UserKnownHostsFile ~/.ssh/known_hosts\n") {
-		t.Errorf("work/unc host block did not render as expected:\n%s", got)
+		t.Errorf("work/hpc host block did not render as expected:\n%s", got)
 	}
 	if strings.Contains(got, "Host github-personal\n    HostName github.com\n    User git\n    Port") {
 		t.Error("default port 22 should not be rendered")

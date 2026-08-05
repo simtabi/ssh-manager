@@ -8,8 +8,8 @@ import (
 func TestNormalizeSegment(t *testing.T) {
 	cases := map[string]string{
 		"Work":            "work",
-		"oribi-db-psql":   "oribi-db-psql",
-		"sc.its.unc.edu":  "sc-its-unc-edu",
+		"app-db-psql":     "app-db-psql",
+		"hpc.example.edu": "hpc-example-edu",
 		"a__b!!c":         "a-b-c",
 		"--Hi--":          "hi",
 		"UPPER_Snake":     "upper-snake",
@@ -26,9 +26,9 @@ func TestBuildKeyName(t *testing.T) {
 	cases := []struct {
 		profile, service, algo, want string
 	}{
-		{"work", "unc", "", "work_unc-ed25519"},
-		{"work", "sc.its.unc.edu", "", "work_sc-its-unc-edu-ed25519"},
-		{"dev-team", "oribi web", "", "devteam_oribi-web-ed25519"},
+		{"work", "hpc", "", "work_hpc-ed25519"},
+		{"work", "hpc.example.edu", "", "work_hpc-example-edu-ed25519"},
+		{"dev-team", "app web", "", "devteam_app-web-ed25519"},
 		{"work", "box", "rsa", "work_box-rsa"},
 	}
 	for _, c := range cases {
@@ -50,9 +50,9 @@ func TestBuildKeyName(t *testing.T) {
 }
 
 func TestSplitKeyName(t *testing.T) {
-	p, r, err := SplitKeyName("work_unc-ed25519")
-	if err != nil || p != "work" || r != "unc-ed25519" {
-		t.Errorf("SplitKeyName = (%q,%q,%v), want (work, unc-ed25519, nil)", p, r, err)
+	p, r, err := SplitKeyName("work_hpc-ed25519")
+	if err != nil || p != "work" || r != "hpc-ed25519" {
+		t.Errorf("SplitKeyName = (%q,%q,%v), want (work, hpc-ed25519, nil)", p, r, err)
 	}
 	for _, bad := range []string{"nounderscore", "trailing_", ""} {
 		if _, _, err := SplitKeyName(bad); err == nil {
@@ -63,8 +63,8 @@ func TestSplitKeyName(t *testing.T) {
 
 func TestAlgoOf(t *testing.T) {
 	cases := map[string]string{
-		"work_unc-ed25519":    "ed25519",
-		"work_unc-ed25519-sk": "ed25519-sk",
+		"work_hpc-ed25519":    "ed25519",
+		"work_hpc-ed25519-sk": "ed25519-sk",
 		"work_box-rsa":        "rsa",
 		"work_foo":            "ed25519", // no recognized suffix -> default
 	}
@@ -88,8 +88,8 @@ func TestAlgoOf(t *testing.T) {
 // python-final:src/ssh_manager/core/key.py::derive_key_name.
 func TestDeriveKeyNameFromRealAliases(t *testing.T) {
 	cases := []struct{ profile, alias, want string }{
-		{"work", "sc.its.unc.edu", "work_sc-its-unc-edu-ed25519"},
-		{"development", "oribi-db-psql", "development_oribi-db-psql-ed25519"},
+		{"work", "hpc.example.edu", "work_hpc-example-edu-ed25519"},
+		{"development", "app-db-psql", "development_app-db-psql-ed25519"},
 		{"personal", "github", "personal_github-ed25519"},
 		// A profile reduces to one token: the underscore is the profile
 		// separator, so a dash inside it would make the name ambiguous.

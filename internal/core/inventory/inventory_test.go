@@ -47,8 +47,8 @@ func TestLoadDefaultsAndForbid(t *testing.T) {
 	dir := t.TempDir()
 	p := filepath.Join(dir, "inventory.json")
 	_ = os.WriteFile(p, []byte(`{"version":1,"keys":{"SHA256:abc":{
-		"profile":"work","path":"~/.ssh/profiles/work/work_unc-ed25519",
-		"created":"2026-01-01","deployments":[{"target":"unc","method":"ssh-copy-id","verified":true}]}}}`), 0o600)
+		"profile":"work","path":"~/.ssh/profiles/work/work_hpc-ed25519",
+		"created":"2026-01-01","deployments":[{"target":"hpc","method":"ssh-copy-id","verified":true}]}}}`), 0o600)
 	inv, err := Load(p)
 	if err != nil {
 		t.Fatal(err)
@@ -80,8 +80,8 @@ func TestNeedsRedeploy(t *testing.T) {
 
 func TestIsArchivedPath(t *testing.T) {
 	cases := map[string]bool{
-		"~/.ssh/profiles/work/old/work_unc-ed25519": true,
-		"~/.ssh/profiles/work/work_unc-ed25519":     false,
+		"~/.ssh/profiles/work/old/work_hpc-ed25519": true,
+		"~/.ssh/profiles/work/work_hpc-ed25519":     false,
 		"~/.ssh/profiles/old/old_box-ed25519":       false, // profile literally named "old"
 		"profiles/dev/old/k":                        true,
 	}

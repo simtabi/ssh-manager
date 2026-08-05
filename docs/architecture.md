@@ -107,8 +107,8 @@ identity sits under that identity's profile dir - and nothing crosses profiles:
     ├── work/
     │   ├── config                 # 600 - this profile's Host blocks
     │   ├── known_hosts            # 644 - this profile's OWN host-key trust store
-    │   ├── work_unc-ed25519       # 600 - private key, never leaves the machine
-    │   ├── work_unc-ed25519.pub   # 644 - public key
+    │   ├── work_hpc-ed25519       # 600 - private key, never leaves the machine
+    │   ├── work_hpc-ed25519.pub   # 644 - public key
     │   ├── old/                   # ≤1 archived predecessor per key (rotation)
     │   └── .staging/              # transient, only mid-rotation
     ├── personal/  ...  (github.com via its own key + known_hosts)

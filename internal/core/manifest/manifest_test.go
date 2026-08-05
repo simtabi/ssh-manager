@@ -45,9 +45,9 @@ func TestLoadRealManifest(t *testing.T) {
 		byKey[r.KeyName] = r.IdentityFile
 	}
 	want := map[string]string{
-		"work_unc-ed25519":                  "~/.ssh/profiles/work/work_unc-ed25519",
-		"personal_github-ed25519":           "~/.ssh/profiles/personal/personal_github-ed25519",
-		"development_oribi-db-psql-ed25519": "~/.ssh/profiles/development/development_oribi-db-psql-ed25519",
+		"work_hpc-ed25519":                "~/.ssh/profiles/work/work_hpc-ed25519",
+		"personal_github-ed25519":         "~/.ssh/profiles/personal/personal_github-ed25519",
+		"development_app-db-psql-ed25519": "~/.ssh/profiles/development/development_app-db-psql-ed25519",
 	}
 	for k, v := range want {
 		if byKey[k] != v {
@@ -352,10 +352,10 @@ func TestSharedAndPerServiceResolution(t *testing.T) {
 		}
 	}
 	// per_service with no explicit key_name derives from profile+alias
-	m2, _ := loadJSON(t, `{"profiles":{"work":{"hosts":[{"alias":"sc.its.unc.edu","hostname":"h","user":"u"}]}}}`)
+	m2, _ := loadJSON(t, `{"profiles":{"work":{"hosts":[{"alias":"hpc.example.edu","hostname":"h","user":"u"}]}}}`)
 	r2, _ := m2.IterResolved()
-	if r2[0].KeyName != "work_sc-its-unc-edu-ed25519" {
-		t.Errorf("derived key = %q, want work_sc-its-unc-edu-ed25519", r2[0].KeyName)
+	if r2[0].KeyName != "work_hpc-example-edu-ed25519" {
+		t.Errorf("derived key = %q, want work_hpc-example-edu-ed25519", r2[0].KeyName)
 	}
 }
 

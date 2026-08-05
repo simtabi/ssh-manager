@@ -483,7 +483,7 @@ so it builds on a stable service layer from the earlier phases.
 - Re-add the simtabi public key to its GitHub account (`github-simtabi`
   currently fails auth — key not deployed/removed from that account, not a
   tool bug).
-- Pin `[sc.its.unc.edu]:443` once on the UNC VPN (the one genuinely unpinned
+- Pin `[hpc.example.edu]:443` once on the Campus VPN (the one genuinely unpinned
   host on this machine).
 - Backfill `deployments` for the three working GitHub identities so `audit`
   stops reporting all seven keys as needs-redeploy.

@@ -50,13 +50,13 @@ ck  "migrate (no legacy) is clean"     "\"$S\" migrate 2>&1 | grep -qi 'no legac
 
 section "reconcile / keygen / config"
 ck  "reconcile --dry-run (no writes)"  "\"$S\" reconcile --dry-run >/dev/null 2>&1 && [ ! -d '$SSH/profiles' ]"
-ck  "reconcile builds ~/.ssh"          "\"$S\" reconcile >/dev/null 2>&1 && [ -f '$SSH/profiles/work/work_unc-ed25519' ]"
+ck  "reconcile builds ~/.ssh"          "\"$S\" reconcile >/dev/null 2>&1 && [ -f '$SSH/profiles/work/work_hpc-ed25519' ]"
 ck  "reconcile mints all profiles"     "[ -f '$SSH/profiles/personal/personal_github-ed25519' ] && [ -f '$SSH/profiles/simtabi/simtabi_github-ed25519' ]"
 ck  "reconcile idempotent (re-mint none)" "\"$S\" reconcile 2>&1 | grep -qi 'present'"
 ck  "keygen warns on existing"         "\"$S\" keygen work 2>&1 | grep -qi 'exist\\|present'"
-FPB=$(ssh-keygen -lf "$SSH/profiles/work/work_unc-ed25519" | awk '{print $2}')
+FPB=$(ssh-keygen -lf "$SSH/profiles/work/work_hpc-ed25519" | awk '{print $2}')
 "$S" keygen work --force --yes >/dev/null 2>&1
-FPA=$(ssh-keygen -lf "$SSH/profiles/work/work_unc-ed25519" | awk '{print $2}')
+FPA=$(ssh-keygen -lf "$SSH/profiles/work/work_hpc-ed25519" | awk '{print $2}')
 ck  "keygen --force regenerates"       "[ '$FPB' != '$FPA' ]"
 ck  "config check in sync"             "\"$S\" config check"
 ck  "config render re-renders"         "\"$S\" config render >/dev/null 2>&1 && [ -f '$SSH/config' ]"
@@ -68,37 +68,37 @@ ck  "render fixes drift"               "\"$S\" config render >/dev/null 2>&1 && 
 section "query: list / view / diff / validate / providers / net / expiry / audit"
 ck  "list (tree)"                      "sx list | grep -q work"
 ck  "list --type vcs"                  "sx list --type vcs | grep -q github-simtabi"
-ck  "list --tag db"                    "sx list --tag db | grep -q oribi-db-maria"
-ck  "list --profile work"             "sx list --profile work | grep -q unc"
-ck  "view host (fingerprint+status)"   "sx view unc | grep -qi 'fingerprint'"
-ck  "view shows VPN note (unc)"        "sx view unc | grep -qi 'vpn'"
+ck  "list --tag db"                    "sx list --tag db | grep -q app-db-maria"
+ck  "list --profile work"             "sx list --profile work | grep -q hpc"
+ck  "view host (fingerprint+status)"   "sx view hpc | grep -qi 'fingerprint'"
+ck  "view shows VPN note (hpc)"        "sx view hpc | grep -qi 'vpn'"
 ck  "diff (manifest vs disk)"          "sx diff | grep -qi 'present\\|config'"
 ck  "validate all ok"                  "\"$S\" validate"
-cp "$SSH/profiles/work/work_unc-ed25519.pub" "$SBX/p.bak"; printf 'junk\n' > "$SSH/profiles/work/work_unc-ed25519.pub"
-ckn "validate catches a broken pair"   "\"$S\" validate work_unc-ed25519 >/dev/null 2>&1"
-mv "$SBX/p.bak" "$SSH/profiles/work/work_unc-ed25519.pub"
+cp "$SSH/profiles/work/work_hpc-ed25519.pub" "$SBX/p.bak"; printf 'junk\n' > "$SSH/profiles/work/work_hpc-ed25519.pub"
+ckn "validate catches a broken pair"   "\"$S\" validate work_hpc-ed25519 >/dev/null 2>&1"
+mv "$SBX/p.bak" "$SSH/profiles/work/work_hpc-ed25519.pub"
 ck  "validate ok again"                "\"$S\" validate"
 ck  "providers lists catalog"          "sx providers | grep -q digitalocean"
 ck  "providers shows credential state" "sx providers | grep -qiE 'set|none|n/a'"
 ck  "providers --export writes a file" "\"$S\" providers --export >/dev/null 2>&1 && [ -f '$SSH_MANAGER_HOME/providers.json' ]"
-ck  "net status table"                 "sx net | grep -qi 'unc'"
+ck  "net status table"                 "sx net | grep -qi 'hpc'"
 ck  "net flags requires_vpn host"      "sx net | grep -qi 'vpn'"
-ckn "net exits!=0 when vpn host down"  "\"$S\" net unc >/dev/null 2>&1"
+ckn "net exits!=0 when vpn host down"  "\"$S\" net hpc >/dev/null 2>&1"
 ck  "expiry table (fresh -> ok)"       "sx expiry | grep -qi 'ok'"
 ck  "audit deployments section"        "sx audit | grep -qi 'deployments'"
 
 section "deploy / rotate / rollback (network fail-fast + VPN aware)"
-ckn "deploy unreachable vpn host exits!=0" "\"$S\" deploy work_unc-ed25519 >/dev/null 2>&1"
-ck  "deploy surfaces VPN url in msg"   "sx deploy work_unc-ed25519 2>&1 | grep -qi 'vpn.unc.edu'"
-ckn "rotate vpn host fails fast"       "timeout_guard() { \"\$@\"; }; \"$S\" rotate work_unc-ed25519 --yes --allow-unverified >/dev/null 2>&1"
-ck  "rotate msg names the VPN"         "sx rotate work_unc-ed25519 --yes --allow-unverified 2>&1 | grep -qi 'requires a VPN'"
-ck  "rotate did NOT archive (aborted)" "[ ! -f '$SSH/profiles/work/old/work_unc-ed25519' ]"
+ckn "deploy unreachable vpn host exits!=0" "\"$S\" deploy work_hpc-ed25519 >/dev/null 2>&1"
+ck  "deploy surfaces VPN url in msg"   "sx deploy work_hpc-ed25519 2>&1 | grep -qi 'vpn.example.edu'"
+ckn "rotate vpn host fails fast"       "timeout_guard() { \"\$@\"; }; \"$S\" rotate work_hpc-ed25519 --yes --allow-unverified >/dev/null 2>&1"
+ck  "rotate msg names the VPN"         "sx rotate work_hpc-ed25519 --yes --allow-unverified 2>&1 | grep -qi 'requires a VPN'"
+ck  "rotate did NOT archive (aborted)" "[ ! -f '$SSH/profiles/work/old/work_hpc-ed25519' ]"
 
 section "snapshots (reversible ~/.ssh backups)"
 "$S" config render >/dev/null 2>&1     # a mutating op -> snapshot
 ck  "snapshots list shows a snapshot"  "sx snapshots list | grep -q 'ssh-'"
-rm -f "$SSH/profiles/work/work_unc-ed25519"
-ck  "snapshots restore recovers tree"  "printf 'y\n' | \"$S\" snapshots restore >/dev/null 2>&1; [ -f '$SSH/profiles/work/work_unc-ed25519' ]"
+rm -f "$SSH/profiles/work/work_hpc-ed25519"
+ck  "snapshots restore recovers tree"  "printf 'y\n' | \"$S\" snapshots restore >/dev/null 2>&1; [ -f '$SSH/profiles/work/work_hpc-ed25519' ]"
 ck  "snapshots prune keeps newest"     "\"$S\" snapshots prune >/dev/null 2>&1 || true; true"
 
 section "profile / host editing (CRUD + revoke/prune)"
@@ -111,7 +111,7 @@ ck  "profile delete removes it"        "\"$S\" profile delete demo --yes >/dev/n
 section "load (agent) / knownhosts / recover / notify"
 ck  "load is callable (agent add)"     "\"$S\" load work >/dev/null 2>&1 || true; true"
 ck  "knownhosts pin --help/dry surface" "\"$S\" knownhosts pin --help >/dev/null 2>&1"
-ck  "recover <key> snippet has authorized_keys" "sx recover work_unc-ed25519 | grep -q authorized_keys"
+ck  "recover <key> snippet has authorized_keys" "sx recover work_hpc-ed25519 | grep -q authorized_keys"
 ck  "recover (full tool) has /dev/tty" "sx recover | grep -q '/dev/tty'"
 ck  "notify test is callable"          "\"$S\" notify test >/dev/null 2>&1 || true; true"
 
@@ -124,9 +124,9 @@ if command -v age >/dev/null 2>&1 && command -v age-keygen >/dev/null 2>&1; then
   ck "bundle creates an age file"      "head -c 21 '$B' | grep -q 'age-encryption'"
   age -d -i "$SBX/id.txt" "$B" 2>/dev/null | tar tz 2>/dev/null > "$SBX/L"
   ck "bundle EXCLUDES .env"            "! grep -qE '(^|/)\\.env$' '$SBX/L'"
-  rm -f "$SSH/profiles/work/work_unc-ed25519" "$SSH/profiles/work/work_unc-ed25519.pub"
+  rm -f "$SSH/profiles/work/work_hpc-ed25519" "$SSH/profiles/work/work_hpc-ed25519.pub"
   printf 'y\n' | "$S" restore "$B" -i "$SBX/id.txt" >/dev/null 2>&1
-  ck "restore recovers the same key"   "[ -f '$SSH/profiles/work/work_unc-ed25519' ]"
+  ck "restore recovers the same key"   "[ -f '$SSH/profiles/work/work_hpc-ed25519' ]"
 else
   ckn "bundle without age -> clear error" "SSH_MANAGER_AGE_RECIPIENT=age1x \"$S\" bundle >/dev/null 2>&1"
 fi

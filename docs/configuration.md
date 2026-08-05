@@ -80,7 +80,7 @@ guarantees each alias offers only its own key and trusts only its own host keys.
 > identified by the **key**, not the SSH username - so a custom `user` (e.g.
 > `imani_git`) breaks any plain `git@host:...` remote. Prefix the **alias** to
 > separate identities; never prefix the `user`. (For real login servers like a
-> VPS or a university host, `user` *is* the real account, e.g. `ploi`, `uncgit`.)
+> VPS or a university host, `user` *is* the real account, e.g. `ploi`, `researcher`.)
 
 ## Manifest reference
 
@@ -94,13 +94,13 @@ guarantees each alias offers only its own key and trusts only its own host keys.
       "key_name": null,                    // set only when key_scope == "shared"
       "hosts": [
         {
-          "alias": "unc",                  // the ssh Host alias you type
-          "hostname": "sc.its.unc.edu",    // real host
-          "user": "uncgit",
+          "alias": "hpc",                  // the ssh Host alias you type
+          "hostname": "hpc.example.edu",    // real host
+          "user": "researcher",
           "port": 443,                      // default 22
           "provider": "generic-ssh",       // adapter name from providers.json (optional)
           "token_env": "GH_TOKEN_WORK",    // env var holding this host's provider token (optional)
-          "key_name": "work_unc-ed25519",  // omit on shared-scope profiles
+          "key_name": "work_hpc-ed25519",  // omit on shared-scope profiles
           "tags": ["app"],                  // free-form, used by `list --tag`
           "requires_vpn": false,            // true if this host is only reachable over a VPN
           "vpn_name": null,                 // which VPN (shown in the reachability hint)
@@ -168,9 +168,9 @@ For an option the schema doesn't model, add a host-level `raw_options` block
 rather than hand-editing the file:
 
 ```json
-{"alias": "unc", "hostname": "sc.its.unc.edu", "user": "uncgit", "port": 443,
- "key_name": "work_unc-ed25519",
- "raw_options": {"ProxyJump": "bastion.unc.edu"}}
+{"alias": "hpc", "hostname": "hpc.example.edu", "user": "researcher", "port": 443,
+ "key_name": "work_hpc-ed25519",
+ "raw_options": {"ProxyJump": "bastion.hpc.edu"}}
 ```
 
 Because the manifest is rendered verbatim into `~/.ssh/config` and its names become

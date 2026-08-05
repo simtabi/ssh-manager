@@ -28,14 +28,14 @@
       "key_scope": "per_service",
       "hosts": [
         {
-          "alias": "unc",
-          "hostname": "sc.its.unc.edu",
-          "user": "uncgit",
+          "alias": "hpc",
+          "hostname": "hpc.example.edu",
+          "user": "researcher",
           "port": 443,
-          "key_name": "work_unc-ed25519",
+          "key_name": "work_hpc-ed25519",
           "requires_vpn": true,
-          "vpn_name": "UNC VPN",
-          "vpn_url": "https://vpn.unc.edu"
+          "vpn_name": "Campus VPN",
+          "vpn_url": "https://vpn.example.edu"
         }
       ]
     },
@@ -68,31 +68,31 @@
       "key_scope": "per_service",
       "hosts": [
         {
-          "alias": "oribi-web",
-          "hostname": "143.198.186.131",
-          "user": "ploi",
+          "alias": "app-web",
+          "hostname": "192.0.2.10",
+          "user": "deploy",
           "provider": "ploi",
-          "key_name": "development_oribi-web-ed25519",
+          "key_name": "development_app-web-ed25519",
           "tags": [
             "app"
           ]
         },
         {
-          "alias": "oribi-db-maria",
-          "hostname": "161.35.104.205",
-          "user": "ploi",
+          "alias": "app-db-maria",
+          "hostname": "198.51.100.20",
+          "user": "deploy",
           "provider": "ploi",
-          "key_name": "development_oribi-db-maria-ed25519",
+          "key_name": "development_app-db-maria-ed25519",
           "tags": [
             "db"
           ]
         },
         {
-          "alias": "oribi-db-psql",
-          "hostname": "167.71.19.80",
-          "user": "ploi",
+          "alias": "app-db-psql",
+          "hostname": "203.0.113.30",
+          "user": "deploy",
           "provider": "ploi",
-          "key_name": "development_oribi-db-psql-ed25519",
+          "key_name": "development_app-db-psql-ed25519",
           "tags": [
             "db"
           ]
