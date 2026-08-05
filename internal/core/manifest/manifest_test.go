@@ -406,3 +406,171 @@ func index(s, sub string) int {
 	}
 	return -1
 }
+
+// Control characters are refused everywhere a value reaches the rendered config.
+// python-final:src/ssh_manager/core/manifest.py::_reject_control.
+//
+// This is config injection, not tidiness. Every one of these fields is written
+// into ~/.ssh/config as `Keyword value`, so a newline in a hostname would end
+// the line and start a new directive - a manifest entry could add ProxyCommand
+// to a host block that never declared one.
+func TestControlCharactersAreRejectedEverywhere(t *testing.T) {
+	injections := map[string]string{
+		"newline":         "evil.com\\n    ProxyCommand touch /tmp/pwned",
+		"carriage return": "evil.com\\r    ProxyCommand x",
+		"NUL":             "evil.com\\u0000x",
+		"bell":            "evil.com\\u0007",
+		"escape":          "evil.com\\u001b[31m",
+	}
+	for name, payload := range injections {
+		// hostname
+		if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[
+			{"alias":"a","hostname":"`+payload+`","user":"u"}]}}}`); err == nil {
+			t.Errorf("%s in hostname was accepted", name)
+		}
+		// user
+		if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[
+			{"alias":"a","hostname":"h","user":"`+payload+`"}]}}}`); err == nil {
+			t.Errorf("%s in user was accepted", name)
+		}
+		// alias - becomes the `Host` line itself
+		if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[
+			{"alias":"`+payload+`","hostname":"h","user":"u"}]}}}`); err == nil {
+			t.Errorf("%s in alias was accepted", name)
+		}
+	}
+}
+
+// hostname and user must not start with a dash or contain whitespace: both are
+// passed to ssh, where a leading dash reads as a flag and whitespace splits the
+// argument. python-final:...::_safe_value.
+func TestHostnameAndUserRejectFlagsAndWhitespace(t *testing.T) {
+	bad := map[string]string{
+		"leading dash": "-oProxyCommand=x",
+		"space":        "host name",
+		"tab":          "host\\tname",
+	}
+	for name, value := range bad {
+		if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[
+			{"alias":"a","hostname":"`+value+`","user":"u"}]}}}`); err == nil {
+			t.Errorf("%s in hostname was accepted", name)
+		}
+		if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[
+			{"alias":"a","hostname":"h","user":"`+value+`"}]}}}`); err == nil {
+			t.Errorf("%s in user was accepted", name)
+		}
+	}
+	// A dash inside the value is fine - plenty of real hostnames have one.
+	if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[
+		{"alias":"a","hostname":"my-host.example.com","user":"deploy-bot"}]}}}`); err != nil {
+		t.Errorf("an ordinary hostname was rejected: %v", err)
+	}
+}
+
+// A profile name becomes a directory under profiles/, so it is held to the same
+// rules as a key name.
+func TestProfileNamesAreSafePathSegments(t *testing.T) {
+	for _, bad := range []string{"..", ".", "a/b", `a\b`, "*", "-lead", "with space", ""} {
+		js := `{"profiles":{"` + bad + `":{"key_scope":"per_service","hosts":[]}}}`
+		if _, err := loadJSON(t, js); err == nil {
+			t.Errorf("profile name %q was accepted; it becomes a directory", bad)
+		}
+	}
+	if _, err := loadJSON(t, `{"profiles":{"ad-elsaiq":{"key_scope":"per_service","hosts":[]}}}`); err != nil {
+		t.Errorf("an ordinary profile name was rejected: %v", err)
+	}
+}
+
+// Options that can run a command or pull in more config are refused in both
+// places they can appear - the per-host map and the global one. Only raw_options
+// was covered before.
+func TestDangerousOptionsRejectedInGlobalOptionsToo(t *testing.T) {
+	for _, opt := range []string{"ProxyCommand", "LocalCommand", "Match", "Include",
+		"KnownHostsCommand", "PKCS11Provider", "RemoteCommand", "PermitLocalCommand"} {
+		global := `{"defaults":{"global_options":{"` + opt + `":"x"}},"profiles":{}}`
+		if _, err := loadJSON(t, global); err == nil {
+			t.Errorf("%s was accepted in global_options", opt)
+		}
+		host := `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"u",
+			"raw_options":{"` + opt + `":"x"}}]}}}`
+		if _, err := loadJSON(t, host); err == nil {
+			t.Errorf("%s was accepted in raw_options", opt)
+		}
+	}
+	// Case-insensitively, since ssh keywords are.
+	if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"u",
+		"raw_options":{"pRoXyCoMmAnD":"x"}}]}}}`); err == nil {
+		t.Error("a differently-cased ProxyCommand was accepted")
+	}
+	// ProxyJump is a host, not a command, and stays allowed.
+	if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"u",
+		"raw_options":{"ProxyJump":"bastion"}}]}}}`); err != nil {
+		t.Errorf("ProxyJump should be allowed: %v", err)
+	}
+}
+
+// Option values are stringified the way pydantic did, because they are written
+// into the config verbatim. python-final:...::_stringify_raw.
+func TestOptionValuesAreStringifiedLikePydantic(t *testing.T) {
+	m, err := loadJSON(t, `{"defaults":{"global_options":{
+		"ServerAliveInterval":60,"Compression":true,"BatchMode":false,"Nothing":null}},
+		"profiles":{}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"ServerAliveInterval": "60",
+		"Compression":         "True",  // Python str(True)
+		"BatchMode":           "False", // Python str(False)
+		"Nothing":             "None",  // Python str(None)
+	}
+	for k, v := range want {
+		if got := m.Defaults.GlobalOptions.Get(k); got != v {
+			t.Errorf("%s = %q, want %q", k, got, v)
+		}
+	}
+}
+
+// The deliberate relaxation, and why it is safe.
+//
+// python-final:src/ssh_manager/core/manifest.py::_v_key_name_uniqueness
+// *rejected* a key_name used by two profiles at load. Its stated reason:
+// "rotate/deploy/rollback resolve a key_name back to its host(s) and assume
+// they all share ONE profile dir; if two profiles reused a name, rotating one
+// would mint into one profile's dir yet deploy to the other profile's hosts -
+// orphaning/locking them out."
+//
+// v2 removes the ban because it removed the hazard: a key is identified by
+// KeyRef{profile,key}, and every lifecycle op resolves through it, so a name
+// shared by two profiles never selects the wrong directory. This is a widening
+// - a manifest Python refused now loads, and nothing that loaded before breaks.
+// Recorded as deviation D8.
+func TestSharedKeyNameLoadsAndStaysProfileScoped(t *testing.T) {
+	m, err := loadJSON(t, dupKeyManifest)
+	if err != nil {
+		t.Fatalf("a name shared by two profiles must load in v2: %v", err)
+	}
+
+	// The hazard the Python named: resolving the shared name must never hand
+	// back one profile's hosts under the other profile's directory.
+	for _, profile := range []string{"personal", "adelsaiq"} {
+		ref := KeyRef{Profile: profile, KeyName: "imani_github-ed25519"}
+		hosts, err := m.HostsForKey(ref)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if len(hosts) != 1 {
+			t.Fatalf("%s: got %d hosts, want only its own", profile, len(hosts))
+		}
+		want := "~/.ssh/profiles/" + profile + "/imani_github-ed25519"
+		if got := m.IdentityFile(ref.Profile, ref.KeyName); got != want {
+			t.Errorf("%s identity = %q, want %q", profile, got, want)
+		}
+	}
+
+	// And the bare name is refused as a selector rather than silently picking
+	// one, which is what makes the relaxation safe at the command surface.
+	if _, err := m.ResolveKeySelector("imani_github-ed25519"); err == nil {
+		t.Error("a bare name shared by two profiles must not resolve silently")
+	}
+}
