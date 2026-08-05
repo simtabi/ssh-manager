@@ -65,3 +65,69 @@ func TestSidecarsAndRotatedLogsAreCovered(t *testing.T) {
 		}
 	}
 }
+
+// Every directory in the config home is owner-only, and the two files that are
+// secrets in the plainest sense are covered by name: age-identity.txt decrypts
+// every bundle the user has ever taken, and .env holds the provider tokens.
+func TestDirectoriesAndTheAgeIdentityAreCovered(t *testing.T) {
+	dir := t.TempDir()
+	p := paths.Paths{SSHDir: filepath.Join(dir, ".ssh"), ConfigDir: dir}
+	modes := map[string]os.FileMode{}
+	for _, mp := range SecretPerms(p) {
+		modes[mp.Path] = mp.Mode
+	}
+
+	for _, d := range []string{p.ConfigDir, p.LogDir(), p.StateDir(), p.SnapshotsDir(), p.DistDir()} {
+		mode, ok := modes[d]
+		if !ok {
+			t.Errorf("%s is not covered by the perms enumeration", filepath.Base(d))
+			continue
+		}
+		if mode != DirMode {
+			t.Errorf("%s should be %04o, got %04o", filepath.Base(d), DirMode, mode)
+		}
+	}
+	for _, f := range []string{p.AgeIdentity(), p.EnvFile(), p.AuditLog(), p.LockFile()} {
+		mode, ok := modes[f]
+		if !ok {
+			t.Errorf("%s is not covered by the perms enumeration", filepath.Base(f))
+			continue
+		}
+		if mode != FileMode {
+			t.Errorf("%s should be %04o, got %04o", filepath.Base(f), FileMode, mode)
+		}
+	}
+}
+
+// The identity file is only conventionally named age-identity.txt; a user who
+// points SSH_MANAGER_AGE_IDENTITY_FILE at another name in the same directory
+// gets a file that decrypts every bundle, so the glob has to catch it wherever
+// it sits - and so do bundles written to the config home rather than dist/.
+func TestIdentitiesAndBundlesAreCoveredWhereverTheyLandInTheHome(t *testing.T) {
+	dir := t.TempDir()
+	p := paths.Paths{SSHDir: filepath.Join(dir, ".ssh"), ConfigDir: dir}
+	made := []string{
+		filepath.Join(p.ConfigDir, "work-identity.txt"),
+		filepath.Join(p.ConfigDir, "ssh-manager-20260101.age"),
+		filepath.Join(p.ConfigDir, "ssh-manager-20260101.age.sha256"),
+	}
+	for _, f := range made {
+		if err := os.WriteFile(f, []byte("x"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	covered := map[string]os.FileMode{}
+	for _, mp := range SecretPerms(p) {
+		covered[mp.Path] = mp.Mode
+	}
+	for _, f := range made {
+		mode, ok := covered[f]
+		if !ok {
+			t.Errorf("%s is not covered by the perms enumeration", filepath.Base(f))
+			continue
+		}
+		if mode != FileMode {
+			t.Errorf("%s should be %04o, got %04o", filepath.Base(f), FileMode, mode)
+		}
+	}
+}

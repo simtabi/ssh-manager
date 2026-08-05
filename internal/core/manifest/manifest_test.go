@@ -3,6 +3,7 @@ package manifest
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 )
@@ -574,3 +575,58 @@ func TestSharedKeyNameLoadsAndStaysProfileScoped(t *testing.T) {
 		t.Error("a bare name shared by two profiles must not resolve silently")
 	}
 }
+
+// The manifest is the user's whole configuration and Save rewrites it in place
+// on every edit. It claimed atomic persistence while using os.WriteFile, which
+// truncates first: a crash mid-write left a truncated manifest, and WriteFile
+// also kept whatever mode the file already had, so a loosened manifest stayed
+// loose through every subsequent save. The inventory had the same pair of bugs
+// and has had a test since; this is the more consequential of the two files.
+func TestManifestSaveIsAtomicAndReassertsMode(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "manifest.json")
+
+	m := Starter(false)
+	m.SetProfile("work", Profile{KeyScope: "per_service", Hosts: []Host{
+		{Alias: "gh", Hostname: "github.com", User: "git", Port: 22},
+	}})
+	if err := m.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	// Loosen it the way an errant umask, a restore or a hand edit would.
+	if err := os.Chmod(path, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m.SetProfile("personal", Profile{KeyScope: "shared", KeyName: strPtr("id_personal")})
+	if err := m.Save(path); err != nil {
+		t.Fatal(err)
+	}
+	if runtime.GOOS != "windows" {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if mode := fi.Mode().Perm(); mode != 0o600 {
+			t.Errorf("mode = %04o after save, want 0600: the manifest maps every host and login", mode)
+		}
+	}
+	// Nothing left beside it: the temp file was renamed over, not abandoned.
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(entries) != 1 {
+		t.Errorf("save left residue: %v", entries)
+	}
+	// And what it wrote loads, validates, and holds both profiles.
+	back, err := Load(path)
+	if err != nil {
+		t.Fatalf("the saved manifest does not load: %v", err)
+	}
+	if names := back.ProfileNames(); len(names) != 2 || names[0] != "work" || names[1] != "personal" {
+		t.Errorf("profiles = %v, want [work personal] in file order", names)
+	}
+}
+
+func strPtr(s string) *string { return &s }
