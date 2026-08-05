@@ -160,8 +160,8 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 7 · PORTED_UNVERIFIED 77 ·
-TODO 7 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
+**Counts as of the latest Phase 3 batch: VERIFIED 10 · PORTED_UNVERIFIED 77 ·
+TODO 4 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
 
@@ -232,7 +232,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | S1 | **Facade** (1356 lines — God object) | `services/facade.py` | *dissolved* — see Redesign R1 | PU | Split across `internal/services/*` + `internal/cli` |
 | S2 | Reconciler | `services/reconciler.py` (200) | `internal/services/reconciler` | PU | `reconciler_test.go` |
 | S3 | Rotator + rollback | `services/rotator.py` (322) | `internal/services/rotator` | PU | `rotator_test.go` |
-| S4 | Deployer | `services/deployer.py` (141) | `internal/services/deployer` | **T** | No test files |
+| S4 | Deployer | `services/deployer.py` (141); tests `tests/test_deploy.py` | `internal/services/deployer` | **VERIFIED** | `deployer_test.go`: `TestDeployRecordsEveryHostUsingTheKey`, `TestDeployTwiceLeavesOneEntryPerTarget`, `TestManualDeployStillNeedsRedeploy`, `TestTargetAliasNarrowsToOneHost`, `TestUnreachableServerIsRecordedAsAnError`, `TestDeployRejectsUnknownAndUnmintedKeys`, `TestReportFormatNamesTargetsAndOutcome` |
 | S5 | Bundler (age encrypt/restore) | `services/bundler.py` (221) | `internal/services/bundler` | PU | `bundler_test.go`, `bundler_security_test.go`, `age_live_test.go` |
 | S6 | knownhosts | `services/knownhosts.py` (89) | `internal/services/knownhosts` | PU | `knownhosts_test.go`, `hash_test.go`, `prune_test.go` |
 | S7 | Notifier | `services/notifier.py` (98) | `internal/services/notifier` | PU | `notifier_test.go` |
@@ -260,8 +260,8 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 |---|---|---|---|---|---|
 | P1 | Provider protocol + base | `providers/base.py` (135) | `internal/core/providers/adapter.go` | PU | `adapter_test.go` |
 | P2 | Registry + catalog | `providers/registry.py` (157) | `internal/core/providers/providers.go` + `default_providers.json` | PU | `providers_test.go` |
-| P3 | GitHub (`gh`) | `providers/github.py` (125) | `internal/core/providers/vcs.go` | **T** | No provider-specific test |
-| P4 | GitLab (`glab`) | `providers/gitlab.py` (109) | `internal/core/providers/vcs.go` | **T** | No provider-specific test |
+| P3 | GitHub (`gh`) | `providers/github.py` (125) | `internal/core/providers/vcs.go` | **VERIFIED** | `vcs_test.go`: `TestGitHubDeployAddsAndIsIdempotent` (2 subtests), `TestRemoveMatchesBodyNeverTitle`, `TestGitHubEnterpriseUsesTheEnterpriseToken` (2 subtests), `TestVCSFallsBackToManual` (2 subtests), `TestListFailureIsNotAnEmptyAccount`, `TestManageURLFollowsTheHost` |
+| P4 | GitLab (`glab`) | `providers/gitlab.py` (109) | `internal/core/providers/vcs.go` | **VERIFIED** | `vcs_test.go::TestGitLabMirrorsGitHub` (2 subtests), plus the shared helpers covered by `TestRemoveMatchesBodyNeverTitle` and `TestManageURLFollowsTheHost` |
 | P5 | Cloud REST VPS (DigitalOcean, Vultr, Hetzner, Linode, Scaleway, generic) | `providers/cloud.py` (436); tests `tests/test_cloud_providers.py` | `internal/core/providers/cloud.go` | **VERIFIED** | `cloud_test.go`: `TestDeployAddsAKeyThatIsNotThere`, `TestDeployIsIdempotent`, `TestDeployRenamesOurStaleTitleButNeverAUserLabel` (2 subtests), `TestVerifyAndRemoveMatchOnBodyNotLabel`, `TestNoTokenFallsBackToManual`, `TestAPIFailuresSurface`, `TestPerProviderResponseShapes` (4 subtests), `TestNumericIDsDoNotBecomeScientificNotation`, `TestDigitalOceanOverHTTP`, `TestPaginationIsBounded`. **Coverage limit below.** |
 | P6 | Generic SSH (`ssh-copy-id`) | `providers/ssh_generic.py` (120) | `internal/core/providers/ssh_generic.go` | PU | Plain-`ssh` fallback is a **Go-only addition** (D6) |
 
@@ -385,6 +385,9 @@ is.
   Python. The tests pin the shapes the Python's own tests asserted plus the
   shapes the Go code expects; where those agree, both could still be wrong about
   the real API. Recorded in `OPEN_QUESTIONS.md` (Q8).
+- **VCS adapters are exercised through a stand-in `gh`/`glab` on PATH**, which
+  covers argv, the environment overlay and the JSON parsing, but not the real
+  CLIs' behaviour. A `gh` that changed its flag names would pass these tests.
 - **Scaleway** has no shape test: its list response is built through the generic
   `objectOps` path with spec-driven field names rather than the fixed mapping
   the other four use.
