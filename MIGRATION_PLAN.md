@@ -160,11 +160,21 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 25 · PORTED_UNVERIFIED 65 ·
-TODO 0 · DROPPED 0.** The core domain (K1–K6) is fully closed, as are all three
-rows Q3 said must be judged against the v2 contract rather than Python output
-(K3 renderer, S6 knownhosts, S13 configsvc). Every row that had no test at any level is now closed;
-what remains is auditing the 76 rows whose Go code predates this run. A row reaches VERIFIED only when its tests were written
+**Counts as of the latest Phase 3 batch: VERIFIED 28 · PORTED_UNVERIFIED 66 ·
+TODO 1 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
+are all three rows Q3 said must be judged against the v2 contract rather than
+Python output (K3 renderer, S6 knownhosts, S13 configsvc).
+
+> **Counts corrected.** Earlier batches reported a 91-row matrix and totals that
+> summed to 90. Recounting mechanically - `grep -c` on the status cells over the
+> matrix sections - gives 95 rows. Two of them had been carrying statuses spelled
+> outside the legend (`L4` as `**PORTED_UNVERIFIED**`, `X5` as `**T**`) and so
+> were invisible to every count taken by eye. Both now use the legend tokens.
+> **X5 is the one TODO**, and it is a Phase 4 blocker in its own right: nine
+> Python test files still have no Go counterpart (Q5).
+
+Every row that had no test at any level is now closed;
+what remains is auditing the rows whose Go code predates this run. A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
 
@@ -233,14 +243,14 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
 | S1 | **Facade** (1356 lines — God object) | `services/facade.py` | *dissolved* — see Redesign R1 | PU | Split across `internal/services/*` + `internal/cli` |
-| S2 | Reconciler | `services/reconciler.py` (200) | `internal/services/reconciler` | PU | `reconciler_test.go` |
+| S2 | Reconciler | `services/reconciler.py` (200) | `internal/services/reconciler` | **VERIFIED** | `reconciler_test.go`: 4 pre-existing (mint/render/idempotence, declared-key overrides, dry-run, per-profile overwrite) + `TestMintRefNeverRegeneratesAKeyThatExists`, `TestSelectorAcceptsProfileKeyAndHostForms`, `TestOverwritingAKeyLeavesOneInventoryRecordPerPath`, `TestReconcileTightensTheConfigHomeToo`. Both guards mutation-checked. |
 | S3 | Rotator + rollback | `services/rotator.py` (322) | `internal/services/rotator` | **VERIFIED** | `rotator_test.go`: `TestRotateThenRollback`, `TestRotateMissingKey` (pre-existing) + `TestCommitNeverLeavesTheCanonicalPathWithoutAKey`, `TestCommitLeavesTheKeyAloneWhenItCannotArchive`, `TestRollbackKeepsAKeyInPlaceThroughout`, `TestFailedVerificationDiscardsTheStagedKey` |
 | S4 | Deployer | `services/deployer.py` (141); tests `tests/test_deploy.py` | `internal/services/deployer` | **VERIFIED** | `deployer_test.go`: `TestDeployRecordsEveryHostUsingTheKey`, `TestDeployTwiceLeavesOneEntryPerTarget`, `TestManualDeployStillNeedsRedeploy`, `TestTargetAliasNarrowsToOneHost`, `TestUnreachableServerIsRecordedAsAnError`, `TestDeployRejectsUnknownAndUnmintedKeys`, `TestReportFormatNamesTargetsAndOutcome` |
 | S5 | Bundler (age encrypt/restore) | `services/bundler.py` (221) | `internal/services/bundler` | **VERIFIED** | 11 pre-existing (audited: no plaintext in $TMPDIR, owner-only bundle, checksum mismatch refused, path-traversal members refused, wrong identity, real `age` binary) + `TestOversizedArchiveIsRejectedNotExpanded`, `TestOrdinaryArchiveStillReads`, `TestRestoreOverlaysAndKeepsWhatItCannotReplace` |
 | S6 | knownhosts | `services/knownhosts.py` (89) | `internal/services/knownhosts` | **VERIFIED** | `knownhosts_test.go`, `hash_test.go`, `prune_test.go` — 20 tests, audited this run and found complete: hashing on write, hashed lookup, re-pin dedup, markers, 0600 store, real `ssh-keygen -F` interop, reference-counted prune, opt-in adopt, legacy-store migration. **Verified against the v2 contract** (one hashed store, tagged lines) — see D4/Q3 |
 | S7 | Notifier | `services/notifier.py` (98) | `internal/services/notifier` | PU | `notifier_test.go` |
-| S8 | Query (list/view) | `services/query.py` (166) | `internal/services/query` | PU | `query_test.go` |
-| S9 | Editor (profile/host CRUD) | `services/editor.py` (202) | `internal/services/editor` | PU | `editor_test.go` |
+| S8 | Query (list/view) | `services/query.py` (166) | `internal/services/query` | **VERIFIED** | `query_test.go`: 4 pre-existing (file order, groups, filters, detail/statuses) + `TestDuplicateRecordsForOnePathResolveConsistently` (caught a live bug: `hostDetail` re-picked the fingerprint by map order, so the detail view could pair one record's fingerprint with another's status/expiry/deployments; mutation-checked), `TestUnknownAndAbsentProvidersFallBackToServer` |
+| S9 | Editor (profile/host CRUD) | `services/editor.py` (202) | `internal/services/editor` | **VERIFIED** | `editor_test.go`: 7 pre-existing (CRUD, validation, AddKey wiring/rejections, declared-key survival) + `TestDeleteKeyRefusesWhileHostsStillUseIt`, `TestDeleteKeyDropsTheDeclarationAndItsRecord`, `TestDeleteProfileTakesTheRecordOfAKeyNoHostUsed`, `TestDeletingAHostDropsOnlyItsOwnDeployment` |
 | S10 | Importer | `services/importer.py` (270) | `internal/services/importer` | PU | `importer_test.go` |
 | S11 | Keystore (ssh-keygen wrapper) | `services/keystore.py` (91) | `internal/services/keystore` | **VERIFIED** | `keystore_test.go` + `keystore_security_test.go`: 9 pre-existing (audited) + `TestHardwareKeyTypeFallsBackToSoftware`, `TestFingerprintOfAMissingFileErrors` |
 | S12 | Agent (ssh-add) | `services/agent.py` (26) | `internal/services/agent` | PU | `agent_test.go` |
@@ -275,7 +285,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | L1 | Platform protocol | `platforms/base.py` (50) | `internal/platform` | **VERIFIED** | `platform_test.go`: `TestReadLineStopsAtTheNewlineAndLeavesTheRest`, `TestReadLinePreservesContentButStripsCR`, `TestReadLineOnClosedInput`, `TestOSPredicatesAgreeWithGOOS`, `TestEmitUseKeychainOnlyOnMacOS`, `TestOSNameCarriesBothForms`, `TestReadSecretRefusesWithoutATerminal` |
 | L2 | macOS (keychain, launchd, notify) | `platforms/macos.py` (73) | `internal/platform`, `internal/util/scheduler`, `internal/util/desktop` | PU | `scheduler_test.go`, `platform_test.go`; `desktop` still untested |
 | L3 | Linux (systemd timer, notify-send) | `platforms/linux.py` (107) | same | PU | `scheduler_test.go`; Python had `tests/test_linux.py` |
-| L4 | Windows (icacls, schtasks, toast) | `platforms/windows.py` (92); tests `tests/test_windows.py` | `internal/util/perms/{windows_acl,perms_windows}.go`, `scheduler/{windows_task,scheduler_windows}.go` | **PORTED_UNVERIFIED** | Argv/ownership logic extracted and covered on every platform: `windows_acl_test.go` (5 tests), `windows_task_test.go` (3 tests). **The exec wiring itself is not verified by this run** — it compiles only on Windows and only CI's Windows leg can execute it. See coverage limits and Q9. |
+| L4 | Windows (icacls, schtasks, toast) | `platforms/windows.py` (92); tests `tests/test_windows.py` | `internal/util/perms/{windows_acl,perms_windows}.go`, `scheduler/{windows_task,scheduler_windows}.go` | PU | Argv/ownership logic extracted and covered on every platform: `windows_acl_test.go` (5 tests), `windows_task_test.go` (3 tests). **The exec wiring itself is not verified by this run** — it compiles only on Windows and only CI's Windows leg can execute it. See coverage limits and Q9. |
 
 ### Utilities
 
@@ -304,7 +314,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | X2 | Manifest/inventory JSON serialization (pydantic `model_dump`) | `core/manifest.py`, `core/inventory.py` | hand-written `MarshalJSON` | **VERIFIED** | `manifest_test.go::TestSerializationEmitsAllFieldsInFileOrder`, `::TestKeysOmittedWhenEmpty`, `::TestOptionValuesAreStringifiedLikePydantic`; `inventory_test.go::TestRecordSerializationMatchesPydantic`, `::TestSaveLoadRoundTripIsStable`. **Qualified**: parity is asserted on field order, null/`[]`/`{}` conventions and value stringification, and on save being byte-stable across a round trip — not by diffing against output from a running Python, which is no longer part of the build |
 | X3 | Packaging | `pyproject.toml` (hatchling) | `.goreleaser.yaml` | PU | Python had `tests/test_packaging.py` |
 | X4 | CI | `.github/workflows/ci.yml` | same, Go-only | PU | Lint gate added in Phase 2 (`golangci-lint`, per-GOOS) |
-| X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | **T** | Per-file mapping in Coverage check |
+| X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | TODO | Per-file mapping in Coverage check |
 
 ---
 
