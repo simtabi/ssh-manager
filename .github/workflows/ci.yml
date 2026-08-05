@@ -32,15 +32,11 @@ jobs:
       - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version: stable
-      - name: Build
-        run: go build ./...
-      - name: Vet
-        run: go vet ./...
-      - name: Test
-        run: go test ./...
-      - name: gofmt
-        if: runner.os == 'Linux'
-        run: test -z "$(gofmt -l cmd internal)"
+      # One gate, defined once, in the Makefile. Reimplementing these steps here
+      # let the local `make check` and CI drift apart silently.
+      - name: Gate
+        shell: bash
+        run: make ci
       # Once per OS, not once overall: golangci-lint analyses a single GOOS, so
       # a single run never sees the build-tagged platform files at all.
       - name: Lint

@@ -9,7 +9,7 @@ PKG     := ./cmd/sshmgr
 VERSION := $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/internal/version.Version=$(VERSION)
 
-.PHONY: help build test vet fmt fmt-check lint lint-all check e2e feature-check \
+.PHONY: help build build-all test vet fmt fmt-check lint lint-all ci check e2e feature-check \
         cross dist clean doctor reconcile render rotate bundle
 
 help:  ## list targets
@@ -18,6 +18,9 @@ help:  ## list targets
 build: ## compile the binary into bin/
 	@mkdir -p bin
 	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) $(PKG)
+
+build-all: ## compile every package (what CI gated on before `ci` existed)
+	go build ./...
 
 test: ## run the unit suite
 	go test ./...
@@ -44,7 +47,13 @@ lint-all: ## lint every GOOS - one run only sees one, so build-tagged files hide
 		GOOS=$$os golangci-lint run ./... || exit 1; \
 	done
 
-check: fmt-check vet lint test ## everything CI gates on
+# `ci` is the gate the workflow runs, so there is one definition of it rather
+# than a copy in ci.yml that drifts from this one. Lint is deliberately NOT in
+# it: CI gets golangci-lint from a pinned action that also annotates the diff,
+# and folding it in here would silently drop both the pin and the cache.
+ci: fmt-check build-all vet test ## the gate CI runs (lint runs there as its own step)
+
+check: ci lint ## everything: the CI gate plus lint, for humans
 
 e2e: build ## end-to-end smoke in a throwaway sandbox
 	SSHMGR=$(CURDIR)/$(BIN) .build/e2e.sh
