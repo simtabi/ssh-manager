@@ -160,7 +160,7 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 32 · PORTED_UNVERIFIED 62 ·
+**Counts as of the latest Phase 3 batch: VERIFIED 34 · PORTED_UNVERIFIED 60 ·
 TODO 1 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
 are all three rows Q3 said must be judged against the v2 contract rather than
 Python output (K3 renderer, S6 knownhosts, S13 configsvc).
@@ -257,9 +257,9 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | S13 | Config service | `services/configsvc.py` (164) | `internal/services/configsvc` | **VERIFIED** | `configsvc_test.go`: 2 pre-existing (audited) + `TestWriteProducesOneFileAndIsIdempotent`, `TestWriteDryRunTouchesNothing`, `TestLegacyPerProfileConfigsArePruned`, `TestWritePreservesForeignContent`, `TestCheckReportsDriftWithADiff`, `TestShowRendersWithoutWriting`. **Verified against the v2 contract** — see D4/Q3 |
 | S14 | Preflight | `services/preflight.py` (60) | `internal/services/preflight` | **VERIFIED** | `preflight_test.go`: `TestCheckReportsEveryMissingDependency`, `TestOptionalDepsDoNotBlock`, `TestOneMissingHardDepBlocks`, `TestSSHCopyIDIsOptionalOnWindowsOnly`, `TestFormatNamesWhatIsWrong`, `TestOSNameCarriesTokenAndHumanName`. Deviation: `python_ok` → `RuntimeOK` constant true (D11) |
 | S15 | Doctor | `facade.py` (doctor + helpers) | `internal/services/doctor` | **VERIFIED** | `doctor_test.go` + `oldkeys_test.go`: 8 pre-existing (subchecks, JSON shape, dangling verdict, strict, stale archives) + `TestFixPermsRepairsExactlyWhatTheCheckReports`, `TestTheSameKeyInTwoProfilesIsReported`, `TestUnpinnedHostsUseTheBracketedFormForNonDefaultPorts` |
-| S16 | Snapshots | `util/fs.py` + `facade.py` | `internal/services/snapshots` | PU | `snapshots_test.go` |
+| S16 | Snapshots | `util/fs.py` + `facade.py` | `internal/services/snapshots` | **VERIFIED** | 9 pre-existing (round trip, list/prune, unique names, temp-artifact clean, no private key, unknown-files-are-secret, unarchived files survive, symlinked member, HoldsKeyMaterial) + `TestPathTraversalMembersAreRefused` (mutation-checked), `TestRestoreRefusesATargetItCannotVouchFor`, `TestRestoreByIDSurvivesPruningTheSnapshotItChose` (mutation-checked), `TestRestoreByIDReportsWhatItCannotFind` |
 | S17 | Validate | `facade.py::validate_keys` | `internal/services/validate` | **VERIFIED** | `validate_test.go`: 2 pre-existing (defect matrix, selector) + `TestAnEncryptedKeyIsNotedNotFailed`, `TestABareNameValidatesEveryProfileThatHasIt`, `TestADeclaredButUnwiredKeyIsStillChecked` |
-| S18 | Recover (fixkeys.sh) | `facade.py` + `data/fixkeys.sh` | `internal/services/recover` | PU | `recover_test.go` |
+| S18 | Recover (fixkeys.sh) | `facade.py` + `data/fixkeys.sh` | `internal/services/recover` | **VERIFIED** | `recover_test.go`: 3 pre-existing (fixkeys contract, full tool, snippet shape) + `TestTheSnippetRunsAndSurvivesQuotesInTheComment` (executes the generated script against a temp HOME; mutation-checked), `TestAMalformedOrMissingPublicKeyIsRefused` |
 | S19 | Init service | `facade.py::init` | `internal/services/initsvc` | PU | `initsvc_test.go` |
 | S20 | Config-home migration | `facade.py::migrate` | `internal/services/migratesvc` | PU | `migratesvc_test.go`, `perms_test.go` |
 | S21 | netstat | `util/net.py` + `facade.py:1066-1078` | `internal/services/netstat` | **VERIFIED** | `netstat_test.go`: `TestStatusProbesEveryHostAndReportsItsProfile`, `TestSelectorFilters`, `TestBareKeyNameMatchesEveryProfileThatHasIt`, `TestVPNMetadataIsCarriedThrough`, `TestUnresolvableManifestIsAnError` |
