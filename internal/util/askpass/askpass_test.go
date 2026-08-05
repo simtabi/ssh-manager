@@ -111,7 +111,10 @@ func TestEnvironDropsInheritedValuesRatherThanShadowingThem(t *testing.T) {
 // this asserts the secret is in the environment and that nothing about the
 // helper handshake asks for it as an argument.
 func TestSecretTravelsOnlyInTheEnvironment(t *testing.T) {
-	const secret = "unmistakable-passphrase-8f2a"
+	// A marker, not a plausible secret: the test only needs a value it can find
+	// again in the environment, and a high-entropy literal next to the word
+	// "secret" is what a secret scanner is built to flag.
+	const secret = "THE-TEST-VALUE"
 	env := Environ("/usr/local/bin/sshmgr", secret)
 
 	found := false

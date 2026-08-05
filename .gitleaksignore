@@ -1,0 +1,16 @@
+# Findings retired by fingerprint, in the form commit:file:rule:line.
+#
+# CI scans the full history (fetch-depth: 0), so fixing the working tree does not
+# clear a finding - the commit that introduced it is still published. This file
+# is how a reviewed non-secret is retired without rewriting history.
+#
+# Every entry must say what the string actually is and why it is not a secret.
+# An entry without that is indistinguishable from suppressing a real leak.
+
+# A test literal, not a credential. TestSecretTravelsOnlyInTheEnvironment asserts
+# that a passphrase reaches ssh-keygen through the environment and never through
+# argv, so it needs a value it can find again in the child's environ. The
+# original was high-entropy and sat next to an identifier called `secret` - the
+# exact shape generic-api-key exists to catch, and a fair hit on a fake. The
+# working tree now uses THE-TEST-VALUE; this retires the published commit.
+a05bdcdefcfdfe5dc51c21f032ec13e02bfc58ad:internal/util/askpass/askpass_test.go:generic-api-key:114

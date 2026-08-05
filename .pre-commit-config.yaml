@@ -8,6 +8,10 @@ repos:
     rev: v4.6.0
     hooks:
       - id: detect-private-key
+        # recover_test.go feeds a private-key header to the code that must
+        # REFUSE it - a user saving a private key to the .pub path is the error
+        # being tested, so the header is the fixture. Two lines, no key material.
+        exclude: ^internal/services/recover/recover_test\.go$
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: mixed-line-ending
