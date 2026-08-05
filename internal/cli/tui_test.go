@@ -85,3 +85,53 @@ func TestTuiCancelEndsLoop(t *testing.T) {
 	tt, _ := tuiWith(t, "")
 	tt.run()
 }
+
+// The TUI's own prompter, not the scripted fake. The four tests above inject a
+// prompter and so never touch the real one - which read os.Stdin directly,
+// meaning the menu could only ever be driven by a terminal and the whole
+// production path went unexercised. It now reads the command's input, so the
+// menu is drivable the same way every other prompt in the tool is.
+func TestTheRealPrompterReadsTheCommandsInput(t *testing.T) {
+	var out bytes.Buffer
+	pr := newStdinPrompter(&out, strings.NewReader("2\ny\n"))
+
+	choice, ok := pr.Select("pick one", []string{"first", "second", "third"})
+	if !ok {
+		t.Fatal("a valid numbered answer should select")
+	}
+	if choice != "second" {
+		t.Errorf("choice = %q, want the second entry", choice)
+	}
+	if !strings.Contains(out.String(), "1) first") || !strings.Contains(out.String(), "3) third") {
+		t.Errorf("the menu should be numbered from 1:\n%s", out.String())
+	}
+	if !pr.Confirm("really?") {
+		t.Error("y should confirm")
+	}
+}
+
+// Out-of-range and unparseable answers cancel rather than selecting something
+// the user did not ask for. A menu that treated a stray key as a choice would
+// run whichever action happened to be first.
+func TestTheRealPrompterCancelsOnAnythingThatIsNotAChoice(t *testing.T) {
+	for _, answer := range []string{"", "0\n", "4\n", "-1\n", "two\n", "\n", "1x\n"} {
+		var out bytes.Buffer
+		pr := newStdinPrompter(&out, strings.NewReader(answer))
+		if _, ok := pr.Select("pick one", []string{"a", "b", "c"}); ok {
+			t.Errorf("%q was treated as a selection", answer)
+		}
+	}
+}
+
+// EOF on the menu ends the session rather than looping forever on a closed
+// input - which is what a piped or scripted invocation gives it.
+func TestTheTUIEndsWhenItsInputIsClosed(t *testing.T) {
+	var out bytes.Buffer
+	pr := newStdinPrompter(&out, strings.NewReader(""))
+	if _, ok := pr.Select("pick one", []string{"a"}); ok {
+		t.Error("closed input should cancel, not select")
+	}
+	if pr.Confirm("really?") {
+		t.Error("closed input should decline a confirmation")
+	}
+}

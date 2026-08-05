@@ -11,7 +11,6 @@ package platform
 import (
 	"errors"
 	"io"
-	"os"
 )
 
 // ErrNotATerminal is returned by ReadSecret when standard input is not a
@@ -21,7 +20,7 @@ var ErrNotATerminal = errors.New("standard input is not a terminal")
 // ReadLine consumes a single line, one byte at a time. A buffered reader would
 // swallow whatever follows the newline, which matters here because callers read
 // a second line to confirm a passphrase.
-func ReadLine(f *os.File) (string, error) {
+func ReadLine(f io.Reader) (string, error) {
 	var line []byte
 	buf := make([]byte, 1)
 	for {

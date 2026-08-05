@@ -41,7 +41,7 @@ func newRotateCmd() *cobra.Command {
 			}
 			pw := ""
 			if passphrase {
-				secret, err := readPassphrase()
+				secret, err := readPassphrase(c.InOrStdin())
 				if err != nil {
 					return err
 				}

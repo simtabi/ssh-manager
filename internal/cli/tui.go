@@ -45,8 +45,13 @@ type stdinPrompter struct {
 	in  *bufio.Reader
 }
 
-func newStdinPrompter(out io.Writer) *stdinPrompter {
-	return &stdinPrompter{out: out, in: bufio.NewReader(os.Stdin)}
+// newStdinPrompter builds the prompter over the streams it is given. Input
+// comes from the caller rather than os.Stdin directly, matching how the output
+// half already goes through the command: the two halves of one conversation
+// should not disagree about which streams they are on, and reaching past the
+// command meant the whole menu loop could only be driven by a real terminal.
+func newStdinPrompter(out io.Writer, in io.Reader) *stdinPrompter {
+	return &stdinPrompter{out: out, in: bufio.NewReader(in)}
 }
 
 func (s *stdinPrompter) Select(message string, choices []string) (string, bool) {
@@ -109,7 +114,7 @@ func newTuiCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			out := c.OutOrStdout()
-			t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out), out: out}
+			t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out, c.InOrStdin()), out: out}
 			t.run()
 			return nil
 		},

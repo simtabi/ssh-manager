@@ -3,6 +3,7 @@ package cli
 import (
 	"errors"
 	"fmt"
+	"io"
 	"os"
 
 	"github.com/spf13/cobra"
@@ -48,7 +49,7 @@ func newReconcileCmd() *cobra.Command {
 
 			pw := ""
 			if passphrase {
-				secret, err := readPassphrase()
+				secret, err := readPassphrase(c.InOrStdin())
 				if err != nil {
 					return err
 				}
@@ -83,9 +84,13 @@ func newReconcileCmd() *cobra.Command {
 // terminal it is read without echo and confirmed, so it never reaches the screen
 // or the scrollback; when stdin is piped a single line is read so scripted use
 // still works.
-func readPassphrase() (string, error) {
+//
+// The piped branch reads the command's own input rather than os.Stdin, so a
+// caller that redirects input is honoured - without which this path could only
+// ever be exercised by a real pipe.
+func readPassphrase(in io.Reader) (string, error) {
 	if !platform.StdinIsTerminal() {
-		return platform.ReadLine(os.Stdin)
+		return platform.ReadLine(in)
 	}
 	first, err := platform.ReadSecret("passphrase for new keys: ")
 	if err != nil {
