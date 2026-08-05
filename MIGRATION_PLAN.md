@@ -160,7 +160,7 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 14 · PORTED_UNVERIFIED 76 ·
+**Counts as of the latest Phase 3 batch: VERIFIED 17 · PORTED_UNVERIFIED 73 ·
 TODO 0 · DROPPED 0.** Every row that had no test at any level is now closed;
 what remains is auditing the 76 rows whose Go code predates this run. A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
@@ -221,9 +221,9 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 |---|---|---|---|---|---|
 | K1 | Manifest model, validation, key resolution | `core/manifest.py` (307) | `internal/core/manifest` | PU | `manifest_test.go` |
 | K2 | Inventory model + persistence | `core/inventory.py` (94) | `internal/core/inventory` | PU | `inventory_test.go` |
-| K3 | SSH config renderer | `core/renderer.py` (132) | `internal/core/renderer` | PU | `renderer_test.go` |
-| K4 | Expiry engine | `core/expiry.py` (92) | `internal/core/expiry` | PU | `expiry_test.go` |
-| K5 | Key-name grammar | `core/key.py` (53) | `internal/core/key` | PU | `key_test.go` |
+| K3 | SSH config renderer | `core/renderer.py` (132) | `internal/core/renderer` | **VERIFIED** | `renderer_test.go` + `renderer_security_test.go` (9 pre-existing, audited); added `TestRenderHostBlockForMatchesTheRootConfig`, `TestRawOptionsKeepTheirDeclaredOrder`. **Verified against the v2 contract, not Python output** — see D4 and Q3 |
+| K4 | Expiry engine | `core/expiry.py` (92) | `internal/core/expiry` | **VERIFIED** | `expiry_test.go`: pre-existing `TestComputeStates` (audited); added `TestClassificationBoundaries`, `TestWarnWindowIsTheLargestThreshold`, `TestCadenceIsWeeklyUntilSomethingIsDue`, `TestBannerNamesKeysUnambiguously`, `TestStatesSortMostUrgentFirst`, `TestRef` |
+| K5 | Key-name grammar | `core/key.py` (53) | `internal/core/key` | **VERIFIED** | `key_test.go`: pre-existing `TestNormalizeSegment`, `TestBuildKeyName`, `TestSplitKeyName`, `TestAlgoOf` (audited); added `TestDeriveKeyNameFromRealAliases`, `TestNameRoundTrips`, `TestHardwareKeyTypesAreNotTruncated`, `TestIsKnownAlgo`, `TestNormalizeCollapsesAnythingUnsafeForAFilename` |
 | K6 | authorized_keys parsing | `core/authorized_keys.py` (120) | `internal/core/authkeys` | **VERIFIED** | `authkeys_test.go`: `TestValidityAndBody`, `TestSameKeyAndCount`, `TestAddRemove` (pre-existing, audited); `TestLengthPrefixPastTheBlobIsRejected`, `TestTypeTokenMustMatchTheEncodedWireType`, `TestAddRemoveNormaliseFileEdges`, `TestCRLFInputIsNormalised` (added). **Bug fixed**: 32-bit integer overflow in the wire-blob bounds check — see Deviations D10 |
 
 ### Services
