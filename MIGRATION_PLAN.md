@@ -160,7 +160,7 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 50 · PORTED_UNVERIFIED 45 ·
+**Counts as of the latest Phase 3 batch: VERIFIED 53 · PORTED_UNVERIFIED 42 ·
 TODO 0 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
 are all three rows Q3 said must be judged against the v2 contract rather than
 Python output (K3 renderer, S6 knownhosts, S13 configsvc).
@@ -185,9 +185,9 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Feature | Python source | Behavior notes | Go target | Status | Evidence |
 |---|---|---|---|---|---|---|
-| E1 | `sshmgr` console entry point | `python-final:pyproject.toml` `[project.scripts]`; `python-final:src/ssh_manager/__main__.py` | Installed script → `ssh_manager.cli:main` | `cmd/sshmgr` | PU | `cmd/sshmgr/main.go` |
-| E2 | Root CLI app + `--version` callback + banner | `cli.py:27-54,101-105` | Typer app; subapps `config`,`profile`,`host`,`notify`,`snapshots`,`knownhosts` | `internal/cli/root.go` | PU | `internal/cli/root_test.go` |
-| E3 | Error→exit-code mapping | `cli.py:59-62,147,343-344`; `util/errors.py` | 0 on success, 1 on everything else. Declined confirmation → 1; doctor → `0 if ok else 1` | `internal/cli/exit.go` | PU | `exit_test.go::TestErrorClassification`, `::TestConfirmOrAbort`, `::TestNoCommandCallsOsExit`. Classification proven; **the code itself still needs a subprocess assertion in Phase 3** |
+| E1 | `sshmgr` console entry point | `python-final:pyproject.toml` `[project.scripts]`; `python-final:src/ssh_manager/__main__.py` | Installed script → `ssh_manager.cli:main` | `cmd/sshmgr` | **VERIFIED** | `cmd/sshmgr/smoke_test.go` builds the binary and runs it: `TestTheBinaryReportsItsVersionAndExitsZero`, `TestFailuresExitOneAndExplainThemselvesOnStderr`, `TestInitReconcileDoctorRunEndToEnd`, `TestADeclinedConfirmationExitsOneAndSaysNothingExtra`. First test proving `cmd/sshmgr` links at all. `cmd/sshmgr/main.go` |
+| E2 | Root CLI app + `--version` callback + banner | `cli.py:27-54,101-105` | Typer app; subapps `config`,`profile`,`host`,`notify`,`snapshots`,`knownhosts` | `internal/cli/root.go` | **VERIFIED** | `cmd/sshmgr/smoke_test.go` builds the binary and runs it: `TestTheBinaryReportsItsVersionAndExitsZero`, `TestFailuresExitOneAndExplainThemselvesOnStderr`, `TestInitReconcileDoctorRunEndToEnd`, `TestADeclinedConfirmationExitsOneAndSaysNothingExtra`. Plus `root_test.go` (`TestVersionCommand`, `TestRootHasVersionFlag`). `internal/cli/root_test.go` |
+| E3 | Error→exit-code mapping | `cli.py:59-62,147,343-344`; `util/errors.py` | 0 on success, 1 on everything else. Declined confirmation → 1; doctor → `0 if ok else 1` | `internal/cli/exit.go` | **VERIFIED** | `cmd/sshmgr/smoke_test.go` builds the binary and runs it: `TestTheBinaryReportsItsVersionAndExitsZero`, `TestFailuresExitOneAndExplainThemselvesOnStderr`, `TestInitReconcileDoctorRunEndToEnd`, `TestADeclinedConfirmationExitsOneAndSaysNothingExtra`. Plus `exit_test.go` (`TestErrorClassification`, `TestConfirmOrAbort`, `TestNoCommandCallsOsExit`) and `confirm_test.go` (5 tests). `exit_test.go::TestErrorClassification`, `::TestConfirmOrAbort`, `::TestNoCommandCallsOsExit`. Classification proven; **the code itself still needs a subprocess assertion in Phase 3** |
 | E4 | TUI | `tui.py` (209 lines) | questionary/rich menu | `internal/cli/tui.go` | PU | `internal/cli/tui_test.go`; **known deviation** — plain stdin menu, not questionary |
 
 ### Commands (parity = same flags, same exit codes, same output contract)
