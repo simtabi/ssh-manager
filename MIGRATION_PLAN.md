@@ -160,8 +160,8 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 17 · PORTED_UNVERIFIED 73 ·
-TODO 0 · DROPPED 0.** Every row that had no test at any level is now closed;
+**Counts as of the latest Phase 3 batch: VERIFIED 20 · PORTED_UNVERIFIED 70 ·
+TODO 0 · DROPPED 0.** The core domain (K1–K6) is fully closed. Every row that had no test at any level is now closed;
 what remains is auditing the 76 rows whose Go code predates this run. A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
@@ -219,8 +219,8 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
-| K1 | Manifest model, validation, key resolution | `core/manifest.py` (307) | `internal/core/manifest` | PU | `manifest_test.go` |
-| K2 | Inventory model + persistence | `core/inventory.py` (94) | `internal/core/inventory` | PU | `inventory_test.go` |
+| K1 | Manifest model, validation, key resolution | `core/manifest.py` (307) | `internal/core/manifest` | **VERIFIED** | `manifest_test.go`: 11 pre-existing (audited) + `TestControlCharactersAreRejectedEverywhere`, `TestHostnameAndUserRejectFlagsAndWhitespace`, `TestProfileNamesAreSafePathSegments`, `TestDangerousOptionsRejectedInGlobalOptionsToo`, `TestOptionValuesAreStringifiedLikePydantic`, `TestSharedKeyNameLoadsAndStaysProfileScoped` |
+| K2 | Inventory model + persistence | `core/inventory.py` (94) | `internal/core/inventory` | **VERIFIED** | `inventory_test.go`: 7 pre-existing (audited) + `TestSaveLoadRoundTripIsStable`, `TestRecordReplacesAnExistingFingerprint`, `TestNeedsRedeployTurnsOnVerifiedOnly`, `TestComputeExpiryArithmetic`, `TestCorruptInventoryIsAnErrorNotAFreshStart` |
 | K3 | SSH config renderer | `core/renderer.py` (132) | `internal/core/renderer` | **VERIFIED** | `renderer_test.go` + `renderer_security_test.go` (9 pre-existing, audited); added `TestRenderHostBlockForMatchesTheRootConfig`, `TestRawOptionsKeepTheirDeclaredOrder`. **Verified against the v2 contract, not Python output** — see D4 and Q3 |
 | K4 | Expiry engine | `core/expiry.py` (92) | `internal/core/expiry` | **VERIFIED** | `expiry_test.go`: pre-existing `TestComputeStates` (audited); added `TestClassificationBoundaries`, `TestWarnWindowIsTheLargestThreshold`, `TestCadenceIsWeeklyUntilSomethingIsDue`, `TestBannerNamesKeysUnambiguously`, `TestStatesSortMostUrgentFirst`, `TestRef` |
 | K5 | Key-name grammar | `core/key.py` (53) | `internal/core/key` | **VERIFIED** | `key_test.go`: pre-existing `TestNormalizeSegment`, `TestBuildKeyName`, `TestSplitKeyName`, `TestAlgoOf` (audited); added `TestDeriveKeyNameFromRealAliases`, `TestNameRoundTrips`, `TestHardwareKeyTypesAreNotTruncated`, `TestIsKnownAlgo`, `TestNormalizeCollapsesAnythingUnsafeForAFilename` |
@@ -299,7 +299,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
 | X1 | Env vars: `SSH_MANAGER_HOME`, `_CONFIG_DIR`, `_AGE_RECIPIENT`, `_AGE_IDENTITY_FILE`, `_AUTO_PIN`, `_SNAPSHOT_RETAIN` | `util/paths.py`, `services/bundler.py`, `services/knownhosts.py` | `internal/util/paths`, `internal/cli` | PU | `paths_test.go`, `retention_test.go`. Go adds `SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS` (D5) |
-| X2 | Manifest/inventory JSON serialization (pydantic `model_dump`) | `core/manifest.py`, `core/inventory.py` | hand-written `MarshalJSON` | PU | `manifest_test.go::TestSerializationEmitsAllFieldsInFileOrder` — **byte-parity is the parity gate** |
+| X2 | Manifest/inventory JSON serialization (pydantic `model_dump`) | `core/manifest.py`, `core/inventory.py` | hand-written `MarshalJSON` | **VERIFIED** | `manifest_test.go::TestSerializationEmitsAllFieldsInFileOrder`, `::TestKeysOmittedWhenEmpty`, `::TestOptionValuesAreStringifiedLikePydantic`; `inventory_test.go::TestRecordSerializationMatchesPydantic`, `::TestSaveLoadRoundTripIsStable`. **Qualified**: parity is asserted on field order, null/`[]`/`{}` conventions and value stringification, and on save being byte-stable across a round trip — not by diffing against output from a running Python, which is no longer part of the build |
 | X3 | Packaging | `pyproject.toml` (hatchling) | `.goreleaser.yaml` | PU | Python had `tests/test_packaging.py` |
 | X4 | CI | `.github/workflows/ci.yml` | same, Go-only | PU | Lint gate added in Phase 2 (`golangci-lint`, per-GOOS) |
 | X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | **T** | Per-file mapping in Coverage check |
@@ -356,7 +356,7 @@ Constructs that must not be transliterated.
 | D5 | New env var `SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS` | Archived-predecessor staleness reporting; no Python counterpart. |
 | D6 | `GenericSSH` falls back to plain `ssh` when `ssh-copy-id` is absent | Windows OpenSSH does not ship `ssh-copy-id`. |
 | D7 | `doctor --strict` | CI gate for dangling keys; no Python counterpart. |
-| D8 | Key identity is `profile/key`, not a bare name | Python allowed ambiguous bare names; fixed as a correctness bug. |
+| D8 | A `key_name` may repeat across profiles; identity is `profile/key` | **Corrected — the earlier wording had this backwards.** Python *rejected* a manifest where two profiles used one `key_name` (`manifest.py::_v_key_name_uniqueness`), because rotate/deploy resolved a bare name to hosts while assuming a single profile directory, so a shared name could mint in one profile and deploy to another's hosts. v2 lifts the ban because it removed the hazard: identity is `manifest.KeyRef`, and every lifecycle op resolves through it. A widening — manifests Python refused now load, and none that loaded before break. Pinned by `TestSharedKeyNameLoadsAndStaysProfileScoped`. |
 | D9 | Passphrases reach `ssh-keygen` through the askpass protocol, not `-N` | The Python passed the passphrase in argv (`keystore.py:47-56`), which is world-readable via `ps` and `/proc/<pid>/cmdline` for the life of the process. `internal/util/askpass` re-executes sshmgr as its own helper and passes the secret in the environment. |
 | D11 | preflight reports `RuntimeOK` as a constant true | The Python gated on CPython >= 3.11 (`preflight.py:MIN_PYTHON`). A compiled Go binary carries its runtime, so the check has no meaning; the actionable half - the hard/optional binary scan - is unchanged. |
 | D10 | `authkeys` rejects a wire-blob length prefix above `MaxInt32` | Python's ints are arbitrary-precision, so the bounds check could not overflow. Go's `int` is 32 bits on the 386/armv6/armv7 builds sshmgr ships, where the original `4+int(n) > len(blob)` wrapped negative and panicked on a crafted `authorized_keys` line. Checked in `uint64` now. |
@@ -386,6 +386,11 @@ is.
   Python. The tests pin the shapes the Python's own tests asserted plus the
   shapes the Go code expects; where those agree, both could still be wrong about
   the real API. Recorded in `OPEN_QUESTIONS.md` (Q8).
+- **X2's byte-parity is asserted structurally, not by execution.** The tests pin
+  field order, the null/`[]`/`{}` conventions, value stringification and
+  save-stability. They do not diff against output from a running Python, which
+  would need the interpreter and the deleted tree back in the build. A field
+  pydantic emitted that no test names could still be missing.
 - **The Windows exec wiring (L4) is unverified by this run.** `SetPerms` and
   `Install` compile only on Windows, so `icacls`/`schtasks` are never actually
   invoked outside CI's Windows leg. Everything decidable without Windows - the
