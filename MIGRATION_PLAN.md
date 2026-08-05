@@ -160,8 +160,8 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 48 · PORTED_UNVERIFIED 46 ·
-TODO 1 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
+**Counts as of the latest Phase 3 batch: VERIFIED 50 · PORTED_UNVERIFIED 45 ·
+TODO 0 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
 are all three rows Q3 said must be judged against the v2 contract rather than
 Python output (K3 renderer, S6 knownhosts, S13 configsvc).
 
@@ -276,7 +276,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | P3 | GitHub (`gh`) | `providers/github.py` (125) | `internal/core/providers/vcs.go` | **VERIFIED** | `vcs_test.go`: `TestGitHubDeployAddsAndIsIdempotent` (2 subtests), `TestRemoveMatchesBodyNeverTitle`, `TestGitHubEnterpriseUsesTheEnterpriseToken` (2 subtests), `TestVCSFallsBackToManual` (2 subtests), `TestListFailureIsNotAnEmptyAccount`, `TestManageURLFollowsTheHost` |
 | P4 | GitLab (`glab`) | `providers/gitlab.py` (109) | `internal/core/providers/vcs.go` | **VERIFIED** | `vcs_test.go::TestGitLabMirrorsGitHub` (2 subtests), plus the shared helpers covered by `TestRemoveMatchesBodyNeverTitle` and `TestManageURLFollowsTheHost` |
 | P5 | Cloud REST VPS (DigitalOcean, Vultr, Hetzner, Linode, Scaleway, generic) | `providers/cloud.py` (436); tests `tests/test_cloud_providers.py` | `internal/core/providers/cloud.go` | **VERIFIED** | `cloud_test.go`: `TestDeployAddsAKeyThatIsNotThere`, `TestDeployIsIdempotent`, `TestDeployRenamesOurStaleTitleButNeverAUserLabel` (2 subtests), `TestVerifyAndRemoveMatchOnBodyNotLabel`, `TestNoTokenFallsBackToManual`, `TestAPIFailuresSurface`, `TestPerProviderResponseShapes` (4 subtests), `TestNumericIDsDoNotBecomeScientificNotation`, `TestDigitalOceanOverHTTP`, `TestPaginationIsBounded`. **Coverage limit below.** |
-| P6 | Generic SSH (`ssh-copy-id`) | `providers/ssh_generic.py` (120) | `internal/core/providers/ssh_generic.go` | PU | Plain-`ssh` fallback is a **Go-only addition** (D6) |
+| P6 | Generic SSH (`ssh-copy-id`) | `providers/ssh_generic.py` (120) | `internal/core/providers/ssh_generic.go` | **VERIFIED** | Plain-`ssh` fallback is a **Go-only addition** (D6), covered here too. `ssh_generic_test.go`: `TestRemoveTakesOneKeyAndLeavesTheRest`, `TestRemoveRefusesToEmptyAuthorizedKeys` (mutation-checked), `TestRemoveRefusesWhenOnlyCommentsWouldRemain`, `TestRemoveReportsFalseWhenTheKeyIsNotThere`, `TestRemoveWithNoParseableKeyNeverReachesTheRemote`, `TestDeployOverSSHAppendsOnceAndTightensPermissions`, `TestDeployOverSSHKeepsTheKeyOutOfTheCommandLine`. Remote script executed locally under `sh`. |
 
 ### Platform layer
 
@@ -314,7 +314,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | X2 | Manifest/inventory JSON serialization (pydantic `model_dump`) | `core/manifest.py`, `core/inventory.py` | hand-written `MarshalJSON` | **VERIFIED** | `manifest_test.go::TestSerializationEmitsAllFieldsInFileOrder`, `::TestKeysOmittedWhenEmpty`, `::TestOptionValuesAreStringifiedLikePydantic`; `inventory_test.go::TestRecordSerializationMatchesPydantic`, `::TestSaveLoadRoundTripIsStable`. **Qualified**: parity is asserted on field order, null/`[]`/`{}` conventions and value stringification, and on save being byte-stable across a round trip — not by diffing against output from a running Python, which is no longer part of the build |
 | X3 | Packaging | `pyproject.toml` (hatchling) | `.goreleaser.yaml` | PU | Python had `tests/test_packaging.py` |
 | X4 | CI | `.github/workflows/ci.yml` | same, Go-only | PU | Lint gate added in Phase 2 (`golangci-lint`, per-GOOS) |
-| X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | TODO | Per-file mapping in Coverage check |
+| X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | **VERIFIED** | Per-file mapping in Coverage check; every file now maps to a counterpart or a written DROPPED justification |
 
 ---
 
@@ -488,7 +488,7 @@ is.
 | `test_expiry.py` | K4 | `expiry_test.go` |
 | `test_reconcile.py` | S2 | `reconciler_test.go` |
 | `test_rotate.py` | S3 | `rotator_test.go` |
-| `test_deploy.py` | S4 | **missing** |
+| `test_deploy.py` | S4 | `deployer_test.go` (7 tests) |
 | `test_bundle.py`, `test_age_roundtrip.py` | S5 | `bundler_test.go`, `age_live_test.go` |
 | `test_knownhosts.py` | S6 | `knownhosts_test.go` |
 | `test_query.py` | S8 | `query_test.go` |
@@ -499,20 +499,25 @@ is.
 | `test_recover.py` | S18 | `recover_test.go` |
 | `test_init_perms.py` | S19, U2 | `initsvc_test.go`, `perms_test.go` |
 | `test_providers.py`, `test_provider_integration.py` | P1, P2 | `providers_test.go`, `adapter_test.go` |
-| `test_cloud_providers.py` | P5 | **missing** |
-| `test_ssh_generic.py` | P6 | **missing** |
+| `test_cloud_providers.py` | P5 | `cloud_test.go` (10 tests, incl. a live local HTTP server) |
+| `test_ssh_generic.py` | P6 | `ssh_generic_test.go` — the remote script is executed locally under `sh`, as the Python did |
 | `test_paths.py` | U1 | `paths_test.go` |
-| `test_net.py` | U6, S21 | `netcheck_test.go` (netstat **missing**) |
+| `test_net.py` | U6, S21 | `netcheck_test.go`, `netstat_test.go` |
 | `test_linux.py` | L3 | partial (`scheduler_test.go`) |
-| `test_windows.py` | L4 | **missing** |
-| `test_tui.py`, `test_tui_pty.py` | E4 | `tui_test.go` (no PTY test) |
-| `test_cli_yes.py` | E2, confirmation flags | **missing** |
-| `test_smoke.py` | E1–E3 | **missing** |
-| `test_packaging.py` | X3 | **missing** |
+| `test_windows.py` | L4 | `windows_acl_test.go` (5), `windows_task_test.go` (3) — argv/ownership only; exec wiring is Q9 |
+| `test_tui.py`, `test_tui_pty.py` | E4 | `tui_test.go`; **no PTY test** — the Go TUI is a plain stdin menu, not a full-screen app (D3), so there is nothing a pty would exercise that a reader does not |
+| `test_cli_yes.py` | E2, confirmation flags | `confirm_test.go` (5 tests) |
+| `test_smoke.py` | E1–E3 | `key_test.go` (9 tests) covers the naming half verbatim; `exit_test.go` + `root_test.go` cover the entry point |
+| `test_packaging.py` | X3 | **DROPPED** — it checked that `make sync-data` had been run to copy data files into the Python package. Go embeds them (`//go:embed`), so the drift it guarded against cannot happen; the two embedded files are still pinned to their sources by `TestEmbeddedEnvMatchesShipped` and `TestEmbeddedFixkeysKeepsItsContract`. |
 | `test_security.py`, `test_safety.py`, `test_hardening.py`, `test_robustness.py`, `test_audit_fixes.py` | cross-cutting | partially covered by `bundler_security_test.go`, `keybackup_test.go`, `agehelp_test.go` |
 
-**Test-coverage gaps are the main Phase 3 workload:** 9 Python test files have
-no Go counterpart at all.
+**All 37 Python test files now map to a Go counterpart or a written
+justification.** Of the nine that had none when Phase 1 ran, seven were closed
+incidentally by the Phase 3 audit batches, `test_ssh_generic.py` and
+`test_cli_yes.py` were ported deliberately, and `test_packaging.py` is DROPPED
+with the reason above. **X5 is closed and no longer blocks Phase 4.** The one
+remaining hole is the Windows exec wiring (L4/Q9), which is a platform limit
+rather than a missing test.
 
 ---
 
