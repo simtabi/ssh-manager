@@ -29,11 +29,18 @@ func decodedWireType(body string) string {
 	if err != nil || len(blob) < 4 {
 		return ""
 	}
-	n := binary.BigEndian.Uint32(blob[:4])
-	if n == 0 || 4+int(n) > len(blob) {
+	// The length prefix is attacker-controlled - it comes out of a file anyone
+	// can write - so the bounds check is done in uint64, where it cannot wrap.
+	// `4+int(n) > len(blob)` is correct on a 64-bit build and wrong on a 32-bit
+	// one: int is 32 bits there, a prefix above MaxInt32 converts to a negative,
+	// the check passes, and the slice below panics on a negative bound. sshmgr
+	// ships 386, armv6 and armv7 binaries (build/targets.txt), so that is a
+	// crash on a malformed authorized_keys line, not a theoretical one.
+	n := uint64(binary.BigEndian.Uint32(blob[:4]))
+	if n == 0 || n+4 > uint64(len(blob)) {
 		return ""
 	}
-	t := blob[4 : 4+int(n)]
+	t := blob[4 : 4+n]
 	for _, b := range t {
 		if b > 127 { // must be ASCII
 			return ""
