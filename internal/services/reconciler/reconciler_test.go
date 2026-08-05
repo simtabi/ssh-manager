@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
+	"sort"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
@@ -294,5 +296,202 @@ func TestOverwriteIsScopedToOneProfile(t *testing.T) {
 	// The untouched profile keeps its archive slot empty: nothing was replaced.
 	if _, err := os.Stat(filepath.Join(ssh, "profiles", "adelsaiq", "old")); err == nil {
 		t.Error("a key that was never overwritten should have no archived predecessor")
+	}
+}
+
+// MintRef is the primitive behind `key add`, and its whole contract is the
+// refusal: adding a key that already exists must not regenerate it. The private
+// key on disk is the half of an identity that remote targets trust through its
+// public half, so silently minting a replacement invalidates every deployment
+// of that key while reporting success. It returns (nil, nil) instead - nothing
+// minted, nothing lost.
+func TestMintRefNeverRegeneratesAKeyThatExists(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	m := loadManifest(t)
+	ssh := t.TempDir()
+	p := paths.Paths{SSHDir: ssh, ConfigDir: t.TempDir()}
+	inv := inventory.New()
+	ref := manifest.KeyRef{Profile: "work", KeyName: "work_gh-ed25519"}
+
+	mk, err := New(p, m, inv, false).MintRef(ref, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if mk == nil {
+		t.Fatal("the first MintRef should mint the key")
+	}
+	if mk.Profile != "work" || mk.KeyName != ref.KeyName {
+		t.Errorf("minted %+v, want %s", mk, ref)
+	}
+	// Only the named key: MintRef is targeted, not a reconcile.
+	if _, err := os.Stat(filepath.Join(ssh, "profiles", "work", "work_box-ed25519")); err == nil {
+		t.Error("MintRef minted a key it was not asked for")
+	}
+	if len(inv.Keys) != 1 {
+		t.Errorf("inventory has %d keys, want just the minted one", len(inv.Keys))
+	}
+	before, err := os.ReadFile(mk.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	again, err := New(p, m, inv, false).MintRef(ref, "")
+	if err != nil {
+		t.Fatalf("a second MintRef should be a no-op, not an error: %v", err)
+	}
+	if again != nil {
+		t.Errorf("MintRef reported minting %+v for a key already on disk", again)
+	}
+	after, err := os.ReadFile(mk.Path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(after) != string(before) {
+		t.Fatal("MintRef regenerated an existing key; every deployment of it is now dead")
+	}
+}
+
+// `keygen` is the one command whose purpose is a single key, and it was the only
+// selector that would not accept one: `sshmgr keygen work/work_gh-ed25519` was an
+// unknown target. Each accepted form is checked by what it selects, since a
+// selector that silently matches nothing looks exactly like a successful no-op.
+func TestSelectorAcceptsProfileKeyAndHostForms(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	m := loadManifest(t)
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
+	if _, err := New(p, m, inventory.New(), false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	r := New(p, m, inventory.New(), false)
+
+	for _, tc := range []struct {
+		selector string
+		want     []string // key names, sorted
+	}{
+		{"", []string{"id_personal", "work_box-ed25519", "work_gh-ed25519"}},
+		{"work", []string{"work_box-ed25519", "work_gh-ed25519"}}, // profile
+		{"work_gh-ed25519", []string{"work_gh-ed25519"}},          // bare key name
+		{"work/work_gh-ed25519", []string{"work_gh-ed25519"}},     // profile/key
+		{"gh", []string{"work_gh-ed25519"}},                       // host alias
+		{"vps", []string{"id_personal"}},                          // alias -> shared key
+		{"personal", []string{"id_personal"}},                     // profile, shared scope
+		{"nothing-by-this-name", nil},
+	} {
+		got, err := r.ExistingKeys(tc.selector)
+		if err != nil {
+			t.Fatalf("%q: %v", tc.selector, err)
+		}
+		var names []string
+		for _, ref := range got {
+			names = append(names, ref.KeyName)
+		}
+		sort.Strings(names)
+		if len(names) != len(tc.want) {
+			t.Errorf("%q selected %v, want %v", tc.selector, names, tc.want)
+			continue
+		}
+		for i := range names {
+			if names[i] != tc.want[i] {
+				t.Errorf("%q selected %v, want %v", tc.selector, names, tc.want)
+				break
+			}
+		}
+	}
+}
+
+// The inventory is keyed by fingerprint, but a key's identity to the rest of the
+// tool is its path. Overwriting a key mints a new fingerprint at the same path,
+// so without pruning, the old record stays forever - an orphan the expiry report
+// keeps warning about and doctor keeps flagging, for a key that no longer exists.
+// The prune is scoped to the path, so a same-named key in another profile - the
+// normal case for one person under two orgs - keeps its own record.
+func TestOverwritingAKeyLeavesOneInventoryRecordPerPath(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(dupNameJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
+	inv := inventory.New()
+	if _, err := New(p, &m, inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	const personalPath = "~/.ssh/profiles/personal/imani_github-ed25519"
+	const adelsaiqPath = "~/.ssh/profiles/adelsaiq/imani_github-ed25519"
+	recordFor := func(path string) (string, inventory.KeyRecord) {
+		t.Helper()
+		var fps []string
+		var rec inventory.KeyRecord
+		for fp, r := range inv.Keys {
+			if r.Path == path {
+				fps = append(fps, fp)
+				rec = r
+			}
+		}
+		if len(fps) != 1 {
+			t.Fatalf("%s has %d inventory records, want exactly 1", path, len(fps))
+		}
+		return fps[0], rec
+	}
+	personalBefore, _ := recordFor(personalPath)
+	adelsaiqBefore, _ := recordFor(adelsaiqPath)
+
+	if _, err := New(p, &m, inv, false).Mint("", "",
+		map[manifest.KeyRef]bool{{Profile: "personal", KeyName: "imani_github-ed25519"}: true}); err != nil {
+		t.Fatal(err)
+	}
+
+	personalAfter, _ := recordFor(personalPath) // fatals if the old record survived
+	if personalAfter == personalBefore {
+		t.Error("the overwritten key kept its old fingerprint")
+	}
+	adelsaiqAfter, _ := recordFor(adelsaiqPath)
+	if adelsaiqAfter != adelsaiqBefore {
+		t.Error("pruning one profile's record disturbed the same-named key in another")
+	}
+	if len(inv.Keys) != 2 {
+		t.Errorf("inventory holds %d records for 2 keys", len(inv.Keys))
+	}
+}
+
+// Reconcile used to tighten only ~/.ssh while `doctor --fix` covered both trees,
+// so reconciling left the manifest and providers.json at whatever the umask
+// produced - and the very next doctor run reported permission problems that
+// reconcile had just been asked to prevent.
+func TestReconcileTightensTheConfigHomeToo(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	if runtime.GOOS == "windows" {
+		t.Skip("permissions are ACLs on Windows; see perms.windowsPermsOK")
+	}
+	m := loadManifest(t)
+	cfg := t.TempDir()
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: cfg}
+	// providers.json can hold API tokens; the manifest maps every host and login.
+	// Seed both world-readable, as a plain redirect of ssh-manager output would.
+	for _, path := range []string{p.Manifest(), p.Providers()} {
+		if err := os.WriteFile(path, []byte("{}\n"), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if _, err := New(p, m, inventory.New(), false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	for _, path := range []string{p.Manifest(), p.Providers(), p.Inventory()} {
+		fi, err := os.Stat(path)
+		if err != nil {
+			t.Errorf("%s: %v", filepath.Base(path), err)
+			continue
+		}
+		if mode := fi.Mode().Perm(); mode != 0o600 {
+			t.Errorf("%s is %04o, want 0600: readable by every local account", filepath.Base(path), mode)
+		}
 	}
 }
