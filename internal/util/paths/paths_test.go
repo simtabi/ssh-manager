@@ -1,6 +1,7 @@
 package paths
 
 import (
+	"os"
 	"path/filepath"
 	"runtime"
 	"testing"
@@ -87,5 +88,118 @@ func TestPathsLayout(t *testing.T) {
 	}
 	if p.SSHDir != ssh {
 		t.Errorf("SSHDir = %q, want %q", p.SSHDir, ssh)
+	}
+}
+
+// isolateHome points the real home lookup at a clean directory, so ~/.sshmgr on
+// the machine running the tests cannot make FirstLegacyHome return something the
+// test did not create.
+func isolateHome(t *testing.T) {
+	t.Helper()
+	dir := t.TempDir()
+	t.Setenv("HOME", dir)
+	t.Setenv("USERPROFILE", dir)
+}
+
+// FirstLegacyHome decides what `migrate` moves - it renames the directory it
+// names, and with --force replaces the current home with it. Each exclusion
+// exists to stop that happening to something it should not: a regular file left
+// at the legacy path, a symlink whose target lives anywhere at all, and the
+// standard home itself when the two paths coincide.
+func TestFirstLegacyHomeSkipsWhatItMustNotMigrate(t *testing.T) {
+	isolateHome(t)
+	base := t.TempDir()
+	p := Paths{ConfigDir: filepath.Join(base, "ssh-manager")}
+	sibling := filepath.Join(base, "sshmgr")
+
+	if got := p.FirstLegacyHome(); got != "" {
+		t.Errorf("nothing exists yet, got %q", got)
+	}
+
+	// A regular file at the legacy path is not a home to migrate.
+	if err := os.WriteFile(sibling, []byte("not a directory\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.FirstLegacyHome(); got != "" {
+		t.Errorf("a regular file was offered for migration: %q", got)
+	}
+	if err := os.Remove(sibling); err != nil {
+		t.Fatal(err)
+	}
+
+	// A symlink is refused whatever it points at: migrate renames what it is
+	// given, which for a link means moving the link and leaving the real
+	// directory stranded, or - with --force - replacing the home with one.
+	if runtime.GOOS != "windows" {
+		target := filepath.Join(base, "elsewhere")
+		if err := os.MkdirAll(target, 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.Symlink(target, sibling); err != nil {
+			t.Skipf("symlinks unavailable: %v", err)
+		}
+		if got := p.FirstLegacyHome(); got != "" {
+			t.Errorf("a symlinked legacy home was offered for migration: %q", got)
+		}
+		if err := os.Remove(sibling); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	// A real directory is what it is looking for.
+	if err := os.MkdirAll(sibling, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if got := p.FirstLegacyHome(); got != sibling {
+		t.Errorf("FirstLegacyHome = %q, want %q", got, sibling)
+	}
+
+	// When the standard home *is* the sibling, there is nothing to migrate - and
+	// migrating a directory onto itself would destroy it.
+	self := Paths{ConfigDir: sibling}
+	if got := self.FirstLegacyHome(); got == sibling {
+		t.Error("the standard home was offered as its own legacy home")
+	}
+}
+
+// A home override is something a user types, and both `~/sshmgr-home` and
+// `~\sshmgr-home` are things they type. Honouring only the forward-slash form
+// leaves a literal tilde in the path, so every file lands in a directory called
+// "~" beside wherever the process happened to be started.
+func TestATildeOverrideExpandsWithEitherSeparator(t *testing.T) {
+	h := absPath("users", "me")
+	e := env(map[string]string{"HOME": h, "USERPROFILE": h})
+	cwd := absPath("cwd")
+
+	for _, in := range []string{"~/sshmgr-home", `~\sshmgr-home`} {
+		want := filepath.Join(h, "sshmgr-home")
+		got := ConfigDir(env(map[string]string{
+			"HOME": h, "USERPROFILE": h, "SSH_MANAGER_HOME": in,
+		}), cwd)
+		if got != want {
+			t.Errorf("ConfigDir(%q) = %q, want %q", in, got, want)
+		}
+	}
+	// A bare "~" is the home itself, not a directory named "~" inside it.
+	if got := expandUser("~", e); got != h {
+		t.Errorf(`expandUser("~") = %q, want %q`, got, h)
+	}
+	// Another user's home is not ours to expand.
+	const other = "~someone/else"
+	if got := expandUser(other, e); got != other {
+		t.Errorf("expandUser(%q) = %q, want it left alone", other, got)
+	}
+}
+
+// Resolve's default SSHDir is ~/.ssh, taken from the injected environment rather
+// than the process's, so every command in one invocation agrees on which tree it
+// is managing.
+func TestResolveDefaultsSSHDirToTheHomeItWasGiven(t *testing.T) {
+	h := absPath("users", "me")
+	p := Resolve(env(map[string]string{
+		"HOME": h, "USERPROFILE": h, "SSH_MANAGER_HOME": absPath("cfg"),
+	}), absPath("cwd"), "")
+	if want := filepath.Join(h, ".ssh"); p.SSHDir != want {
+		t.Errorf("SSHDir = %q, want %q", p.SSHDir, want)
 	}
 }
