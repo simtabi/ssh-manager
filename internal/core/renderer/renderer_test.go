@@ -1,6 +1,7 @@
 package renderer
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 
@@ -179,4 +180,64 @@ func indicesOf(s, substr string) []int {
 		out = append(out, i+j)
 		i += j + 1
 	}
+}
+
+// `show` renders a single host block from the manifest and tells the user that
+// is what ends up in the config. Two renderers producing the same text is a
+// claim, not a guarantee, so it is asserted: whatever RenderHostBlockFor emits
+// must appear verbatim in the full render.
+func TestRenderHostBlockForMatchesTheRootConfig(t *testing.T) {
+	m, err := manifest.Load("../../../config/manifest.json")
+	if err != nil {
+		t.Fatal(err)
+	}
+	full, err := RenderRootConfig(m, true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	checked := 0
+	for _, profile := range m.ProfileNames() {
+		for _, host := range m.Profiles[profile].Hosts {
+			block, err := RenderHostBlockFor(m, profile, host)
+			if err != nil {
+				t.Fatalf("%s/%s: %v", profile, host.Alias, err)
+			}
+			if !strings.Contains(full, block) {
+				t.Errorf("the block `show` prints for %s/%s is not what the config gets:\n--- show ---\n%s",
+					profile, host.Alias, block)
+			}
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no hosts checked; the fixture manifest has none")
+	}
+}
+
+// raw_options render in the order they were written. ssh takes the first value
+// it sees for a keyword, so reordering them can change which one applies.
+func TestRawOptionsKeepTheirDeclaredOrder(t *testing.T) {
+	m := mustManifest(t, `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "w":{"key_scope":"per_service","hosts":[{"alias":"a","hostname":"h","user":"u",
+	    "raw_options":{"ZZZLast":"1","AAAFirst":"2","MMMMiddle":"3"}}]}}}`)
+	got, err := RenderRootConfig(m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	zz, aa, mm := strings.Index(got, "ZZZLast"), strings.Index(got, "AAAFirst"), strings.Index(got, "MMMMiddle")
+	if zz == -1 || aa == -1 || mm == -1 {
+		t.Fatalf("options missing:\n%s", got)
+	}
+	if !(zz < aa && aa < mm) {
+		t.Errorf("options were reordered (sorted, probably); declaration order is load-bearing:\n%s", got)
+	}
+}
+
+func mustManifest(t *testing.T, raw string) *manifest.Manifest {
+	t.Helper()
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(raw), &m); err != nil {
+		t.Fatal(err)
+	}
+	return &m
 }
