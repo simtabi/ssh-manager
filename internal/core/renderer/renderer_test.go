@@ -228,7 +228,7 @@ func TestRawOptionsKeepTheirDeclaredOrder(t *testing.T) {
 	if zz == -1 || aa == -1 || mm == -1 {
 		t.Fatalf("options missing:\n%s", got)
 	}
-	if !(zz < aa && aa < mm) {
+	if zz >= aa || aa >= mm {
 		t.Errorf("options were reordered (sorted, probably); declaration order is load-bearing:\n%s", got)
 	}
 }
