@@ -87,8 +87,8 @@ func newSnapshotsCmd() *cobra.Command {
 			"snapshot survives the rollback. Use `sshmgr bundle` for encrypted key backups.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			if !yes && !confirm(c, "Restore ~/.ssh config from a snapshot? (private keys are left as they are)") {
-				os.Exit(1)
+			if err := confirmOrAbort(c, "Restore ~/.ssh config from a snapshot? (private keys are left as they are)", yes); err != nil {
+				return err
 			}
 			id := ""
 			if len(args) > 0 {

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -63,7 +62,7 @@ func newValidateCmd() *cobra.Command {
 			}
 			_, _ = fmt.Fprintf(out, "\n%d key(s) checked, %d failed\n", len(checks), failed)
 			if failed > 0 {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},

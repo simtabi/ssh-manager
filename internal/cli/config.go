@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"path/filepath"
 	"strings"
 
@@ -73,7 +72,7 @@ func newConfigCmd() *cobra.Command {
 			}
 			_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 			if !res.InSync() {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},

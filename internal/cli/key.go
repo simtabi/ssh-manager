@@ -3,7 +3,6 @@ package cli
 import (
 	"fmt"
 	"io"
-	"os"
 	"strings"
 	"text/tabwriter"
 
@@ -56,8 +55,8 @@ func newKeyDeleteCmd() *cobra.Command {
 			if purge {
 				what = fmt.Sprintf("Delete key %s AND its files on disk?", ref)
 			}
-			if !yes && !confirm(c, what) {
-				os.Exit(1)
+			if err := confirmOrAbort(c, what, yes); err != nil {
+				return err
 			}
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {

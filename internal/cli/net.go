@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 	"text/tabwriter"
 
 	"github.com/spf13/cobra"
@@ -46,7 +45,7 @@ func newNetCmd() *cobra.Command {
 				return err
 			}
 			if gatedDown {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},

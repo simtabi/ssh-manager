@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -96,8 +95,8 @@ func newProfileCmd() *cobra.Command {
 			if purge {
 				question = fmt.Sprintf("Delete profile %q, all its hosts AND its key files on disk?", name)
 			}
-			if !yes && !confirm(c, question) {
-				os.Exit(1)
+			if err := confirmOrAbort(c, question, yes); err != nil {
+				return err
 			}
 			doRevoke := revoke
 			if !yes {

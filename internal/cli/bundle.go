@@ -132,8 +132,8 @@ func newRestoreCmd() *cobra.Command {
 		Short: "Decrypt and lay keys back",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			if !yes && !confirm(c, "Restore ~/.ssh from this bundle? (current tree is snapshotted first)") {
-				os.Exit(1)
+			if err := confirmOrAbort(c, "Restore ~/.ssh from this bundle? (current tree is snapshotted first)", yes); err != nil {
+				return err
 			}
 			p := paths.Resolve(nil, "", "")
 			ident := identity

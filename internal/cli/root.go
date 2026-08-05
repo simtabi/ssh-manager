@@ -5,7 +5,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -64,13 +63,5 @@ func newVersionCmd() *cobra.Command {
 			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sshmgr %s\n", version.Version)
 			return nil
 		},
-	}
-}
-
-// Execute runs the root command and exits non-zero on error.
-func Execute() {
-	if err := newRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "sshmgr:", err)
-		os.Exit(1)
 	}
 }

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -24,9 +23,9 @@ func newRotateCmd() *cobra.Command {
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			key := args[0]
-			if !yes && !confirm(c, fmt.Sprintf("Rotate %s? (the current key moves to old/, "+
-				"replacing any earlier predecessor)", key)) {
-				os.Exit(1)
+			if err := confirmOrAbort(c, fmt.Sprintf("Rotate %s? (the current key moves to old/, "+
+				"replacing any earlier predecessor)", key), yes); err != nil {
+				return err
 			}
 			p := paths.Resolve(nil, "", "")
 			if err := backupKeysBeforeDestroying(p, c.OutOrStdout(), noKeyBackup); err != nil {
@@ -60,7 +59,7 @@ func newRotateCmd() *cobra.Command {
 			}
 			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
 			if !report.Committed {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},
@@ -81,8 +80,8 @@ func newRollbackCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			key := args[0]
-			if !yes && !confirm(c, fmt.Sprintf("Roll back %s to its /old/ predecessor?", key)) {
-				os.Exit(1)
+			if err := confirmOrAbort(c, fmt.Sprintf("Roll back %s to its /old/ predecessor?", key), yes); err != nil {
+				return err
 			}
 			p := paths.Resolve(nil, "", "")
 			m, err := manifest.Load(p.Manifest())

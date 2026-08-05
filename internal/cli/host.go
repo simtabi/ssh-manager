@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -118,8 +117,8 @@ func newHostCmd() *cobra.Command {
 		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			profile, alias := args[0], args[1]
-			if !yes && !confirm(c, fmt.Sprintf("Delete host %q from %q?", alias, profile)) {
-				os.Exit(1)
+			if err := confirmOrAbort(c, fmt.Sprintf("Delete host %q from %q?", alias, profile), yes); err != nil {
+				return err
 			}
 			doRevoke := revoke
 			if !yes {

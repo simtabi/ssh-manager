@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -52,7 +51,7 @@ func newDeployCmd() *cobra.Command {
 			// A failed automated deploy / unreachable host is non-zero; a manual
 			// target that still needs a paste is not (exit 0).
 			if report.AnyError() {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},

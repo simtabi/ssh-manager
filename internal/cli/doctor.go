@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -46,7 +45,7 @@ func newDoctorCmd() *cobra.Command {
 				_, _ = fmt.Fprintln(out, rep.Format())
 			}
 			if !rep.OK() {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},
