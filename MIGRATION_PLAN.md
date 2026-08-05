@@ -70,6 +70,81 @@ The matrix below is built from scratch against `python-final`.
 
 ---
 
+## Target architecture (Phase 2)
+
+**Verdict on the existing Go layout: KEPT, with three changes.** It already
+matches the org standard — thin `cmd/sshmgr` entrypoint, cobra tree confined to
+`internal/cli`, small single-concern packages under `internal/core`,
+`internal/services`, `internal/util`, build-tagged platform files. Replacing it
+would discard 151 files of working code to arrive somewhere very close to where
+it already is. What it lacked was gates, not structure.
+
+### Module and layout
+
+```
+cmd/sshmgr/main.go        thin entrypoint; askpass short-circuit, then cli.Execute
+internal/cli/             the cobra tree — the only package importing cobra
+internal/core/            domain types, no I/O policy: manifest, inventory,
+                          renderer, expiry, key, authkeys, providers
+internal/services/        one concern each; composed by the CLI, never by
+                          each other's internals
+internal/platform/        every OS predicate; build-tagged terminal handling
+internal/util/            leaf helpers: paths, perms, fs, lock, log, netcheck,
+                          secrets, desktop, scheduler, httpjson, askpass
+```
+
+Module path `github.com/simtabi/ssh-manager` is unchanged — it is the import
+path already published and referenced by `go install`.
+
+### Changes made in Phase 2
+
+| # | Change | Why |
+|---|---|---|
+| A1 | `.golangci.yml`: standard linters, **no path exclusions**, caps off | The default `max-same-issues: 3` reported 51 issues when there were **121**. A cap hides findings the same way an exclusion does. |
+| A2 | Lint runs **per GOOS** (`make lint-all`, CI matrix) | golangci-lint analyses one GOOS per run: platform files behind `//go:build` are invisible, and `unused` reports anything only they reference as dead code. |
+| A3 | `timerUnit` moved into `scheduler_linux.go` | A constant referenced only from a build-tagged file belongs in that file. |
+| A4 | Exit codes decided only in `Execute` (`internal/cli/exit.go`) | 14 inline `os.Exit(1)` calls made every command untestable through `Execute`, which is the parity gate this migration depends on. |
+| A5 | `make check` = fmt + vet + lint + test | One command reproduces the CI gate. |
+
+### Error handling
+
+Go `error` values throughout; no panics for control flow. Errors wrap with `%w`
+and are compared with `errors.Is`. Two sentinels in `internal/cli/exit.go` cover
+failures that are not faults — `errAborted` (declined confirmation) and
+`errNotClean` (the report *is* the bad news: doctor, validate, config check,
+deploy, rotate, net). Both exit 1 silently, since the message already reached the
+user. Everything else prints `sshmgr: <err>` and exits 1.
+
+**Exit-code contract (parity, cited):** 0 on success, 1 on everything else.
+`python-final:src/ssh_manager/cli.py:59-62` (`_fail`), `:147` (doctor's
+`0 if report.ok else 1`), `:343-344` et al (declined confirmations). No other
+code was ever produced by the Python, and none is invented.
+
+### Config, logging, concurrency
+
+- **Config**: `internal/util/paths` resolves the home from `$SSH_MANAGER_HOME` /
+  `$SSH_MANAGER_CONFIG_DIR`, else XDG. The manifest is the single source of
+  truth; the rendered ssh config is a pure function of it.
+- **Logging**: no logging framework. `internal/util/log` appends structured
+  audit records for mutating operations; user-facing output is `fmt` to the
+  command's own writer, which is what makes commands testable.
+- **Concurrency**: deliberately almost none. The tool shells out to `ssh*`
+  binaries and writes one user's dotfiles; the only concurrency is
+  `bundler`/`snapshots` streaming through an `io.Pipe` with a goroutine per
+  producer, and `exec.CommandContext` timeouts on every external call.
+  Cross-process safety is an advisory `flock` (`internal/util/lock`), taken once
+  per process by the mutation guard.
+
+### Open architectural item
+
+`internal/cli/tui.go` holds the TUI. The org standard puts Bubble Tea models in
+a top-level `tui/` package so `internal/cli` stays importable. Not moved:
+matrix row E4 is a rewrite (the current TUI is a plain stdin menu, deviation
+D3), and moving it twice is waste. **Decision: move it when it is rewritten,
+not before.**
+
+---
+
 ## Feature matrix
 
 Status legend: `PU` = PORTED_UNVERIFIED, `V` = VERIFIED, `D` = DROPPED,
@@ -85,7 +160,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 |---|---|---|---|---|---|---|
 | E1 | `sshmgr` console entry point | `python-final:pyproject.toml` `[project.scripts]`; `python-final:src/ssh_manager/__main__.py` | Installed script → `ssh_manager.cli:main` | `cmd/sshmgr` | PU | `cmd/sshmgr/main.go` |
 | E2 | Root CLI app + `--version` callback + banner | `cli.py:27-54,101-105` | Typer app; subapps `config`,`profile`,`host`,`notify`,`snapshots`,`knownhosts` | `internal/cli/root.go` | PU | `internal/cli/root_test.go` |
-| E3 | Error→exit-code mapping | `cli.py:59-62`; `util/errors.py` | `SshManagerError` → `typer.Exit`; exit codes are parity-critical | `internal/cli` (`Execute`) | **T** | No dedicated Go test; exit-code parity unproven |
+| E3 | Error→exit-code mapping | `cli.py:59-62,147,343-344`; `util/errors.py` | 0 on success, 1 on everything else. Declined confirmation → 1; doctor → `0 if ok else 1` | `internal/cli/exit.go` | PU | `exit_test.go::TestErrorClassification`, `::TestConfirmOrAbort`, `::TestNoCommandCallsOsExit`. Classification proven; **the code itself still needs a subprocess assertion in Phase 3** |
 | E4 | TUI | `tui.py` (209 lines) | questionary/rich menu | `internal/cli/tui.go` | PU | `internal/cli/tui_test.go`; **known deviation** — plain stdin menu, not questionary |
 
 ### Commands (parity = same flags, same exit codes, same output contract)
@@ -211,7 +286,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | X1 | Env vars: `SSH_MANAGER_HOME`, `_CONFIG_DIR`, `_AGE_RECIPIENT`, `_AGE_IDENTITY_FILE`, `_AUTO_PIN`, `_SNAPSHOT_RETAIN` | `util/paths.py`, `services/bundler.py`, `services/knownhosts.py` | `internal/util/paths`, `internal/cli` | PU | `paths_test.go`, `retention_test.go`. Go adds `SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS` (D5) |
 | X2 | Manifest/inventory JSON serialization (pydantic `model_dump`) | `core/manifest.py`, `core/inventory.py` | hand-written `MarshalJSON` | PU | `manifest_test.go::TestSerializationEmitsAllFieldsInFileOrder` — **byte-parity is the parity gate** |
 | X3 | Packaging | `pyproject.toml` (hatchling) | `.goreleaser.yaml` | PU | Python had `tests/test_packaging.py` |
-| X4 | CI | `.github/workflows/ci.yml` | same, Go-only | PU | No lint gate yet (Phase 2) |
+| X4 | CI | `.github/workflows/ci.yml` | same, Go-only | PU | Lint gate added in Phase 2 (`golangci-lint`, per-GOOS) |
 | X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | **T** | Per-file mapping in Coverage check |
 
 ---
