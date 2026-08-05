@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
@@ -150,4 +151,140 @@ func aliasOf(t *testing.T, m *manifest.Manifest, keyName string) string {
 		}
 	}
 	return keyName
+}
+
+// A passphrase-protected key is the recommended configuration, so it must not
+// read as a defect. The pair cannot be checked without the passphrase, which is
+// a note - "not verified" - rather than an issue, and the key stays OK. Treating
+// it as broken would put a red line against the most secure setup the tool
+// supports, on every run.
+func TestAnEncryptedKeyIsNotedNotFailed(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	m := loadManifest(t)
+	ssh := t.TempDir()
+	priv := keyPath(t, m, ssh, "good")
+	if _, err := keystore.New().Generate(priv, "ed25519", "good", "", false); err != nil {
+		t.Fatal(err)
+	}
+	// Encrypted in place with a direct ssh-keygen call rather than through
+	// keystore.Generate: that path hands the passphrase over via SSH_ASKPASS
+	// pointing at os.Executable(), which inside a test binary is the test binary,
+	// so it would hang waiting for a helper that never answers. The askpass
+	// protocol itself is covered in internal/util/askpass.
+	out, err := exec.Command("ssh-keygen", "-p", "-f", priv, "-P", "", "-N", "test-passphrase").CombinedOutput()
+	if err != nil {
+		t.Fatalf("could not encrypt the test key: %v: %s", err, out)
+	}
+
+	checks, err := New(m, ssh).ValidateKeys("work_good-ed25519")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 1 {
+		t.Fatalf("got %d checks, want 1", len(checks))
+	}
+	c := checks[0]
+	if !c.OK {
+		t.Errorf("an encrypted key should be OK, got issues %v", c.Issues)
+	}
+	if len(c.Notes) != 1 || !strings.Contains(c.Notes[0], "encrypted") {
+		t.Errorf("notes = %v, want the unverifiable pair recorded as a note", c.Notes)
+	}
+	for _, issue := range c.Issues {
+		if strings.Contains(issue, "unreadable") || strings.Contains(issue, "does NOT match") {
+			t.Errorf("encrypted key misreported as broken: %q", issue)
+		}
+	}
+}
+
+// One person under two orgs uses the same key file name in both. A bare name
+// selector has to validate every profile that has it: checking only the first
+// reports "1 key, OK" while a broken key with the same name sits unchecked in
+// another profile.
+const sharedNameJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519"},
+  "profiles": {
+    "personal": {"key_scope": "per_service", "hosts": [
+      {"alias": "gh-personal", "hostname": "github.com", "user": "git", "key_name": "imani_github-ed25519"}]},
+    "adelsaiq": {"key_scope": "per_service", "hosts": [
+      {"alias": "gh-adelsaiq", "hostname": "gitlab.com", "user": "git", "key_name": "imani_github-ed25519"}]}
+  }
+}`
+
+func TestABareNameValidatesEveryProfileThatHasIt(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(sharedNameJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	ssh := t.TempDir()
+	ks := keystore.New()
+	for _, profile := range []string{"personal", "adelsaiq"} {
+		if _, err := ks.Generate(filepath.Join(ssh, "profiles", profile, "imani_github-ed25519"),
+			"ed25519", profile, "", false); err != nil {
+			t.Fatal(err)
+		}
+	}
+	// Break only adelsaiq's copy.
+	if err := os.WriteFile(filepath.Join(ssh, "profiles", "adelsaiq", "imani_github-ed25519.pub"),
+		[]byte("not a key\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	svc := New(&m, ssh)
+
+	checks, err := svc.ValidateKeys("imani_github-ed25519")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 2 {
+		t.Fatalf("a bare name matched %d keys, want both profiles' copies", len(checks))
+	}
+	byProfile := map[string]KeyCheck{}
+	for _, c := range checks {
+		byProfile[c.Profile] = c
+	}
+	if !byProfile["personal"].OK {
+		t.Errorf("personal's copy is intact: %+v", byProfile["personal"])
+	}
+	if byProfile["adelsaiq"].OK {
+		t.Error("the broken copy was reported clean")
+	}
+
+	// The composite form narrows to exactly one, which is how a user asks about
+	// the copy they mean when the name alone is ambiguous.
+	one, err := svc.ValidateKeys("adelsaiq/imani_github-ed25519")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(one) != 1 || one[0].Profile != "adelsaiq" {
+		t.Errorf("profile/key selector = %+v, want adelsaiq's copy alone", one)
+	}
+}
+
+// A key a profile declares that no host references still has files on disk, so
+// it still has perms and a pair to check. Walking resolved hosts instead of
+// KeyRefs would skip it - and an unwired key is exactly the one nobody notices
+// has rotted.
+func TestADeclaredButUnwiredKeyIsStillChecked(t *testing.T) {
+	const j = `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "vault":{"key_scope":"per_service","keys":[{"name":"vault_backup-ed25519"}],"hosts":[]}}}`
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(j), &m); err != nil {
+		t.Fatal(err)
+	}
+	checks, err := New(&m, t.TempDir()).ValidateKeys("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 1 || checks[0].KeyName != "vault_backup-ed25519" {
+		t.Fatalf("checks = %+v, want the declared key", checks)
+	}
+	if checks[0].OK || !hasIssue(checks[0], "private key missing") {
+		t.Errorf("an unminted declared key should report as missing: %+v", checks[0])
+	}
 }
