@@ -55,8 +55,10 @@ ci: fmt-check build-all vet test ## the gate CI runs (lint runs there as its own
 
 check: ci lint ## everything: the CI gate plus lint, for humans
 
-e2e: build ## end-to-end smoke in a throwaway sandbox
-	SSHMGR=$(CURDIR)/$(BIN) .build/e2e.sh
+# Tagged out of the ordinary suite: it mints six real keypairs and does an age
+# round trip. It builds its own binary, so it does not depend on `build`.
+e2e: ## end-to-end smoke in a throwaway sandbox
+	go test -tags e2e -count=1 -timeout 300s ./cmd/sshmgr/
 
 feature-check: build ## exercise every command with assertions
 	SSHMGR=$(CURDIR)/$(BIN) .build/feature-check.sh
