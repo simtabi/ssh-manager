@@ -280,3 +280,165 @@ func TestDeleteHostKeepsTheRecordOfAStillDeclaredKey(t *testing.T) {
 		t.Error("a record nothing in the manifest owns should have been pruned")
 	}
 }
+
+// writeManifest seeds a config home with a manifest and an inventory, and returns
+// an Editor over it. The tests below all need a manifest with declared keys and
+// records pointing at them, which setup's minimal fixture does not have.
+func writeManifest(t *testing.T, manifestJSON string, records map[string]inventory.KeyRecord) (*Editor, paths.Paths) {
+	t.Helper()
+	cfg := t.TempDir()
+	if err := os.WriteFile(filepath.Join(cfg, "manifest.json"), []byte(manifestJSON), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	p := paths.Paths{SSHDir: filepath.Join(t.TempDir(), ".ssh"), ConfigDir: cfg}
+	inv := inventory.New()
+	for fp, rec := range records {
+		inv.Record(fp, rec)
+	}
+	if err := inv.Save(p.Inventory()); err != nil {
+		t.Fatal(err)
+	}
+	return New(p), p
+}
+
+func loadInv(t *testing.T, p paths.Paths) *inventory.Inventory {
+	t.Helper()
+	inv, err := inventory.Load(p.Inventory())
+	if err != nil {
+		t.Fatal(err)
+	}
+	return inv
+}
+
+const twoHostsOneKeyJSON = `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+  "work":{"key_scope":"per_service","keys":[{"name":"shared-ed25519"}],"hosts":[
+    {"alias":"gh","hostname":"github.com","user":"git","key_name":"shared-ed25519"},
+    {"alias":"box","hostname":"10.0.0.2","user":"deploy","key_name":"shared-ed25519"}]}}}`
+
+// The refusal is the point. A Host block whose IdentityFile no longer exists
+// does not fail loudly - ssh reports a bare "Permission denied (publickey)",
+// with nothing pointing at the deleted key as the cause. So DeleteKey refuses
+// while anything still resolves to it, and names what to fix.
+func TestDeleteKeyRefusesWhileHostsStillUseIt(t *testing.T) {
+	ed, p := writeManifest(t, twoHostsOneKeyJSON, map[string]inventory.KeyRecord{
+		"SHA256:shared": {Profile: "work", Path: "~/.ssh/profiles/work/shared-ed25519", Type: "ed25519"},
+	})
+	ref := manifest.KeyRef{Profile: "work", KeyName: "shared-ed25519"}
+
+	_, err := ed.DeleteKey(ref, false)
+	if err == nil {
+		t.Fatal("deleting a key two hosts still use should be refused")
+	}
+	// Both hosts, so the user can see the whole of what has to be repointed
+	// rather than discovering the second one on the next attempt.
+	for _, alias := range []string{"gh", "box"} {
+		if !strings.Contains(err.Error(), alias) {
+			t.Errorf("error should name host %q: %v", alias, err)
+		}
+	}
+
+	// A refusal must change nothing.
+	if keys := reload(t, p).Profiles["work"].Keys; len(keys) != 1 {
+		t.Errorf("the declaration was removed despite the refusal: %+v", keys)
+	}
+	if _, ok := loadInv(t, p).Keys["SHA256:shared"]; !ok {
+		t.Error("the inventory record was pruned despite the refusal")
+	}
+}
+
+func TestDeleteKeyDropsTheDeclarationAndItsRecord(t *testing.T) {
+	ed, p := writeManifest(t, twoHostsOneKeyJSON, map[string]inventory.KeyRecord{
+		"SHA256:shared": {Profile: "work", Path: "~/.ssh/profiles/work/shared-ed25519", Type: "ed25519"},
+	})
+	ref := manifest.KeyRef{Profile: "work", KeyName: "shared-ed25519"}
+
+	if _, err := ed.DeleteKey(manifest.KeyRef{Profile: "work", KeyName: "never-declared"}, false); err == nil {
+		t.Error("deleting a key the profile does not declare should error")
+	}
+	if _, err := ed.DeleteKey(manifest.KeyRef{Profile: "nope", KeyName: "x"}, false); err == nil {
+		t.Error("deleting from an unknown profile should error")
+	}
+
+	// Repoint both hosts, which is what the refusal above told the user to do.
+	for _, alias := range []string{"gh", "box"} {
+		if err := ed.EditHost("work", alias, HostFields{KeyName: str("other-ed25519")}); err != nil {
+			t.Fatal(err)
+		}
+	}
+	res, err := ed.DeleteKey(ref, false)
+	if err != nil {
+		t.Fatalf("an unused key should delete: %v", err)
+	}
+	if res.Removed != "key work/shared-ed25519" {
+		t.Errorf("Removed = %q, want the profile-qualified ref", res.Removed)
+	}
+	if len(res.PrunedKeys) != 1 || res.PrunedKeys[0] != "shared-ed25519" {
+		t.Errorf("PrunedKeys = %v, want the deleted key", res.PrunedKeys)
+	}
+	if keys := reload(t, p).Profiles["work"].Keys; len(keys) != 0 {
+		t.Errorf("declaration survived the delete: %+v", keys)
+	}
+	if _, ok := loadInv(t, p).Keys["SHA256:shared"]; ok {
+		t.Error("the record of a deleted key was left behind")
+	}
+}
+
+// A profile can declare a key no host ever referenced. Deleting the profile has
+// to take that key's record too: the affected set is built from the profile's
+// KeyRefs rather than from what its hosts resolve to, so an unwired key does not
+// outlive the profile that owned it as a record pointing at nothing.
+func TestDeleteProfileTakesTheRecordOfAKeyNoHostUsed(t *testing.T) {
+	const j = `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "work":{"key_scope":"per_service","hosts":[{"alias":"gh","hostname":"github.com","user":"git"}]},
+	  "vault":{"key_scope":"per_service","keys":[{"name":"vault_backup-ed25519"}],"hosts":[]}}}`
+	ed, p := writeManifest(t, j, map[string]inventory.KeyRecord{
+		"SHA256:vault": {Profile: "vault", Path: "~/.ssh/profiles/vault/vault_backup-ed25519", Type: "ed25519"},
+		"SHA256:gh":    {Profile: "work", Path: "~/.ssh/profiles/work/work_gh-ed25519", Type: "ed25519"},
+	})
+
+	res, err := ed.DeleteProfile("vault", false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.PrunedKeys) != 1 || res.PrunedKeys[0] != "vault_backup-ed25519" {
+		t.Errorf("PrunedKeys = %v, want the profile's unwired key", res.PrunedKeys)
+	}
+	inv := loadInv(t, p)
+	if _, ok := inv.Keys["SHA256:vault"]; ok {
+		t.Error("a record whose profile no longer exists was left behind")
+	}
+	if _, ok := inv.Keys["SHA256:gh"]; !ok {
+		t.Error("deleting one profile pruned another profile's record")
+	}
+}
+
+// Two hosts sharing one key each have their own deployment entry on the single
+// record. Deleting one host takes its entry and leaves the other: the key is
+// still deployed, and reporting it as needs-redeploy would send the user to
+// redeploy a key that is already live on the remaining target.
+func TestDeletingAHostDropsOnlyItsOwnDeployment(t *testing.T) {
+	when := "2026-01-01"
+	ed, p := writeManifest(t, twoHostsOneKeyJSON, map[string]inventory.KeyRecord{
+		"SHA256:shared": {
+			Profile: "work", Path: "~/.ssh/profiles/work/shared-ed25519", Type: "ed25519",
+			Deployments: []inventory.Deployment{
+				{Target: "gh", Method: "manual", Date: &when, Verified: true},
+				{Target: "box", Method: "ssh-copy-id", Date: &when, Verified: true},
+			},
+		},
+	})
+
+	if _, err := ed.DeleteHost("work", "gh", true); err != nil {
+		t.Fatal(err)
+	}
+	rec, ok := loadInv(t, p).Keys["SHA256:shared"]
+	if !ok {
+		t.Fatal("the key is still declared and still used by box; its record must survive")
+	}
+	if len(rec.Deployments) != 1 || rec.Deployments[0].Target != "box" {
+		t.Fatalf("deployments = %+v, want box's alone", rec.Deployments)
+	}
+	if !rec.Deployments[0].Verified {
+		t.Error("box's deployment was downgraded by another host's deletion")
+	}
+}
