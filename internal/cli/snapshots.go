@@ -125,9 +125,14 @@ func newSnapshotsCmd() *cobra.Command {
 }
 
 // confirm reads a y/N answer from stdin.
+// confirm asks a yes/no question. Input comes from the command's own reader
+// rather than os.Stdin directly, matching how every prompt already writes
+// through c.OutOrStdout(): the two halves of one conversation should not
+// disagree about which streams they are on, and a caller that redirects input
+// was previously ignored.
 func confirm(c *cobra.Command, prompt string) bool {
 	_, _ = fmt.Fprintf(c.OutOrStdout(), "%s [y/N] ", prompt)
-	r := bufio.NewReader(os.Stdin)
+	r := bufio.NewReader(c.InOrStdin())
 	line, _ := r.ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
