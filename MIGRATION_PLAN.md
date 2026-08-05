@@ -160,7 +160,7 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 44 · PORTED_UNVERIFIED 50 ·
+**Counts as of the latest Phase 3 batch: VERIFIED 48 · PORTED_UNVERIFIED 46 ·
 TODO 1 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
 are all three rows Q3 said must be judged against the v2 contract rather than
 Python output (K3 renderer, S6 knownhosts, S13 configsvc).
@@ -295,15 +295,15 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | U2 | Permissions | `util/perms.py` (55) | `internal/util/perms` | **VERIFIED** | `staging_test.go`: `TestStagingDirsAreManaged` (pre-existing) + `TestSymlinksAreNeverManagedAtAnyLevel`, `TestOnlyTheToolsOwnPathsAreManaged`, `TestModeForKnowsWhichPathsAreSecret`. Windows ACL half is L4/Q9. |
 | U3 | Filesystem (atomic write, snapshots) | `util/fs.py` (155) | `internal/util/fs` | **VERIFIED** | `fs_test.go`: `TestWriteTextAtomicWritesContentAndMode`, `…DoesNotTranslateNewlines`, `…ReplacesAndLeavesNoResidue`, `…ReassertsModeOnAnExistingFile`, `…CreatesTheParent`, `TestTempFileNameIsSweepable`, `TestEnsureDirForcesModeOnANewAndAnExistingDir`, `TestExists` |
 | U4 | Advisory lock | `util/lock.py` (58) | `internal/util/lock` | **VERIFIED** | `lock_test.go`: `TestAcquireReleaseReacquire` (pre-existing) + `TestASecondProcessWaitsForTheLock` (re-execs the test binary; the pre-existing test never exercised exclusion at all), `TestASecondAcquireInOneProcessBlocksToo` (pins the non-reentrancy behind the TUI freeze) |
-| U5 | Audit log | `util/log.py` (47) | `internal/util/log` | PU | `log_test.go` |
-| U6 | Network probe | `util/net.py` (124) | `internal/util/netcheck` | PU | `netcheck_test.go` |
+| U5 | Audit log | `util/log.py` (47) | `internal/util/log` | **VERIFIED** | `rotate_test.go`: 3 pre-existing (rotation at cap, one generation, append below cap) + `TestAValueThatWouldBreakTheLineIsEscaped`, `TestTheRecordKeepsTsAndEventFirstThenTheCallersOrder`, `TestAFreshLogAndItsDirectoryAreOwnerOnly`, `TestAnUnwritableLogDoesNotFailTheCaller` |
+| U6 | Network probe | `util/net.py` (124) | `internal/util/netcheck` | **VERIFIED** | `netcheck_test.go`: 3 pre-existing (message/icon, VPN filter, TCP probe) + `TestSSHReachableTreatsOnlyKnownFailuresAsUnreachable` (12 subtests, stub `ssh` on PATH), `TestSSHReachableFallsBackToTCPWithNoSSHClient` |
 | U7 | Secrets (.env loading) | `util/secrets.py` (50) | `internal/util/secrets` | **VERIFIED** | `secrets_test.go`: 3 pre-existing (plain/empty, cmd:, shlex) + `TestACmdSecretIsExecutedAsArgvNotThroughAShell`, `TestAFailedLookupYieldsNothingRatherThanTheRawValue`, `TestOnlySuccessfulLookupsAreMemoized` (caught a live bug: failures were memoized, so an unlocked store stayed unusable for the life of the process; mutation-checked) |
 | U8 | Subprocess helper | `util/proc.py` (77) | *dissolved* into `os/exec` at call sites | PU | Redesign R2 |
 | U9 | HTTP+JSON client | `util/http.py` (123) | `internal/util/httpjson` | **VERIFIED** | `httpjson_test.go`: `TestRequestJSONSendsHeadersAndParsesTheBody`, `TestEmptyResponsesBecomeAnEmptyMap`, `TestRetriesIdempotentRequests`, `TestDoesNotRetryNonIdempotentRequests`, `TestClientErrorsFailImmediatelyAndReportTheBody`, `TestErrorBodyIsTruncated`, `TestRetryAfterIsHonouredAndCapped`, `TestNonJSONResponseIsAnError`, `TestRedirectPolicyRefusesDowngradeAndStripsCredentials` (4 subtests) |
-| U10 | JSON store | `util/jsonstore.py` (32) | *dissolved* into `manifest`/`inventory` Save/Load | PU | Redesign R3 |
+| U10 | JSON store | `util/jsonstore.py` (32) | *dissolved* into `manifest`/`inventory` Save/Load | **VERIFIED** | Redesign R3. `inventory_test.go`: `TestSaveIsAtomicAndReassertsMode`, `TestSaveLoadRoundTripIsStable`; `manifest_test.go`: `TestManifestSaveIsAtomicAndReassertsMode` (mutation-checked). Both files claimed atomicity and used `os.WriteFile`; both are now pinned. |
 | U11 | Error taxonomy | `util/errors.py` (27) | Go `error` values | PU | Redesign R4 |
 | U12 | Presentation layer (rich) | `render.py` (208) | *dissolved* into per-command `Format()`/`write*Table` | PU | Redesign R5 |
-| U13 | Config-home perms enumeration | `facade.py` | `internal/util/homeperms` | PU | `homeperms_test.go` |
+| U13 | Config-home perms enumeration | `facade.py` | `internal/util/homeperms` | **VERIFIED** | `homeperms_test.go`: 2 pre-existing (state models, sidecars + rotated logs) + `TestDirectoriesAndTheAgeIdentityAreCovered`, `TestIdentitiesAndBundlesAreCoveredWhereverTheyLandInTheHome` |
 | U14 | askpass helper | **none** — replaces `services/keystore.py:47-56` (`-N <passphrase>` in argv) | `internal/util/askpass` | **VERIFIED** | `askpass_test.go`: `TestServingGatesOnTheExactMarker`, `TestServeWritesTheSecretAndOneNewline`, `TestEnvironCarriesTheHandshake`, `TestEnvironDropsInheritedValuesRatherThanShadowingThem`, `TestSecretTravelsOnlyInTheEnvironment`. Security deviation — see D9 |
 
 ### Cross-cutting
