@@ -12,7 +12,13 @@ import (
 
 const cmdPrefix = "cmd:"
 
-var cache sync.Map // command -> resolved secret ("" == failure/empty)
+// cache memoizes successful lookups only. A cmd: secret typically prompts - a
+// password manager unlock, a touch on a hardware token - so re-running it for
+// every provider call would be unusable. Failures are not cached: the usual
+// reason one fails is a locked store, and caching that would mean the user
+// unlocks it, retries, and gets the same empty token for the life of the
+// process. That is invisible in a one-shot CLI run and permanent in the TUI.
+var cache sync.Map // command -> resolved secret (successes only)
 
 // Resolve returns the secret for a token value: cmd:<command> runs the command
 // (memoized), anything else is returned unchanged; "" stays "".
@@ -28,7 +34,9 @@ func Resolve(raw string) string {
 		return v.(string)
 	}
 	out := runCmdSecret(command)
-	cache.Store(command, out)
+	if out != "" {
+		cache.Store(command, out)
+	}
 	return out
 }
 
