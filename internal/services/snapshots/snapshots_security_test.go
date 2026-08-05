@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -184,5 +185,123 @@ func TestHoldsKeyMaterial(t *testing.T) {
 	}
 	if !HoldsKeyMaterial(legacy) {
 		t.Error("a legacy snapshot carrying a private key was not flagged")
+	}
+}
+
+// craftArchive writes a tar.gz with exactly the members given, bypassing
+// Snapshot - which would never produce these.
+func craftArchive(t *testing.T, path string, members map[string]string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = f.Close() }()
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	names := make([]string, 0, len(members))
+	for name := range members {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		body := members[name]
+		if err := tw.WriteHeader(&tar.Header{
+			Name: name, Mode: 0o600, Size: int64(len(body)), Typeflag: tar.TypeReg,
+		}); err != nil {
+			t.Fatal(err)
+		}
+		if _, err := tw.Write([]byte(body)); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if err := tw.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if err := gz.Close(); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// Extraction is rooted at the parent of ~/.ssh, so a member naming its way out
+// of that directory writes anywhere the user can write - ~/.bashrc, ~/.profile,
+// an authorized_keys elsewhere. The guard exists; nothing checked it, and it is
+// the one bug in an extractor that turns a file you were handed into code
+// execution.
+func TestPathTraversalMembersAreRefused(t *testing.T) {
+	base := t.TempDir()
+	ssh := filepath.Join(base, ".ssh")
+	writeTree(t, ssh)
+	outside := filepath.Join(base, "escaped")
+
+	for _, name := range []string{
+		"../escaped",         // straight out of the parent
+		".ssh/../../escaped", // out via a plausible-looking prefix
+		".ssh/../.ssh/../../escaped",
+	} {
+		tarball := filepath.Join(base, "crafted.tar.gz")
+		craftArchive(t, tarball, map[string]string{name: "OWNED\n"})
+		if err := Restore(tarball, ssh); err == nil {
+			t.Errorf("%q was extracted; it should be refused", name)
+		}
+		if _, err := os.Stat(outside); err == nil {
+			t.Fatalf("%q escaped the destination and wrote %s", name, outside)
+		}
+	}
+
+	// The ordinary case still works, so the guard is not simply refusing
+	// everything - a check that rejects all archives passes the loop above.
+	tarball := filepath.Join(base, "ok.tar.gz")
+	craftArchive(t, tarball, map[string]string{".ssh/config": "# restored\n"})
+	if err := Restore(tarball, ssh); err != nil {
+		t.Fatalf("an ordinary archive should restore: %v", err)
+	}
+	got, err := os.ReadFile(filepath.Join(ssh, "config"))
+	if err != nil || string(got) != "# restored\n" {
+		t.Errorf("config = %q (%v), want the archived content", got, err)
+	}
+}
+
+// Restore replaces a whole directory tree, so it checks what it is aimed at
+// before it starts. Both refusals matter: the path must be a .ssh, and it must
+// not be a symlink - restoring through one would write the archive into whatever
+// the link points at, outside the managed tree entirely.
+func TestRestoreRefusesATargetItCannotVouchFor(t *testing.T) {
+	base := t.TempDir()
+	ssh := filepath.Join(base, ".ssh")
+	writeTree(t, ssh)
+	tarball, err := Snapshot(ssh, filepath.Join(base, "snapshots"), 10, "20260101-000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notSSH := filepath.Join(base, "Documents")
+	if err := os.MkdirAll(notSSH, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := Restore(tarball, notSSH); err == nil {
+		t.Error("restoring over a directory that is not a .ssh should be refused")
+	}
+
+	linkBase := t.TempDir()
+	real := filepath.Join(linkBase, "real")
+	if err := os.MkdirAll(real, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(linkBase, ".ssh")
+	if err := os.Symlink(real, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	if err := Restore(tarball, link); err == nil {
+		t.Error("restoring over a symlinked .ssh should be refused")
+	}
+	if entries, _ := os.ReadDir(real); len(entries) != 0 {
+		t.Error("the refused restore still wrote through the link")
+	}
+
+	// A snapshot that is not there at all is an error, not a silent no-op that
+	// would read as a successful restore of nothing.
+	if err := Restore(filepath.Join(base, "no-such.tar.gz"), ssh); err == nil {
+		t.Error("restoring a missing snapshot should error")
 	}
 }
