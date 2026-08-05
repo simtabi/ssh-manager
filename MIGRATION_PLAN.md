@@ -160,8 +160,8 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 10 · PORTED_UNVERIFIED 77 ·
-TODO 4 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
+**Counts as of the latest Phase 3 batch: VERIFIED 11 · PORTED_UNVERIFIED 77 ·
+TODO 3 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
 
@@ -269,10 +269,10 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
-| L1 | Platform protocol | `platforms/base.py` (50) | `internal/platform` | PU | No test files |
-| L2 | macOS (keychain, launchd, notify) | `platforms/macos.py` (73) | `internal/platform`, `internal/util/scheduler`, `internal/util/desktop` | PU | `scheduler_test.go` |
+| L1 | Platform protocol | `platforms/base.py` (50) | `internal/platform` | **VERIFIED** | `platform_test.go`: `TestReadLineStopsAtTheNewlineAndLeavesTheRest`, `TestReadLinePreservesContentButStripsCR`, `TestReadLineOnClosedInput`, `TestOSPredicatesAgreeWithGOOS`, `TestEmitUseKeychainOnlyOnMacOS`, `TestOSNameCarriesBothForms`, `TestReadSecretRefusesWithoutATerminal` |
+| L2 | macOS (keychain, launchd, notify) | `platforms/macos.py` (73) | `internal/platform`, `internal/util/scheduler`, `internal/util/desktop` | PU | `scheduler_test.go`, `platform_test.go`; `desktop` still untested |
 | L3 | Linux (systemd timer, notify-send) | `platforms/linux.py` (107) | same | PU | `scheduler_test.go`; Python had `tests/test_linux.py` |
-| L4 | Windows (icacls, schtasks, toast) | `platforms/windows.py` (92) | `internal/util/perms/perms_windows.go`, `scheduler_windows.go` | **T** | Python had `tests/test_windows.py`; no Go equivalent |
+| L4 | Windows (icacls, schtasks, toast) | `platforms/windows.py` (92); tests `tests/test_windows.py` | `internal/util/perms/{windows_acl,perms_windows}.go`, `scheduler/{windows_task,scheduler_windows}.go` | **PORTED_UNVERIFIED** | Argv/ownership logic extracted and covered on every platform: `windows_acl_test.go` (5 tests), `windows_task_test.go` (3 tests). **The exec wiring itself is not verified by this run** — it compiles only on Windows and only CI's Windows leg can execute it. See coverage limits and Q9. |
 
 ### Utilities
 
@@ -385,6 +385,13 @@ is.
   Python. The tests pin the shapes the Python's own tests asserted plus the
   shapes the Go code expects; where those agree, both could still be wrong about
   the real API. Recorded in `OPEN_QUESTIONS.md` (Q8).
+- **The Windows exec wiring (L4) is unverified by this run.** `SetPerms` and
+  `Install` compile only on Windows, so `icacls`/`schtasks` are never actually
+  invoked outside CI's Windows leg. Everything decidable without Windows - the
+  argv, its order, the principal list, owner resolution - is covered on all
+  platforms. What is not: that `icacls` still takes those flags, and that the
+  commands succeed against a real ACL. **This row cannot reach VERIFIED without
+  either accepting CI as evidence or a Windows machine** (Q9).
 - **VCS adapters are exercised through a stand-in `gh`/`glab` on PATH**, which
   covers argv, the environment overlay and the JSON parsing, but not the real
   CLIs' behaviour. A `gh` that changed its flag names would pass these tests.

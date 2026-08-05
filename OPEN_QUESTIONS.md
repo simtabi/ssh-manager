@@ -128,3 +128,35 @@ request path itself is covered for one adapter.
 confirm the list-response shape. Even one would raise confidence in the four
 that share the code path. Not blocking - the adapters degrade to a manual
 fallback when no token is set, which is the common case.
+
+---
+
+### Q9 — Can CI count as verification evidence?
+
+**Ambiguity.** The rules say only my own verification in this run produces
+VERIFIED, and I cite the tests I ran. The Windows platform code (row L4) cannot
+be executed here: `perms_windows.go` and `scheduler_windows.go` are behind
+`//go:build windows`, and this is macOS. The same will be true of any reviewer
+not on Windows.
+
+Taken literally, **L4 can never reach VERIFIED**, which blocks Phase 4
+permanently, since Phase 4 requires every row VERIFIED or DROPPED.
+
+**Default taken: split the row.** Everything decidable without Windows was
+extracted into untagged files and is genuinely verified here (argv, its order,
+the broad-principal list, owner resolution). The row stays
+**PORTED_UNVERIFIED** for the remainder - that `icacls` and `schtasks` still
+accept those flags and succeed against a real ACL.
+
+**What would close it**, in preference order:
+1. **Accept a green Windows CI leg as evidence** for exec-wiring rows. Cheap;
+   CI already runs `go test ./...` on `windows-latest`, so the tagged code is
+   compiled and any Windows-only test would run. Say the word and I will add
+   `//go:build windows` execution tests and treat a green run as the citation.
+2. Run the suite once on a Windows machine and paste the output.
+3. **DROP the Windows platform** with justification, if Windows is not a
+   supported target in practice. The release matrix currently builds for it, so
+   this would mean changing that too.
+
+I recommend (1). It is the only option that scales to the other rows CI can
+reach and I cannot.
