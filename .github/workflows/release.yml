@@ -30,11 +30,11 @@ jobs:
       id-token: write # keyless signing for the provenance attestation
       attestations: write # write the build-provenance attestation
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
           fetch-depth: 0 # full history + tags for GoReleaser
 
-      - uses: actions/setup-go@40f1582b2485089dde7abd97c1529aa768e1baff # v5
+      - uses: actions/setup-go@924ae3a1cded613372ab5595356fb5720e22ba16 # v6.5.0
         with:
           go-version-file: go.mod
           cache: true
@@ -46,7 +46,7 @@ jobs:
         run: ./scripts/extract-changelog.sh "${GITHUB_REF_NAME}" > release_notes.md
 
       - name: Run GoReleaser
-        uses: goreleaser/goreleaser-action@e435ccd777264be153ace6237001ef4d979d3a7a # v6
+        uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: latest
           args: release --clean --release-notes=release_notes.md
@@ -61,6 +61,6 @@ jobs:
       # checksums file lists them all, so `gh attestation verify <file>
       # --repo <owner>/<repo>` works for any downloaded binary or archive.
       - name: Attest build provenance
-        uses: actions/attest-build-provenance@e8998f949152b193b063cb0ec769d69d929409be # v2
+        uses: actions/attest-build-provenance@0f67c3f4856b2e3261c31976d6725780e5e4c373 # v4.1.1
         with:
           subject-checksums: build/dist/checksums.txt

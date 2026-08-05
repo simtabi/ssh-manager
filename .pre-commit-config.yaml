@@ -5,7 +5,7 @@ repos:
     hooks:
       - id: gitleaks
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v4.6.0
+    rev: v6.0.0
     hooks:
       - id: detect-private-key
         # recover_test.go feeds a private-key header to the code that must
