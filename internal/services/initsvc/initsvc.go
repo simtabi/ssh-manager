@@ -76,19 +76,31 @@ func (s *Service) Run(force, backup bool, stamp string) (Result, error) {
 		backupDir = filepath.Join(s.p.StateDir(), "init-backup-"+stamp)
 	}
 
-	if s.shouldWrite(s.p.Manifest(), &res, force, backupDir) {
+	write, err := s.shouldWrite(s.p.Manifest(), &res, force, backupDir)
+	if err != nil {
+		return Result{}, err
+	}
+	if write {
 		if err := manifest.Starter(s.emitUseKeychain).Save(s.p.Manifest()); err != nil {
 			return Result{}, err
 		}
 	}
-	if s.shouldWrite(s.p.Inventory(), &res, force, backupDir) {
+	write, err = s.shouldWrite(s.p.Inventory(), &res, force, backupDir)
+	if err != nil {
+		return Result{}, err
+	}
+	if write {
 		if err := inventory.New().Save(s.p.Inventory()); err != nil {
 			return Result{}, err
 		}
 	}
 	// providers.json is NOT seeded - the full catalog ships with the binary; a
 	// user file only exists to customize it (see `providers --export`).
-	if s.shouldWrite(s.p.EnvFile(), &res, force, backupDir) {
+	write, err = s.shouldWrite(s.p.EnvFile(), &res, force, backupDir)
+	if err != nil {
+		return Result{}, err
+	}
+	if write {
 		if err := fs.WriteTextAtomic(s.p.EnvFile(), string(defaultEnv), homeperms.FileMode); err != nil {
 			return Result{}, err
 		}
@@ -108,42 +120,55 @@ func (s *Service) Run(force, backup bool, stamp string) (Result, error) {
 
 // shouldWrite decides whether to (over)write a seed file; records it and backs up.
 // Mirrors facade._should_write.
-func (s *Service) shouldWrite(path string, res *Result, force bool, backupDir string) bool {
+//
+// A failed backup stops the overwrite. `init --force --backup` resets the
+// manifest - the user's whole configuration - and the backup is the only thing
+// that makes it recoverable; every error from the copy used to be swallowed, so
+// a run that could not write the backup reset the file anyway and reported
+// "backup saved" over the top of it.
+func (s *Service) shouldWrite(path string, res *Result, force bool, backupDir string) (bool, error) {
 	name := filepath.Base(path)
 	if fs.Exists(path) {
 		if !force {
 			res.Existed = append(res.Existed, name)
-			return false
+			return false, nil
 		}
-		s.backupFile(path, backupDir)
+		if err := s.backupFile(path, backupDir); err != nil {
+			return false, fmt.Errorf("refusing to reset %s: its backup could not be written: %w", name, err)
+		}
 		note := "reset (no backup)"
 		if backupDir != "" {
 			note = "reset; backup saved"
 		}
 		res.Created = append(res.Created, fmt.Sprintf("%s (%s)", name, note))
-		return true
+		return true, nil
 	}
 	res.Created = append(res.Created, name)
-	return true
+	return true, nil
 }
 
-func (s *Service) backupFile(path, backupDir string) {
+// backupFile copies path into backupDir. It is a no-op - not an error - when no
+// backup was asked for, or when there is nothing at path to preserve.
+func (s *Service) backupFile(path, backupDir string) error {
 	if backupDir == "" || !fs.Exists(path) {
-		return
+		return nil
 	}
 	if err := fs.EnsureDir(backupDir, homeperms.DirMode); err != nil {
-		return
+		return err
 	}
 	in, err := os.Open(path)
 	if err != nil {
-		return
+		return err
 	}
 	defer func() { _ = in.Close() }()
 	dst := filepath.Join(backupDir, filepath.Base(path))
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, homeperms.FileMode)
 	if err != nil {
-		return
+		return err
 	}
-	_, _ = io.Copy(out, in)
-	_ = out.Close()
+	if _, err := io.Copy(out, in); err != nil {
+		_ = out.Close()
+		return err
+	}
+	return out.Close()
 }

@@ -3,6 +3,7 @@ package migratesvc
 import (
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -86,5 +87,97 @@ func TestMigrateBothExist(t *testing.T) {
 	}
 	if b, _ := os.ReadFile(filepath.Join(res.Backup, "manifest.json")); string(b) != "standard" {
 		t.Errorf("backup should hold the previous standard data, got %q", b)
+	}
+}
+
+// copyTree is the cross-filesystem fallback: when the legacy home and the new
+// one are on different mounts, os.Rename fails with EXDEV and the whole home is
+// copied instead. That path never runs in the ordinary case, so it is the one
+// most likely to be wrong when it finally does - and by then it is moving the
+// user's only copy of their configuration.
+func TestCopyTreeCarriesTheWholeHomeAcross(t *testing.T) {
+	src := t.TempDir()
+	dst := filepath.Join(t.TempDir(), "moved")
+	write := func(rel, body string, mode os.FileMode) string {
+		full := filepath.Join(src, rel)
+		if err := os.MkdirAll(filepath.Dir(full), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(full, []byte(body), mode); err != nil {
+			t.Fatal(err)
+		}
+		return full
+	}
+	write("manifest.json", `{"version":1}`, 0o600)
+	write("log/audit.log", "entry\n", 0o600)
+	write("snapshots/ssh-20260101-000000.tar.gz", "archive\n", 0o600)
+	write(".state/expiry-cache.json", "{}\n", 0o600)
+	// An empty directory still has to arrive: the scaffolding is what init
+	// creates, and a missing dist/ means the next bundle write fails.
+	if err := os.MkdirAll(filepath.Join(src, "dist"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := copyTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	for rel, want := range map[string]string{
+		"manifest.json":                        `{"version":1}`,
+		"log/audit.log":                        "entry\n",
+		"snapshots/ssh-20260101-000000.tar.gz": "archive\n",
+		".state/expiry-cache.json":             "{}\n",
+	} {
+		got, err := os.ReadFile(filepath.Join(dst, rel))
+		if err != nil {
+			t.Errorf("%s did not survive the copy: %v", rel, err)
+			continue
+		}
+		if string(got) != want {
+			t.Errorf("%s = %q, want %q", rel, got, want)
+		}
+	}
+	if fi, err := os.Stat(filepath.Join(dst, "dist")); err != nil || !fi.IsDir() {
+		t.Errorf("an empty directory was dropped: %v", err)
+	}
+}
+
+// Symlinking a config file out to a dotfiles repo or a password store is a
+// normal thing to do. filepath.Walk lstats, so a link reaches copyTree as a
+// non-directory: opening it would follow it and write the target's bytes into a
+// regular file carrying the link's own 0777 mode - leaving the user editing a
+// dotfiles copy that nothing reads any more.
+func TestCopyTreePreservesSymlinksRatherThanFlatteningThem(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privileges on Windows")
+	}
+	outside := filepath.Join(t.TempDir(), "dotfiles-manifest.json")
+	if err := os.WriteFile(outside, []byte(`{"version":1}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	src := t.TempDir()
+	link := filepath.Join(src, "manifest.json")
+	if err := os.Symlink(outside, link); err != nil {
+		t.Skipf("symlinks unavailable: %v", err)
+	}
+	dst := filepath.Join(t.TempDir(), "moved")
+
+	if err := copyTree(src, dst); err != nil {
+		t.Fatal(err)
+	}
+	moved := filepath.Join(dst, "manifest.json")
+	fi, err := os.Lstat(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if fi.Mode()&os.ModeSymlink == 0 {
+		t.Fatalf("the link was flattened into a %v regular file; edits to the dotfiles copy would stop taking effect",
+			fi.Mode().Perm())
+	}
+	target, err := os.Readlink(moved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if target != outside {
+		t.Errorf("link points at %q, want %q", target, outside)
 	}
 }

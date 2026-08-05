@@ -107,6 +107,19 @@ func copyTree(src, dst string) error {
 		if fi.IsDir() {
 			return os.MkdirAll(target, fi.Mode().Perm())
 		}
+		// Recreate a symlink as a symlink. filepath.Walk lstats, so a link arrives
+		// here as a non-directory; opening it would follow it and write the
+		// target's bytes into a regular file with the link's own 0777 mode.
+		// Symlinking a config file out to a dotfiles repo or a password store is a
+		// normal thing to do, and a migration that quietly replaced the link with a
+		// stale copy would leave the user editing a file nothing reads.
+		if fi.Mode()&os.ModeSymlink != 0 {
+			dest, err := os.Readlink(p)
+			if err != nil {
+				return err
+			}
+			return os.Symlink(dest, target)
+		}
 		in, err := os.Open(p)
 		if err != nil {
 			return err
