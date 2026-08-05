@@ -142,7 +142,24 @@ not on Windows.
 Taken literally, **L4 can never reach VERIFIED**, which blocks Phase 4
 permanently, since Phase 4 requires every row VERIFIED or DROPPED.
 
-**Default taken: split the row.** Everything decidable without Windows was
+**RESOLVED 2026-08-05 by the repo owner: option (1).** A green `windows-latest`
+leg counts as evidence for exec-wiring rows. L4 now cites run
+`31045991249` (commit `77a52bb`) by URL rather than "CI is green" - an
+unfalsifiable citation is not evidence.
+
+That decision paid for itself immediately. The first Windows run this branch
+ever had failed **eleven** tests, none of which any other platform could see:
+the test home was never isolated on Windows (`paths.home()` reads `USERPROFILE`,
+the fixtures set only `HOME`), so the whole `internal/cli` suite was operating on
+the real home of whoever ran it; the advisory lock leaked its descriptor between
+tests, which POSIX tolerates and Windows does not; and three mode assertions had
+no ACL guard.
+
+One consequence to keep in mind: CI is now a verification instrument, so **X4
+cannot be verified by "CI is green"** without circularity. It is verified by
+reading `ci.yml` against the `Makefile`.
+
+**Original default (superseded): split the row.** Everything decidable without Windows was
 extracted into untagged files and is genuinely verified here (argv, its order,
 the broad-principal list, owner resolution). The row stays
 **PORTED_UNVERIFIED** for the remainder - that `icacls` and `schtasks` still
