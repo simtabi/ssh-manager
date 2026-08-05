@@ -16,9 +16,13 @@ import (
 func TestMutationGuardDoesNotDeadlockOnItself(t *testing.T) {
 	base := t.TempDir()
 	p := paths.Paths{SSHDir: filepath.Join(base, ".ssh"), ConfigDir: filepath.Join(base, "cfg")}
-	// Package state: another test in this binary may already hold it.
-	t.Cleanup(func() { heldLock = nil })
-	heldLock = nil
+	// Package state: another test in this binary may already hold it. Closing
+	// the fd matters, not just clearing the variable - see releaseHeldLock.
+	releaseHeldLock(t)
+	if heldLock != nil {
+		heldLock()
+		heldLock = nil
+	}
 
 	done := make(chan struct{})
 	go func() {

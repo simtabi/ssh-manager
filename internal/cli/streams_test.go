@@ -6,7 +6,9 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/simtabi/ssh-manager/internal/util/lock"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
@@ -18,6 +20,26 @@ import (
 // that redirected its streams.
 //
 // internal/cli/snapshots.go's confirm() is the pattern; these three never got it.
+
+// releaseHeldLock drops the process-wide advisory lock at the end of a test.
+//
+// snapshotBeforeMutation takes it once per PROCESS and holds it on purpose: a
+// CLI command exits and the OS releases it. A test binary does not exit between
+// tests, so the lock file stays open - and Windows refuses to unlink an open
+// file, which fails t.TempDir's cleanup for every test that has mutated. Setting
+// the variable to nil is not enough; the fd has to be closed, which is what
+// calling the release func does.
+//
+// Every fixture that can reach a mutating command registers this.
+func releaseHeldLock(t *testing.T) {
+	t.Helper()
+	t.Cleanup(func() {
+		if heldLock != nil {
+			heldLock()
+			heldLock = nil
+		}
+	})
+}
 
 // readPassphrase's piped branch reads a single line from the command's input.
 // It reads one line rather than buffering, because the terminal branch reads a
@@ -127,5 +149,56 @@ func TestEditHomeIsolatesTheHomeOnEveryPlatform(t *testing.T) {
 	// And the resolver agrees, through the same code the commands use.
 	if got := paths.Resolve(nil, "", "").SSHDir; got != p.SSHDir {
 		t.Errorf("paths.Resolve gives %q, the fixture says %q", got, p.SSHDir)
+	}
+}
+
+// The lock has to be closed, not just forgotten. A fixture that only sets
+// heldLock to nil leaks the descriptor: on Windows an open file cannot be
+// unlinked, so t.TempDir's cleanup fails and the test is reported as failing
+// after it has already passed. Three fixtures got this wrong in three different
+// ways before releaseHeldLock existed.
+//
+// Unlinking is not the assertion, because POSIX unlinks open files happily and
+// the check would prove nothing off Windows. The portable signal is the lock
+// itself: flock is per descriptor, so if the old one is still held, a fresh
+// Acquire in this same process blocks - which is the deadlock that froze the
+// TUI. A release that closes returns the lock; a release that forgets does not.
+func TestReleasingTheHeldLockClosesItRatherThanForgettingIt(t *testing.T) {
+	base := t.TempDir()
+	p := paths.Paths{SSHDir: filepath.Join(base, ".ssh"), ConfigDir: filepath.Join(base, "cfg")}
+
+	t.Run("scope", func(t *testing.T) {
+		releaseHeldLock(t)
+		if heldLock != nil { // another test in this binary may hold it
+			heldLock()
+			heldLock = nil
+		}
+		snapshotBeforeMutation(p)
+		if heldLock == nil {
+			t.Skip("the lock could not be taken here; nothing to release")
+		}
+	}) // cleanup runs at the end of the subtest
+
+	if heldLock != nil {
+		t.Fatal("the lock survived its own cleanup")
+	}
+
+	got := make(chan func(), 1)
+	go func() {
+		rel, err := lock.Acquire(p.LockFile())
+		if err != nil {
+			close(got)
+			return
+		}
+		got <- rel
+	}()
+	select {
+	case rel := <-got:
+		if rel == nil {
+			t.Fatal("re-acquiring the lock errored")
+		}
+		rel()
+	case <-time.After(3 * time.Second):
+		t.Fatal("the lock is still held, so the release forgot the descriptor rather than closing it")
 	}
 }

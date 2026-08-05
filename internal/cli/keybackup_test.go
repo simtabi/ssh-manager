@@ -12,6 +12,7 @@ import (
 func fixture(t *testing.T) paths.Paths {
 	t.Helper()
 	base := t.TempDir()
+	releaseHeldLock(t)
 	p := paths.Paths{SSHDir: filepath.Join(base, ".ssh"), ConfigDir: filepath.Join(base, "cfg")}
 	key := filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")
 	if err := os.MkdirAll(filepath.Dir(key), 0o700); err != nil {

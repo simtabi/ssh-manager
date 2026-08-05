@@ -35,17 +35,7 @@ func editHome(t *testing.T) paths.Paths {
 	t.Setenv("SSH_MANAGER_HOME", cfg)
 	// Snapshots and auto-pin both reach for the network/filesystem otherwise.
 	t.Setenv("SSH_MANAGER_AUTO_PIN", "0")
-	// snapshotBeforeMutation takes the advisory lock once per PROCESS and holds
-	// it deliberately, because a CLI command exits and the OS releases it. A test
-	// binary does not exit between tests, so the lock file stays open - and
-	// Windows refuses to delete an open file, which fails t.TempDir's cleanup.
-	// Release it per test instead; the next mutating call re-acquires.
-	t.Cleanup(func() {
-		if heldLock != nil {
-			heldLock()
-			heldLock = nil
-		}
-	})
+	releaseHeldLock(t)
 	p := paths.Paths{SSHDir: filepath.Join(home, ".ssh"), ConfigDir: cfg}
 	if err := manifest.Starter(false).Save(p.Manifest()); err != nil {
 		t.Fatal(err)
