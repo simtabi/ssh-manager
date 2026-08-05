@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"errors"
 	"os"
 	"os/exec"
@@ -199,5 +200,44 @@ func TestADeclinedConfirmationExitsOneAndSaysNothingExtra(t *testing.T) {
 	list, _, _ := run("", "list")
 	if !strings.Contains(list, "tp") {
 		t.Errorf("the declined profile is gone:\n%s", list)
+	}
+}
+
+// `doctor --json` is the scripting surface, so what matters is that it parses
+// and carries the keys a script would index. This replaces the one assertion in
+// .build/feature-check.sh that shelled out to python3 to validate it - the last
+// executing Python anywhere in this repo's CI.
+func TestDoctorJSONIsMachineReadable(t *testing.T) {
+	run, _ := sshmgr(t)
+	if _, errOut, code := run("", "init"); code != 0 {
+		t.Fatalf("init exited %d: %s", code, errOut)
+	}
+
+	out, errOut, code := run("", "doctor", "--json")
+	if code != 0 && code != 1 { // 1 is a verdict, not a failure to produce output
+		t.Fatalf("doctor --json exited %d: %s", code, errOut)
+	}
+	var report map[string]any
+	if err := json.Unmarshal([]byte(out), &report); err != nil {
+		t.Fatalf("doctor --json did not produce parseable JSON: %v\n%s", err, out)
+	}
+	// The fields a script indexes. Nothing asserted their presence before - only
+	// that the whole document parsed, which a bare `{}` also does.
+	for _, key := range []string{"home", "ssh_dir", "perm_issues", "orphan_keys",
+		"duplicate_keys", "unpinned_hosts", "alias_collisions", "old_keys"} {
+		if _, ok := report[key]; !ok {
+			t.Errorf("doctor --json is missing %q; a script reading it would get nil", key)
+		}
+	}
+	// Empty collections serialize as [] and {}, never null - a consumer should
+	// not have to distinguish "none" from "absent".
+	for _, key := range []string{"perm_issues", "orphan_keys", "duplicate_keys"} {
+		if _, ok := report[key].([]any); !ok {
+			t.Errorf("%s is %T, want a JSON array even when empty", key, report[key])
+		}
+	}
+	// Errors never contaminate the document.
+	if strings.Contains(out, "sshmgr:") {
+		t.Errorf("a diagnostic leaked into the JSON payload:\n%s", out)
 	}
 }

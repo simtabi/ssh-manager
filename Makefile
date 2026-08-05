@@ -60,8 +60,11 @@ check: ci lint ## everything: the CI gate plus lint, for humans
 e2e: ## end-to-end smoke in a throwaway sandbox
 	go test -tags e2e -count=1 -timeout 300s ./cmd/sshmgr/
 
-feature-check: build ## exercise every command with assertions
-	SSHMGR=$(CURDIR)/$(BIN) .build/feature-check.sh
+# The per-command assertions live in internal/cli/commands_test.go now, so they
+# run in the ordinary suite. Kept as a target because the docs and the shipping
+# checklist name it.
+feature-check: ## exercise every command with assertions
+	go test -count=1 -run 'TestCommandSurface|TestVerbs' ./internal/cli/
 
 cross: ## build every release target into dist/ (needs goreleaser)
 	goreleaser build --clean --snapshot

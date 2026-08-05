@@ -49,9 +49,7 @@ jobs:
         if: runner.os != 'Windows'
         shell: bash
         run: make e2e
-      - name: Feature check
-        if: runner.os == 'macOS'
-        run: make feature-check
+
 
   pre-commit:
     # pre-commit is itself a Python tool; the hooks it runs here are gitleaks,
