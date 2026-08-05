@@ -16,6 +16,11 @@ import (
 	"time"
 )
 
+// sleep is time.Sleep, indirected so a test can exercise the retry path without
+// spending its backoff - four attempts of real waiting is ten seconds, which is
+// how a retry loop ends up with no test at all.
+var sleep = time.Sleep
+
 var retryStatus = map[int]bool{429: true, 500: true, 502: true, 503: true, 504: true}
 var idempotent = map[string]bool{"GET": true, "HEAD": true, "PUT": true, "DELETE": true}
 var sensitiveHeaders = map[string]bool{"authorization": true, "x-auth-token": true, "cookie": true}
@@ -86,7 +91,7 @@ func RequestJSON(method, rawURL string, headers map[string]string, body any) (an
 		resp, err := client.Do(req)
 		if err != nil {
 			if idempotent[method] && attempt < retries {
-				time.Sleep(time.Duration(attempt+1) * time.Second)
+				sleep(time.Duration(attempt+1) * time.Second)
 				continue
 			}
 			return nil, errf("%s %s failed: %v", method, rawURL, err)
@@ -95,7 +100,7 @@ func RequestJSON(method, rawURL string, headers map[string]string, body any) (an
 		_ = resp.Body.Close()
 		if resp.StatusCode >= 400 {
 			if idempotent[method] && retryStatus[resp.StatusCode] && attempt < retries {
-				time.Sleep(retryWait(resp, attempt))
+				sleep(retryWait(resp, attempt))
 				continue
 			}
 			return nil, errf("%s %s -> %d %s", method, rawURL, resp.StatusCode,
