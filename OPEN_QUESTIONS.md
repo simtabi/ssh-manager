@@ -106,3 +106,25 @@ that is several phases out, and the repo's front page is wrong in the meantime.
 **Default taken: leave them until Phase 5, as the protocol orders.** Flagged
 here because it is a live user-facing defect, not a cosmetic one — if the repo
 is public or shared before Phase 5, fix `README.md` first.
+
+---
+
+### Q8 — No cloud adapter has ever been run against a live API
+
+**Ambiguity.** `internal/core/providers/cloud.go` talks to DigitalOcean, Vultr,
+Hetzner, Linode and Scaleway. Nothing in this repo's history shows any of them
+being exercised against a real account, in Go or in Python -
+`tests/test_cloud_providers.py` stubbed the HTTP layer entirely. So the response
+shapes and endpoint paths are assumptions, and the Go port may faithfully
+reproduce a Python assumption that was never right.
+
+**Default taken: pin the shapes both implementations agree on, and say so.**
+The tests assert what Python's tests asserted plus what the Go code expects;
+where those agree the behaviour is at least consistent, which is what a port can
+prove. DigitalOcean is additionally exercised over a real local server so the
+request path itself is covered for one adapter.
+
+**What would close it.** A sandbox token for any one provider, used once, to
+confirm the list-response shape. Even one would raise confidence in the four
+that share the code path. Not blocking - the adapters degrade to a manual
+fallback when no token is set, which is the common case.

@@ -160,8 +160,8 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 4 · PORTED_UNVERIFIED 77 ·
-TODO 10 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
+**Counts as of the latest Phase 3 batch: VERIFIED 7 · PORTED_UNVERIFIED 77 ·
+TODO 7 · DROPPED 0.** A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
 
@@ -242,14 +242,14 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | S11 | Keystore (ssh-keygen wrapper) | `services/keystore.py` (91) | `internal/services/keystore` | PU | `keystore_test.go` |
 | S12 | Agent (ssh-add) | `services/agent.py` (26) | `internal/services/agent` | PU | `agent_test.go` |
 | S13 | Config service | `services/configsvc.py` (164) | `internal/services/configsvc` | PU | `configsvc_test.go` |
-| S14 | Preflight | `services/preflight.py` (60) | `internal/services/preflight` | **T** | No test files |
+| S14 | Preflight | `services/preflight.py` (60) | `internal/services/preflight` | **VERIFIED** | `preflight_test.go`: `TestCheckReportsEveryMissingDependency`, `TestOptionalDepsDoNotBlock`, `TestOneMissingHardDepBlocks`, `TestSSHCopyIDIsOptionalOnWindowsOnly`, `TestFormatNamesWhatIsWrong`, `TestOSNameCarriesTokenAndHumanName`. Deviation: `python_ok` → `RuntimeOK` constant true (D11) |
 | S15 | Doctor | `facade.py` (doctor + helpers) | `internal/services/doctor` | PU | `doctor_test.go` |
 | S16 | Snapshots | `util/fs.py` + `facade.py` | `internal/services/snapshots` | PU | `snapshots_test.go` |
 | S17 | Validate | `facade.py::validate_keys` | `internal/services/validate` | PU | `validate_test.go` |
 | S18 | Recover (fixkeys.sh) | `facade.py` + `data/fixkeys.sh` | `internal/services/recover` | PU | `recover_test.go` |
 | S19 | Init service | `facade.py::init` | `internal/services/initsvc` | PU | `initsvc_test.go` |
 | S20 | Config-home migration | `facade.py::migrate` | `internal/services/migratesvc` | PU | `migratesvc_test.go`, `perms_test.go` |
-| S21 | netstat | `util/net.py` + `facade.network_status` | `internal/services/netstat` | **T** | No test files |
+| S21 | netstat | `util/net.py` + `facade.py:1066-1078` | `internal/services/netstat` | **VERIFIED** | `netstat_test.go`: `TestStatusProbesEveryHostAndReportsItsProfile`, `TestSelectorFilters`, `TestBareKeyNameMatchesEveryProfileThatHasIt`, `TestVPNMetadataIsCarriedThrough`, `TestUnresolvableManifestIsAnError` |
 | S22 | keyaudit (dangling keys) | **none** | `internal/services/keyaudit` | PU | `keyaudit_test.go`. **Go-only** (D1) |
 | S23 | keysvc (key-first read layer) | **none** | `internal/services/keysvc` | PU | `keysvc_test.go`. **Go-only** (D1) |
 | S24 | lifecycle (guarded deletion) | **none** (Python delete = manifest only) | `internal/services/lifecycle` | PU | `lifecycle_test.go`. **Go-only** (D1) |
@@ -262,7 +262,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | P2 | Registry + catalog | `providers/registry.py` (157) | `internal/core/providers/providers.go` + `default_providers.json` | PU | `providers_test.go` |
 | P3 | GitHub (`gh`) | `providers/github.py` (125) | `internal/core/providers/vcs.go` | **T** | No provider-specific test |
 | P4 | GitLab (`glab`) | `providers/gitlab.py` (109) | `internal/core/providers/vcs.go` | **T** | No provider-specific test |
-| P5 | Cloud REST VPS (DigitalOcean, Vultr, Hetzner, Linode, Scaleway, generic) | `providers/cloud.py` (436) | `internal/core/providers/cloud.go` | **T** | No test; Python had `tests/test_cloud_providers.py` |
+| P5 | Cloud REST VPS (DigitalOcean, Vultr, Hetzner, Linode, Scaleway, generic) | `providers/cloud.py` (436); tests `tests/test_cloud_providers.py` | `internal/core/providers/cloud.go` | **VERIFIED** | `cloud_test.go`: `TestDeployAddsAKeyThatIsNotThere`, `TestDeployIsIdempotent`, `TestDeployRenamesOurStaleTitleButNeverAUserLabel` (2 subtests), `TestVerifyAndRemoveMatchOnBodyNotLabel`, `TestNoTokenFallsBackToManual`, `TestAPIFailuresSurface`, `TestPerProviderResponseShapes` (4 subtests), `TestNumericIDsDoNotBecomeScientificNotation`, `TestDigitalOceanOverHTTP`, `TestPaginationIsBounded`. **Coverage limit below.** |
 | P6 | Generic SSH (`ssh-copy-id`) | `providers/ssh_generic.py` (120) | `internal/core/providers/ssh_generic.go` | PU | Plain-`ssh` fallback is a **Go-only addition** (D6) |
 
 ### Platform layer
@@ -357,6 +357,7 @@ Constructs that must not be transliterated.
 | D7 | `doctor --strict` | CI gate for dangling keys; no Python counterpart. |
 | D8 | Key identity is `profile/key`, not a bare name | Python allowed ambiguous bare names; fixed as a correctness bug. |
 | D9 | Passphrases reach `ssh-keygen` through the askpass protocol, not `-N` | The Python passed the passphrase in argv (`keystore.py:47-56`), which is world-readable via `ps` and `/proc/<pid>/cmdline` for the life of the process. `internal/util/askpass` re-executes sshmgr as its own helper and passes the secret in the environment. |
+| D11 | preflight reports `RuntimeOK` as a constant true | The Python gated on CPython >= 3.11 (`preflight.py:MIN_PYTHON`). A compiled Go binary carries its runtime, so the check has no meaning; the actionable half - the hard/optional binary scan - is unchanged. |
 | D10 | `authkeys` rejects a wire-blob length prefix above `MaxInt32` | Python's ints are arbitrary-precision, so the bounds check could not overflow. Go's `int` is 32 bits on the 386/armv6/armv7 builds sshmgr ships, where the original `4+int(n) > len(blob)` wrapped negative and panicked on a crafted `authorized_keys` line. Checked in `uint64` now. |
 
 > **D4 is the most important entry here.** A large part of this migration is
@@ -366,6 +367,27 @@ Constructs that must not be transliterated.
 > must say so when they are verified.
 
 ---
+
+## Known coverage limits
+
+Stated rather than left implicit, so a VERIFIED row is not read as more than it
+is.
+
+- **P5, per-provider request paths.** The shared orchestration is covered with a
+  fake `restOps`; the field mapping for DigitalOcean, Vultr, Hetzner and Linode
+  is covered from realistic payloads; and **DigitalOcean alone** is exercised
+  over a real local HTTP server (URL, method, auth header, pagination). Vultr,
+  Hetzner, Linode, Scaleway and the generic REST adapter share that code path,
+  so what is unverified for them is their own URLs and verbs - e.g. Vultr's
+  `PATCH` rename versus DigitalOcean's `PUT`. A typo there would pass every test
+  in the suite.
+- **No adapter has been run against a live API** by this migration, in Go or in
+  Python. The tests pin the shapes the Python's own tests asserted plus the
+  shapes the Go code expects; where those agree, both could still be wrong about
+  the real API. Recorded in `OPEN_QUESTIONS.md` (Q8).
+- **Scaleway** has no shape test: its list response is built through the generic
+  `objectOps` path with spec-driven field names rather than the fixed mapping
+  the other four use.
 
 ## Coverage check — every `.py` file at `python-final`
 
