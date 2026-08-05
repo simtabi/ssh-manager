@@ -160,8 +160,10 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 20 · PORTED_UNVERIFIED 70 ·
-TODO 0 · DROPPED 0.** The core domain (K1–K6) is fully closed. Every row that had no test at any level is now closed;
+**Counts as of the latest Phase 3 batch: VERIFIED 23 · PORTED_UNVERIFIED 67 ·
+TODO 0 · DROPPED 0.** The core domain (K1–K6) is fully closed, as are all three
+rows Q3 said must be judged against the v2 contract rather than Python output
+(K3 renderer, S6 knownhosts, S13 configsvc). Every row that had no test at any level is now closed;
 what remains is auditing the 76 rows whose Go code predates this run. A row reaches VERIFIED only when its tests were written
 or audited in this run and `go build`, `go vet`, `go test` and `golangci-lint`
 were all green with it — the gate is `make check`.
@@ -235,14 +237,14 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | S3 | Rotator + rollback | `services/rotator.py` (322) | `internal/services/rotator` | PU | `rotator_test.go` |
 | S4 | Deployer | `services/deployer.py` (141); tests `tests/test_deploy.py` | `internal/services/deployer` | **VERIFIED** | `deployer_test.go`: `TestDeployRecordsEveryHostUsingTheKey`, `TestDeployTwiceLeavesOneEntryPerTarget`, `TestManualDeployStillNeedsRedeploy`, `TestTargetAliasNarrowsToOneHost`, `TestUnreachableServerIsRecordedAsAnError`, `TestDeployRejectsUnknownAndUnmintedKeys`, `TestReportFormatNamesTargetsAndOutcome` |
 | S5 | Bundler (age encrypt/restore) | `services/bundler.py` (221) | `internal/services/bundler` | PU | `bundler_test.go`, `bundler_security_test.go`, `age_live_test.go` |
-| S6 | knownhosts | `services/knownhosts.py` (89) | `internal/services/knownhosts` | PU | `knownhosts_test.go`, `hash_test.go`, `prune_test.go` |
+| S6 | knownhosts | `services/knownhosts.py` (89) | `internal/services/knownhosts` | **VERIFIED** | `knownhosts_test.go`, `hash_test.go`, `prune_test.go` — 20 tests, audited this run and found complete: hashing on write, hashed lookup, re-pin dedup, markers, 0600 store, real `ssh-keygen -F` interop, reference-counted prune, opt-in adopt, legacy-store migration. **Verified against the v2 contract** (one hashed store, tagged lines) — see D4/Q3 |
 | S7 | Notifier | `services/notifier.py` (98) | `internal/services/notifier` | PU | `notifier_test.go` |
 | S8 | Query (list/view) | `services/query.py` (166) | `internal/services/query` | PU | `query_test.go` |
 | S9 | Editor (profile/host CRUD) | `services/editor.py` (202) | `internal/services/editor` | PU | `editor_test.go` |
 | S10 | Importer | `services/importer.py` (270) | `internal/services/importer` | PU | `importer_test.go` |
-| S11 | Keystore (ssh-keygen wrapper) | `services/keystore.py` (91) | `internal/services/keystore` | PU | `keystore_test.go` |
+| S11 | Keystore (ssh-keygen wrapper) | `services/keystore.py` (91) | `internal/services/keystore` | **VERIFIED** | `keystore_test.go` + `keystore_security_test.go`: 9 pre-existing (audited) + `TestHardwareKeyTypeFallsBackToSoftware`, `TestFingerprintOfAMissingFileErrors` |
 | S12 | Agent (ssh-add) | `services/agent.py` (26) | `internal/services/agent` | PU | `agent_test.go` |
-| S13 | Config service | `services/configsvc.py` (164) | `internal/services/configsvc` | PU | `configsvc_test.go` |
+| S13 | Config service | `services/configsvc.py` (164) | `internal/services/configsvc` | **VERIFIED** | `configsvc_test.go`: 2 pre-existing (audited) + `TestWriteProducesOneFileAndIsIdempotent`, `TestWriteDryRunTouchesNothing`, `TestLegacyPerProfileConfigsArePruned`, `TestWritePreservesForeignContent`, `TestCheckReportsDriftWithADiff`, `TestShowRendersWithoutWriting`. **Verified against the v2 contract** — see D4/Q3 |
 | S14 | Preflight | `services/preflight.py` (60) | `internal/services/preflight` | **VERIFIED** | `preflight_test.go`: `TestCheckReportsEveryMissingDependency`, `TestOptionalDepsDoNotBlock`, `TestOneMissingHardDepBlocks`, `TestSSHCopyIDIsOptionalOnWindowsOnly`, `TestFormatNamesWhatIsWrong`, `TestOSNameCarriesTokenAndHumanName`. Deviation: `python_ok` → `RuntimeOK` constant true (D11) |
 | S15 | Doctor | `facade.py` (doctor + helpers) | `internal/services/doctor` | PU | `doctor_test.go` |
 | S16 | Snapshots | `util/fs.py` + `facade.py` | `internal/services/snapshots` | PU | `snapshots_test.go` |
