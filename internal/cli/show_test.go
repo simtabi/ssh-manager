@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -118,13 +119,22 @@ func TestShowHostReportsConfigKeyAndPins(t *testing.T) {
 		"IdentityFile ~/.ssh/profiles/work/work_gh-ed25519",
 		"IdentitiesOnly yes", "UserKnownHostsFile ~/.ssh/known_hosts",
 		// The key: paths and modes, deployment, expiry.
-		"work/work_gh-ed25519", "(0600)", "(0644)", "expires on:   2027-01-01",
+		"work/work_gh-ed25519", "expires on:   2027-01-01",
 		"gh-work via manual (verified)",
 		// The pin, decoded out of a hashed store, and attributed.
 		"[github.com]:443", "ssh-ed25519", "hashed", "sshmgr",
 	} {
 		if !strings.Contains(got, want) {
 			t.Errorf("show output missing %q:\n%s", want, got)
+		}
+	}
+	// Modes are printed from the filesystem, and Windows has none to print -
+	// permissions there are ACLs, which internal/util/perms handles separately.
+	if runtime.GOOS != "windows" {
+		for _, want := range []string{"(0600)", "(0644)"} {
+			if !strings.Contains(got, want) {
+				t.Errorf("show output missing %q:\n%s", want, got)
+			}
 		}
 	}
 }

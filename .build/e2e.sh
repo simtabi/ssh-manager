@@ -80,13 +80,13 @@ check "render fixes drift"    "\"$SSHMGR\" config check >/dev/null 2>&1"
 echo "==> list / view / expiry / audit"
 check "list --type vcs"       "\"$SSHMGR\" list --type vcs 2>/dev/null | grep -q github-simtabi"
 check "list --tag db"         "\"$SSHMGR\" list --tag db 2>/dev/null | grep -q app-db-maria"
-check "view host"             "\"$SSHMGR\" view hpc 2>/dev/null | grep -q 'fingerprint  SHA256:'"
+check "view host"             "\"$SSHMGR\" view hpc 2>/dev/null | grep -q 'fingerprint:  SHA256:'"
 check "expiry all ok"         "\"$SSHMGR\" expiry 2>/dev/null | grep -q ' ok'"
 check "audit deployments"     "\"$SSHMGR\" audit 2>/dev/null | grep -q '=== deployments ==='"
 
 echo "==> validate (keypairs) + providers + recover"
 WPUB="$SSH/profiles/work/work_hpc-ed25519.pub"
-check "validate all ok"       "\"$SSHMGR\" validate 2>/dev/null | grep -q 'ok'"
+check "validate all ok"       "\"$SSHMGR\" validate 2>/dev/null | grep -q '^OK'"
 check "validate exit 0"       "\"$SSHMGR\" validate >/dev/null 2>&1"
 cp "$WPUB" "$WPUB.e2ebak"; printf 'garbage\n' > "$WPUB"   # break the pub/priv pair
 check "validate catches break" "! \"$SSHMGR\" validate work_hpc-ed25519 >/dev/null 2>&1"
@@ -99,7 +99,7 @@ echo "==> keygen: warn-on-existing (skip) + --force overwrite (backup first)"
 check "keygen warns existing"  "\"$SSHMGR\" keygen work 2>&1 | grep -qi 'already exist'"
 check "keygen skips by default" "\"$SSHMGR\" keygen work 2>&1 | grep -qi 'all present'"
 FP_B=$(ssh-keygen -lf "$SSH/profiles/work/work_hpc-ed25519" | awk '{print $2}')
-"$SSHMGR" keygen work --force --yes >/dev/null 2>&1
+"$SSHMGR" keygen work --force --yes --no-key-backup >/dev/null 2>&1
 FP_A=$(ssh-keygen -lf "$SSH/profiles/work/work_hpc-ed25519" | awk '{print $2}')
 check "keygen --force regenerates" "[ \"$FP_B\" != \"$FP_A\" ]"
 check "overwrite took a snapshot" "\"$SSHMGR\" snapshots list 2>/dev/null | grep -q 'ssh-'"

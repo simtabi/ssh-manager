@@ -55,7 +55,7 @@ ck  "reconcile mints all profiles"     "[ -f '$SSH/profiles/personal/personal_gi
 ck  "reconcile idempotent (re-mint none)" "\"$S\" reconcile 2>&1 | grep -qi 'present'"
 ck  "keygen warns on existing"         "\"$S\" keygen work 2>&1 | grep -qi 'exist\\|present'"
 FPB=$(ssh-keygen -lf "$SSH/profiles/work/work_hpc-ed25519" | awk '{print $2}')
-"$S" keygen work --force --yes >/dev/null 2>&1
+"$S" keygen work --force --yes --no-key-backup >/dev/null 2>&1
 FPA=$(ssh-keygen -lf "$SSH/profiles/work/work_hpc-ed25519" | awk '{print $2}')
 ck  "keygen --force regenerates"       "[ '$FPB' != '$FPA' ]"
 ck  "config check in sync"             "\"$S\" config check"
