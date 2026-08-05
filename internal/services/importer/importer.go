@@ -279,9 +279,14 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 		}
 	}
 
+	// Counted from what actually reached the manifest, not from what was parsed.
+	// Duplicate Host blocks are dropped above (first wins) - appending to an ssh
+	// config rather than editing it in place is normal, so a repeated alias is
+	// normal - and counting parsed hosts reported an import larger than the one
+	// written, with nothing in the summary to say which number was real.
 	result := ImportResult{DryRun: dryRun, KeysFound: len(inv.Keys), Adopted: adopted, Profiles: map[string]int{}}
-	for _, h := range parsed {
-		result.Profiles[h.Profile]++
+	for name, hosts := range byProfile {
+		result.Profiles[name] = len(hosts)
 	}
 	if !dryRun {
 		if err := m.Save(im.p.Manifest()); err != nil {
