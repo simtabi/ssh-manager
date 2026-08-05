@@ -442,3 +442,41 @@ func patchManifest(t *testing.T, p paths.Paths, needle, replacement string) {
 		t.Fatalf("patched manifest is invalid: %v", err)
 	}
 }
+
+// old/ holds rotation predecessors, and a purge drops it once the keys it
+// belonged to are gone. A file in there that the purge did not account for stops
+// that: old/ is kept, and so is the profile directory above it, because removing
+// a parent whose child survived would fail anyway and reporting it as removed
+// would be a lie. The user is told which directory and which file.
+func TestAStrangerInOldStopsThePurgeAtThatPoint(t *testing.T) {
+	p := fixture(t)
+	oldDir := filepath.Join(p.SSHDir, "profiles", "work", "old")
+	stray := filepath.Join(oldDir, "keep-me.pem")
+	write(t, stray, "someone else's key\n", 0o600)
+
+	res, err := New(p, false).DeleteProfile("work", Options{Purge: true})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !onDisk(stray) {
+		t.Fatal("purge deleted a file it did not put in old/")
+	}
+	if !onDisk(oldDir) {
+		t.Error("old/ still holds a file, so it should have been kept")
+	}
+	if !onDisk(filepath.Dir(oldDir)) {
+		t.Error("the profile directory should be kept while old/ survives inside it")
+	}
+	for _, dir := range res.RemovedDirs {
+		if dir == oldDir || dir == filepath.Dir(oldDir) {
+			t.Errorf("RemovedDirs claims %s was removed, but it is still there", dir)
+		}
+	}
+	if !strings.Contains(res.Format(), "keep-me.pem") {
+		t.Errorf("the summary should name what it declined to delete:\n%s", res.Format())
+	}
+	// The managed keys themselves still went.
+	if onDisk(filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")) {
+		t.Error("a stranger in old/ should not save the keys the purge was for")
+	}
+}

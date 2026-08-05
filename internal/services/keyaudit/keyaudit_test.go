@@ -327,3 +327,77 @@ func TestFindingsAreGroupedBySeverityAndStable(t *testing.T) {
 		t.Errorf("summary = %q", s)
 	}
 }
+
+// Notes decides which states a key is in; manifestKeyFinding turns each into the
+// row a user reads. They are two switches over the same vocabulary, so adding a
+// state to one and not the other yields a finding with no explanation and no fix
+// - which reads as "something is wrong with this key" and nothing more.
+func TestEveryStateAKeyCanBeInCarriesADetailAndAFix(t *testing.T) {
+	const j = `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "work":{"key_scope":"per_service",
+	    "keys":[{"name":"work_unwired-ed25519"},{"name":"work_halfpriv-ed25519"},
+	            {"name":"work_halfpub-ed25519"},{"name":"work_gone-ed25519"}],
+	    "hosts":[{"alias":"gh","hostname":"github.com","user":"git"}]}}}`
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(j), &m); err != nil {
+		t.Fatal(err)
+	}
+	ssh := t.TempDir()
+	dir := filepath.Join(ssh, "profiles", "work")
+	if err := os.MkdirAll(dir, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	put := func(name, body string) {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	put("work_gh-ed25519", "PRIVATE\n") // wired, unrecorded
+	put("work_gh-ed25519.pub", "ssh-ed25519 A gh\n")
+	put("work_unwired-ed25519", "PRIVATE\n")
+	put("work_unwired-ed25519.pub", "ssh-ed25519 A u\n")
+	put("work_halfpriv-ed25519", "PRIVATE\n")            // private only
+	put("work_halfpub-ed25519.pub", "ssh-ed25519 A h\n") // pub only
+	// work_gone-ed25519: neither half.
+
+	rep, err := New(&m, inventory.New(), ssh).Audit(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	seen := map[string]bool{}
+	for _, f := range rep.Findings {
+		if !strings.Contains(f.Subject, "/") || strings.Contains(f.Subject, "profiles/") {
+			continue // tree-level findings; these come from the other walkers
+		}
+		seen[f.State] = true
+		if f.Detail == "" {
+			t.Errorf("%s finding for %s has no explanation", f.State, f.Subject)
+		}
+		if f.Fix == "" {
+			t.Errorf("%s finding for %s offers no fix", f.State, f.Subject)
+		}
+	}
+	// Every state a manifest key can be in was actually produced, so an empty
+	// switch case could not slip through as "not exercised".
+	for _, state := range []string{Missing, HalfPair, Unrecorded, Unwired} {
+		if !seen[state] {
+			t.Errorf("the fixture did not produce a %s finding; the check is weaker than it looks", state)
+		}
+	}
+
+	// A half pair names the half that is missing - the two directions need
+	// opposite advice, and getting it backwards sends the user to regenerate the
+	// key they still have.
+	for _, f := range rep.ByState(HalfPair) {
+		switch f.Subject {
+		case "work/work_halfpriv-ed25519":
+			if !strings.Contains(f.Detail, ".pub is missing") {
+				t.Errorf("%s: detail = %q, want it to name the missing .pub", f.Subject, f.Detail)
+			}
+		case "work/work_halfpub-ed25519":
+			if !strings.Contains(f.Detail, "private key is missing") {
+				t.Errorf("%s: detail = %q, want it to name the missing private key", f.Subject, f.Detail)
+			}
+		}
+	}
+}
