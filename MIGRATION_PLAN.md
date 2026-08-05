@@ -160,7 +160,7 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 37 · PORTED_UNVERIFIED 57 ·
+**Counts as of the latest Phase 3 batch: VERIFIED 40 · PORTED_UNVERIFIED 54 ·
 TODO 1 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
 are all three rows Q3 said must be judged against the v2 contract rather than
 Python output (K3 renderer, S6 knownhosts, S13 configsvc).
@@ -263,9 +263,9 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | S19 | Init service | `facade.py::init` | `internal/services/initsvc` | **VERIFIED** | `initsvc_test.go`: 2 pre-existing (embedded env, seed+idempotence) + `TestForceWithBackupPreservesThePreviousManifest`, `TestForceWithoutBackupSaysTheResetIsUnrecoverable`, `TestAFailedBackupStopsTheReset` (caught a live bug: a swallowed backup error let --force reset the manifest and report "backup saved"; mutation-checked) |
 | S20 | Config-home migration | `facade.py::migrate` | `internal/services/migratesvc` | **VERIFIED** | `migratesvc_test.go` + `perms_test.go`: 4 pre-existing (tighten, no legacy, move in, both-exist + force) + `TestCopyTreeCarriesTheWholeHomeAcross`, `TestCopyTreePreservesSymlinksRatherThanFlatteningThem` (caught a live bug: the cross-filesystem fallback flattened symlinks into 0777 regular files; mutation-checked) |
 | S21 | netstat | `util/net.py` + `facade.py:1066-1078` | `internal/services/netstat` | **VERIFIED** | `netstat_test.go`: `TestStatusProbesEveryHostAndReportsItsProfile`, `TestSelectorFilters`, `TestBareKeyNameMatchesEveryProfileThatHasIt`, `TestVPNMetadataIsCarriedThrough`, `TestUnresolvableManifestIsAnError` |
-| S22 | keyaudit (dangling keys) | **none** | `internal/services/keyaudit` | PU | `keyaudit_test.go`. **Go-only** (D1) |
-| S23 | keysvc (key-first read layer) | **none** | `internal/services/keysvc` | PU | `keysvc_test.go`. **Go-only** (D1) |
-| S24 | lifecycle (guarded deletion) | **none** (Python delete = manifest only) | `internal/services/lifecycle` | PU | `lifecycle_test.go`. **Go-only** (D1) |
+| S22 | keyaudit (dangling keys) | **none** | `internal/services/keyaudit` | **VERIFIED** | `keyaudit_test.go`: 9 pre-existing (baseline, no-pub, whole unknown profile, half-pair vs missing, strict, unrecorded, stale inventory, loose keys, grouping) + `TestEveryStateAKeyCanBeInCarriesADetailAndAFix` (mutation-checked). **Go-only** (D1) |
+| S23 | keysvc (key-first read layer) | **none** | `internal/services/keysvc` | **VERIFIED** | `keysvc_test.go`: 3 pre-existing (rows, overrides, selectors) + `TestDetailReportsWhenTheKeyOnDiskIsNotTheRecordedOne`, `TestAnUnreadablePublicKeyExplainsItself`, `TestTwoRecordsAtOnePathResolveTheSameWayEveryTime`. **Go-only** (D1) |
+| S24 | lifecycle (guarded deletion) | **none** (Python delete = manifest only) | `internal/services/lifecycle` | **VERIFIED** | `lifecycle_test.go`: 11 pre-existing (profile/host/key deletion, purge, unmanaged files, pin pruning, refusals, unknown targets) + `TestAStrangerInOldStopsThePurgeAtThatPoint`. **Go-only** (D1) |
 
 ### Providers (external integrations)
 
