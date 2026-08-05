@@ -160,7 +160,7 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 23 · PORTED_UNVERIFIED 67 ·
+**Counts as of the latest Phase 3 batch: VERIFIED 25 · PORTED_UNVERIFIED 65 ·
 TODO 0 · DROPPED 0.** The core domain (K1–K6) is fully closed, as are all three
 rows Q3 said must be judged against the v2 contract rather than Python output
 (K3 renderer, S6 knownhosts, S13 configsvc). Every row that had no test at any level is now closed;
@@ -234,9 +234,9 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 |---|---|---|---|---|---|
 | S1 | **Facade** (1356 lines — God object) | `services/facade.py` | *dissolved* — see Redesign R1 | PU | Split across `internal/services/*` + `internal/cli` |
 | S2 | Reconciler | `services/reconciler.py` (200) | `internal/services/reconciler` | PU | `reconciler_test.go` |
-| S3 | Rotator + rollback | `services/rotator.py` (322) | `internal/services/rotator` | PU | `rotator_test.go` |
+| S3 | Rotator + rollback | `services/rotator.py` (322) | `internal/services/rotator` | **VERIFIED** | `rotator_test.go`: `TestRotateThenRollback`, `TestRotateMissingKey` (pre-existing) + `TestCommitNeverLeavesTheCanonicalPathWithoutAKey`, `TestCommitLeavesTheKeyAloneWhenItCannotArchive`, `TestRollbackKeepsAKeyInPlaceThroughout`, `TestFailedVerificationDiscardsTheStagedKey` |
 | S4 | Deployer | `services/deployer.py` (141); tests `tests/test_deploy.py` | `internal/services/deployer` | **VERIFIED** | `deployer_test.go`: `TestDeployRecordsEveryHostUsingTheKey`, `TestDeployTwiceLeavesOneEntryPerTarget`, `TestManualDeployStillNeedsRedeploy`, `TestTargetAliasNarrowsToOneHost`, `TestUnreachableServerIsRecordedAsAnError`, `TestDeployRejectsUnknownAndUnmintedKeys`, `TestReportFormatNamesTargetsAndOutcome` |
-| S5 | Bundler (age encrypt/restore) | `services/bundler.py` (221) | `internal/services/bundler` | PU | `bundler_test.go`, `bundler_security_test.go`, `age_live_test.go` |
+| S5 | Bundler (age encrypt/restore) | `services/bundler.py` (221) | `internal/services/bundler` | **VERIFIED** | 11 pre-existing (audited: no plaintext in $TMPDIR, owner-only bundle, checksum mismatch refused, path-traversal members refused, wrong identity, real `age` binary) + `TestOversizedArchiveIsRejectedNotExpanded`, `TestOrdinaryArchiveStillReads`, `TestRestoreOverlaysAndKeepsWhatItCannotReplace` |
 | S6 | knownhosts | `services/knownhosts.py` (89) | `internal/services/knownhosts` | **VERIFIED** | `knownhosts_test.go`, `hash_test.go`, `prune_test.go` — 20 tests, audited this run and found complete: hashing on write, hashed lookup, re-pin dedup, markers, 0600 store, real `ssh-keygen -F` interop, reference-counted prune, opt-in adopt, legacy-store migration. **Verified against the v2 contract** (one hashed store, tagged lines) — see D4/Q3 |
 | S7 | Notifier | `services/notifier.py` (98) | `internal/services/notifier` | PU | `notifier_test.go` |
 | S8 | Query (list/view) | `services/query.py` (166) | `internal/services/query` | PU | `query_test.go` |
