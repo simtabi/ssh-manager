@@ -1,0 +1,61 @@
+// Package homeperms is the single enumeration of the config-home secret paths and
+// their canonical modes, shared by init (the seeder) and doctor (the fixer) so
+// they can never disagree. Mirrors facade._secret_perms + SECRET_DIR/FILE_MODE.
+package homeperms
+
+import (
+	"os"
+	"path/filepath"
+	"sort"
+
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
+)
+
+// Secret modes for the config home.
+const (
+	DirMode  os.FileMode = 0o700
+	FileMode os.FileMode = 0o600
+)
+
+// SecretPerms returns every config-home secret path with its canonical mode.
+//
+// "Secret" is read broadly. The state models are not key material, but the
+// manifest maps every hostname and login the user talks to, providers.json can
+// hold API tokens for the deployment backends, and a bundle's .contents sidecar
+// names every key in the archive. None of that should be readable by other local
+// accounts.
+func SecretPerms(p paths.Paths) []perms.ManagedPath {
+	items := []perms.ManagedPath{
+		{Path: p.ConfigDir, Mode: DirMode},
+		{Path: p.LogDir(), Mode: DirMode},
+		{Path: p.StateDir(), Mode: DirMode},
+		{Path: p.SnapshotsDir(), Mode: DirMode},
+		{Path: p.DistDir(), Mode: DirMode},
+		{Path: p.EnvFile(), Mode: FileMode},
+		{Path: p.AgeIdentity(), Mode: FileMode},
+		{Path: p.AuditLog(), Mode: FileMode},
+		{Path: p.LockFile(), Mode: FileMode},
+		{Path: p.Manifest(), Mode: FileMode},
+		{Path: p.Inventory(), Mode: FileMode},
+		{Path: p.Providers(), Mode: FileMode},
+		{Path: p.ExpiryCache(), Mode: FileMode},
+		{Path: p.NotifyCache(), Mode: FileMode},
+	}
+	for _, pat := range []string{
+		filepath.Join(p.DistDir(), "*.age"),
+		filepath.Join(p.DistDir(), "*.age.*"),
+		filepath.Join(p.ConfigDir, "*.age"),
+		filepath.Join(p.ConfigDir, "*.age.*"),
+		filepath.Join(p.ConfigDir, "*-identity.txt"),
+		filepath.Join(p.SnapshotsDir(), "ssh-*.tar.gz"),
+		filepath.Join(p.LogDir(), "audit.log.*"),
+	} {
+		matches, _ := filepath.Glob(pat)
+		sort.Strings(matches)
+		for _, m := range matches {
+			items = append(items, perms.ManagedPath{Path: m, Mode: FileMode})
+		}
+	}
+	return items
+}

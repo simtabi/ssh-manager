@@ -1,20 +1,22 @@
 # secrets / runtime state: NEVER commit. The real per-user home is ~/.sshmgr
-# (outside the repo); config/ here is only the example manifest + schemas.
+# (outside the repo); src/config/ here is only the example manifest + schemas.
+# These patterns contain a slash, so they anchor to this file's directory - they
+# had to move with the config directory rather than keep matching at the root.
 .env
-config/.env
+src/config/.env
 **/age-identity.txt
 **/*-identity.txt
 *.age
 *.age.sha256
 *.age.contents
-config/log/
-config/snapshots/
-config/.state/
-# runtime state that older builds wrote into ./config (now under ~/.sshmgr)
-config/.lock
-config/.expiry-cache.json
-config/.notify-cache.json
-config/audit.log
+src/config/log/
+src/config/snapshots/
+src/config/.state/
+# runtime state that older builds wrote into ./src/config (now under ~/.sshmgr)
+src/config/.lock
+src/config/.expiry-cache.json
+src/config/.notify-cache.json
+src/config/audit.log
 
 # generated ~/.ssh is NOT in this repo; if you also version it via chezmoi,
 # allowlist only *.pub and config there, never private keys.
@@ -60,9 +62,17 @@ cleaned/
 /vendor/
 
 # Everything build-related lives under build/, per the note at the top of
-# .goreleaser.yaml. Only targets.txt is tracked; the rest is generated:
+# src/.goreleaser.yaml. build/ stays at the repo root while the Go module is
+# src/: output belongs to the repository, so there is one build/ and not one
+# per module. Only targets.txt is tracked; the rest is generated:
 #   build/targets.txt  the release matrix (TRACKED)
 #   build/sshmgr       `make build` output
-#   build/dist/        GoReleaser and scripts/build-all.sh artifacts
+#   build/dist/        GoReleaser and src/scripts/build-all.sh artifacts
 /build/*
 !/build/targets.txt
+
+# Belt and braces: the rules above are anchored to the repo root, so a build/
+# that appears anywhere else - src/build/, say, from a tool invoked with the
+# wrong working directory - would not be caught by them. This one is.
+build/dist/
+**/build/dist/

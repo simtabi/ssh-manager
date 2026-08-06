@@ -6,6 +6,10 @@
 #
 # Every entry must say what the string actually is and why it is not a secret.
 # An entry without that is indistinguishable from suppressing a real leak.
+#
+# Paths here are the paths AS OF THE NAMED COMMIT, so they do not track later
+# moves: the entry below predates the move of the Go tree into src/ and must
+# keep saying internal/... or it stops matching and the finding returns.
 
 # A test literal, not a credential. TestSecretTravelsOnlyInTheEnvironment asserts
 # that a passphrase reaches ssh-keygen through the environment and never through

@@ -40,24 +40,44 @@ jobs:
 
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version-file: go.mod
+          go-version-file: src/go.mod
           cache: true
 
       # syft powers GoReleaser's SBOM generation.
       - uses: anchore/sbom-action/download-syft@e22c389904149dbc22b58101806040fa8d37a610 # v0
+
+      # `go install` needs a tag named after the module's subdirectory: the
+      # module is github.com/simtabi/ssh-manager/src/v3, so Go looks for
+      # src/v3.0.1 and ignores v3.0.1 entirely. GoReleaser cannot be driven from
+      # the prefixed tag - OSS rejects it as non-semver - so the release runs off
+      # v3.0.1 and mirrors src/v3.0.1 onto the same commit here, where it cannot
+      # be forgotten. src/... does not match this workflow's v[0-9]* trigger, so
+      # pushing it starts no second run.
+      - name: Mirror the tag Go resolves the module through
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          alias_tag="src/${GITHUB_REF_NAME}"
+          if git rev-parse -q --verify "refs/tags/${alias_tag}" >/dev/null; then
+            echo "${alias_tag} already exists"
+          else
+            git tag "${alias_tag}" "${GITHUB_REF_NAME}"
+            git push origin "${alias_tag}"
+            echo "pushed ${alias_tag}"
+          fi
 
       # Written outside the working tree: GoReleaser refuses to release from a
       # dirty checkout, and an untracked release_notes.md in the repo root is
       # exactly that. This failed the first release attempted after the step was
       # added, having never been exercised before it.
       - name: Extract CHANGELOG section for this tag
-        run: ./scripts/extract-changelog.sh "${GITHUB_REF_NAME}" > "${RUNNER_TEMP}/release_notes.md"
+        run: ./src/scripts/extract-changelog.sh "${GITHUB_REF_NAME}" > "${RUNNER_TEMP}/release_notes.md"
 
       - name: Run GoReleaser
         uses: goreleaser/goreleaser-action@f06c13b6b1a9625abc9e6e439d9c05a8f2190e94 # v7.2.3
         with:
           version: latest
-          args: release --clean --release-notes=${{ runner.temp }}/release_notes.md
+          args: release --clean --config src/.goreleaser.yaml --release-notes=${{ runner.temp }}/release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}

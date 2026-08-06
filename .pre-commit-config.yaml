@@ -11,7 +11,7 @@ repos:
         # recover_test.go feeds a private-key header to the code that must
         # REFUSE it - a user saving a private key to the .pub path is the error
         # being tested, so the header is the fixture. Two lines, no key material.
-        exclude: ^internal/services/recover/recover_test\.go$
+        exclude: ^src/internal/services/recover/recover_test\.go$
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: mixed-line-ending
@@ -23,14 +23,19 @@ repos:
       - id: check-json
   - repo: local
     hooks:
+      # `gofmt -l` prints unformatted files and still exits 0, so on its own it
+      # could never fail a commit - it listed the problem and passed. The test
+      # turns that listing into an exit code.
       - id: gofmt
         name: gofmt
-        entry: gofmt -l
+        entry: bash -c 'out=$(gofmt -l "$@") && test -z "$out" || { echo "$out"; exit 1; }' --
         language: system
         types: [go]
+      # go.mod is in src/, so a bare `go vet ./...` at the repo root has no
+      # packages to inspect and passes without inspecting anything.
       - id: go-vet
         name: go vet
-        entry: go vet ./...
+        entry: go -C src vet ./...
         language: system
         types: [go]
         pass_filenames: false
