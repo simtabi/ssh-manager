@@ -19,7 +19,8 @@ config/audit.log
 # generated ~/.ssh is NOT in this repo; if you also version it via chezmoi,
 # allowlist only *.pub and config there, never private keys.
 
-# Leftovers from the removed Python implementation: the tree is gone, but these
+# Leftovers from the Python implementation, removed at the `python-final` tag.
+# Nothing here is created any more; the entries stay so that a working copy that
 # caches may still sit in a working copy that predates its removal. (dist/ is
 # kept regardless - GoReleaser writes there.)
 __pycache__/

@@ -521,7 +521,30 @@ rather than a missing test.
 
 ---
 
-## Phase 4 preconditions (revised for the out-of-order deletion)
+## Phase 4 — RUN AND RECORDED (2026-08-06)
+
+All four preconditions met.
+
+| # | Precondition | Result |
+|---|---|---|
+| 1 | Every matrix row `VERIFIED` or `DROPPED` | **95 VERIFIED, 0 PU, 0 TODO, 0 DROPPED** |
+| 2 | Backward drift: `git diff --name-status python-final..HEAD -- '*.py'` shows only deletions, and the set equals the 88 enumerated | **88 files, all `D`, nothing else** |
+| 3 | No `.py` anywhere; `grep -ri python` returns only justified hits | **0 `.py` and 0 `.pyc` on disk, 0 tracked.** The untracked residue (`.venv/` 191 MB, `.mypy_cache/`, `.pytest_cache/`, `.ruff_cache/`, `tests/`) was deleted with the owner's confirmation, per Q6. `src/` was already gone. |
+| 4 | Clean-clone build with only the Go toolchain | **`git clone && go build ./...` succeeds.** The clone needs Go 1.26 and nothing else; the only non-Go tracked files are config, docs, the Makefile and the four shell scripts that must stay shell. |
+
+**The one place Python still executes** is `actions/setup-python` in `ci.yml`'s
+`pre-commit` job, which is pre-commit's own runtime. Its hooks are gitleaks, file
+hygiene and `language: system` gofmt/go vet - no Python hook. The comment above
+it claiming this is "the only Python left in CI" was false until
+`.build/feature-check.sh` was retired; it is true now.
+
+Every other `python` string in the tree is prose: comments explaining what was
+ported, `python-final:` citations in test headers, and `preflight`'s check that
+the *user's* machine has no interpreter requirement.
+
+---
+
+## Phase 4 preconditions (as originally revised for the out-of-order deletion)
 
 1. Every matrix row `VERIFIED` or `DROPPED`.
 2. **Backward drift check**: `git diff python-final..HEAD -- '*.py'` must show
