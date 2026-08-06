@@ -17,6 +17,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Every verb that changes `~/.ssh` now confirms first.** `reconcile`, `keygen`,
+  `import`, `deploy`, `clean`, `config render`, `knownhosts init`, `migrate` and
+  `notify install` ask before acting; the deletes and `rotate` already did.
+  `reconcile` shows its dry run as the question. Each takes `--yes`/`-y`.
+  The prompt appears only when standard input is a terminal — a script, cron job
+  or CI step proceeds as before, because there is nobody to ask and declining on
+  its own would be a silent no-op rather than a safeguard.
 - **A bare `sshmgr` opens the interactive menu** when standard input is a
   terminal, instead of printing help. With any argument it is a plain CLI, and
   without a terminal it still prints help — a menu reading from a pipe would

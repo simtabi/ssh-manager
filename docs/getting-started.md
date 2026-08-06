@@ -63,8 +63,16 @@ sshmgr rotate work_gh-ed25519  # zero-downtime staged rotation
 sshmgr notify install          # scheduled reminders before keys come due
 ```
 
-Most destructive verbs take `--yes`/`-y` to run non-interactively, and the
-deletes take `--revoke` to pull the key off its targets as well.
+**Every verb that changes `~/.ssh` asks first.** `reconcile` shows its dry run as
+the question, so you approve what will happen rather than a verb name. `--yes`/`-y`
+answers in advance, and the deletes take `--revoke` to pull the key off its
+targets as well.
+
+The prompt only appears when there is a terminal to ask at. In a script, a cron
+job or a CI step there is nobody to answer, so commands proceed — declining on
+their own would turn every existing script into a silent no-op, which is not
+safer than running, only harder to diagnose. Pass `--yes` there anyway: it says
+so explicitly instead of relying on the absence of a terminal.
 
 ## Passphrases
 

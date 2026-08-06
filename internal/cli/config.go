@@ -78,7 +78,7 @@ func newConfigCmd() *cobra.Command {
 		},
 	})
 
-	var dryRun bool
+	var dryRun, renderYes bool
 	render := &cobra.Command{
 		Use:   "render",
 		Short: "Render the config files from the manifest",
@@ -87,6 +87,13 @@ func newConfigCmd() *cobra.Command {
 			p, _, svc, err := loadConfigService()
 			if err != nil {
 				return err
+			}
+			if !dryRun {
+				if err := confirmChange(c,
+					"render rewrites the ssh-manager block in "+p.SSHDir+
+						"/config from the manifest.\nContent outside the markers is preserved.", renderYes); err != nil {
+					return err
+				}
 			}
 			if err := migrateLegacyKnownHosts(c, p, dryRun); err != nil {
 				return err
@@ -113,6 +120,7 @@ func newConfigCmd() *cobra.Command {
 		},
 	}
 	render.Flags().BoolVarP(&dryRun, "dry-run", "n", false, "preview changes without writing")
+	render.Flags().BoolVarP(&renderYes, "yes", "y", false, "render without confirming (implied when there is no terminal)")
 	cmd.AddCommand(render)
 
 	cmd.AddCommand(&cobra.Command{

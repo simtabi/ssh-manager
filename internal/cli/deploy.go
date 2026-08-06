@@ -15,7 +15,8 @@ import (
 // target(s) via the provider adapter (named adapter -> generic ssh -> manual) and
 // record it. Exits non-zero if any attempted deploy failed.
 func newDeployCmd() *cobra.Command {
-	return &cobra.Command{
+	var yes bool
+	cmd := &cobra.Command{
 		Use:   "deploy <[profile/]key> [target]",
 		Short: "Install a public key on its target",
 		Args:  cobra.RangeArgs(1, 2),
@@ -26,6 +27,10 @@ func newDeployCmd() *cobra.Command {
 				target = args[1]
 			}
 			p := paths.Resolve(nil, "", "")
+			if err := confirmChange(c,
+				"deploy installs the public half of "+key+" on its target.", yes); err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -56,4 +61,6 @@ func newDeployCmd() *cobra.Command {
 			return nil
 		},
 	}
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "deploy without confirming (implied when there is no terminal)")
+	return cmd
 }

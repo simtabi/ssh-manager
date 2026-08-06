@@ -23,19 +23,27 @@ func newNotifyCmd() *cobra.Command {
 		Short: "Manage the scheduled expiry notifier",
 	}
 
-	cmd.AddCommand(&cobra.Command{
+	var installYes bool
+	install := &cobra.Command{
 		Use:   "install",
 		Short: "Install the scheduled expiry notifier",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			command := schedulerExe() + " audit --notify"
+			if err := confirmChange(c,
+				"notify install registers a scheduled job with this system's scheduler:\n  "+
+					command, installYes); err != nil {
+				return err
+			}
 			if err := scheduler.Install(command, scheduler.Label); err != nil {
 				return err
 			}
 			_, _ = fmt.Fprintf(c.OutOrStdout(), "installed scheduled notifier: %s\n", command)
 			return nil
 		},
-	})
+	}
+	install.Flags().BoolVarP(&installYes, "yes", "y", false, "install without confirming (implied when there is no terminal)")
+	cmd.AddCommand(install)
 
 	cmd.AddCommand(&cobra.Command{
 		Use:   "test",

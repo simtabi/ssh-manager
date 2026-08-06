@@ -21,7 +21,7 @@ import (
 // manifest + inventory. import REPLACES them wholesale (it does not merge), so a
 // non-empty manifest is refused without --force (and both are backed up first).
 func newImportCmd() *cobra.Command {
-	var dryRun, force bool
+	var dryRun, force, yes bool
 	cmd := &cobra.Command{
 		Use:   "import [path]",
 		Short: "Onboard an existing ~/.ssh into the manifest",
@@ -32,6 +32,13 @@ func newImportCmd() *cobra.Command {
 				configPath = args[0]
 			}
 			p := paths.Resolve(nil, "", "")
+			if !dryRun {
+				if err := confirmChange(c,
+					"import replaces "+p.Manifest()+" with what it reads from "+configPath+
+						",\nand copies any key it finds outside the managed tree into it.", yes); err != nil {
+					return err
+				}
+			}
 			imp := importer.New(p, platform.EmitUseKeychain())
 
 			if dryRun {
@@ -64,6 +71,7 @@ func newImportCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "parse and report without writing")
 	cmd.Flags().BoolVarP(&force, "force", "f", false, "replace an existing non-empty manifest (backed up first)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "import without confirming (implied when there is no terminal)")
 	return cmd
 }
 

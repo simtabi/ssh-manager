@@ -16,7 +16,7 @@ func newKnownHostsCmd() *cobra.Command {
 		Short: "Pin host keys into the single ~/.ssh/known_hosts trust store",
 	}
 
-	var allInit, force bool
+	var allInit, force, initYes bool
 	initCmd := &cobra.Command{
 		Use:   "init [profile]",
 		Short: "Pin reachable hosts into known_hosts (TOFU; fingerprints reported)",
@@ -25,6 +25,11 @@ func newKnownHostsCmd() *cobra.Command {
 			"file: every host is pinned into the one ~/.ssh/known_hosts store.",
 		Args: cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
+			if err := confirmChange(c,
+				"knownhosts init scans the hosts it can reach and pins their keys "+
+					"into ~/.ssh/known_hosts (trust on first use).", initYes); err != nil {
+				return err
+			}
 			profile := ""
 			if len(args) > 0 {
 				profile = args[0]
@@ -44,6 +49,7 @@ func newKnownHostsCmd() *cobra.Command {
 		},
 	}
 	initCmd.Flags().BoolVar(&allInit, "all", false, "scan every profile's hosts")
+	initCmd.Flags().BoolVarP(&initYes, "yes", "y", false, "pin without confirming (implied when there is no terminal)")
 	initCmd.Flags().BoolVar(&force, "force", false, "re-scan already-trusted hosts and add any new keys")
 	cmd.AddCommand(initCmd)
 

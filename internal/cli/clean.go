@@ -22,7 +22,7 @@ import (
 // sshmgr's to tidy - and a pin for a host any profile still resolves survives
 // too, since pruning is reference counted rather than owned.
 func newCleanCmd() *cobra.Command {
-	var dryRun, adopt bool
+	var dryRun, adopt, yes bool
 	cmd := &cobra.Command{
 		Use:   "clean",
 		Short: "Remove stale known_hosts pins, stale records and write residue",
@@ -33,6 +33,13 @@ func newCleanCmd() *cobra.Command {
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			p := paths.Resolve(nil, "", "")
+			if !dryRun {
+				if err := confirmChange(c,
+					"clean removes known_hosts pins tagged sshmgr that no host needs, "+
+						"stale inventory records, and write residue.\nRun with --dry-run first to see what.", yes); err != nil {
+					return err
+				}
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -116,6 +123,7 @@ func newCleanCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would change, touch nothing")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "clean without confirming (implied when there is no terminal)")
 	cmd.Flags().BoolVar(&adopt, "adopt", false, "put untagged pins matching a manifest host under sshmgr's management")
 	return cmd
 }

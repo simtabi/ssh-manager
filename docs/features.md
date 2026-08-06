@@ -117,6 +117,16 @@ Vultr, Hetzner, Linode, Scaleway (REST); `generic-ssh`; and **any** REST key API
 no code via `kind: rest`. Details in [tools/providers.md](tools/providers.md) and
 [tools/vps.md](tools/vps.md).
 
+## Confirmation
+
+Every verb that changes `~/.ssh` confirms first, and `--yes`/`-y` answers in
+advance. `reconcile` prints its dry run as the question, so what is approved is
+the actual change rather than the name of a command.
+
+The question is only asked when standard input is a terminal. Without one the
+command proceeds: there is nobody to ask, and refusing would make every existing
+script a silent no-op.
+
 ## Safety guarantees (always on)
 
 - **One renderer** drives `render`/`check`/`reconcile`; `check` compares byte-for-byte.

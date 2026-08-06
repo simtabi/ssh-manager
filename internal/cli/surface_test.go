@@ -90,7 +90,19 @@ var goOnly = map[string]string{
 	// Confirmation and safety flags. Python prompted; the Go verbs take an
 	// explicit --yes so they are usable from a script, and refuse to destroy key
 	// material without a backup path.
-	"keygen --yes":                   "confirmation flag; Python prompted only",
+	// Every verb that changes ~/.ssh now confirms first when there is a terminal
+	// to ask at, and --yes is how a script says "go ahead" explicitly rather than
+	// relying on the absence of one. Python prompted only on the destructive
+	// verbs and had no flag at all.
+	"reconcile --yes":                "confirm-before-changing; see confirmChange",
+	"keygen --yes":                   "confirm-before-changing; also answers the per-key overwrite prompts",
+	"import --yes":                   "confirm-before-changing",
+	"deploy --yes":                   "confirm-before-changing",
+	"clean --yes":                    "confirm-before-changing",
+	"config render --yes":            "confirm-before-changing",
+	"knownhosts init --yes":          "confirm-before-changing",
+	"migrate --yes":                  "confirm-before-changing",
+	"notify install --yes":           "confirm-before-changing",
 	"keygen --no-key-backup":         "refuses to destroy key material unless told; no Python counterpart",
 	"rotate --yes":                   "confirmation flag",
 	"rollback --yes":                 "confirmation flag",

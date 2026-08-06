@@ -83,6 +83,17 @@ func newKeygenCmd() *cobra.Command {
 				}
 				pw = secret
 			}
+			// The overwrite prompts above cover replacing an existing key. This
+			// covers minting a new one, which is still a change to ~/.ssh.
+			if len(overwrite) == 0 {
+				what := "keygen mints the missing keys for " + target + "."
+				if target == "" {
+					what = "keygen mints every missing key in the manifest."
+				}
+				if err := confirmChange(c, what, yes); err != nil {
+					return err
+				}
+			}
 			snapshotBeforeMutation(p)
 			minted, err := r.Mint(target, pw, overwrite)
 			if err != nil {

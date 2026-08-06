@@ -20,7 +20,7 @@ import (
 // (rebuild config, mint missing keys, fix perms) under the mutation guard, then
 // auto-pin reachable hosts' known_hosts.
 func newReconcileCmd() *cobra.Command {
-	var dryRun, noPin, passphrase bool
+	var dryRun, noPin, passphrase, yes bool
 	cmd := &cobra.Command{
 		Use:   "reconcile",
 		Short: "Build ~/.ssh from the manifest",
@@ -45,6 +45,16 @@ func newReconcileCmd() *cobra.Command {
 				}
 				_, _ = fmt.Fprintln(out, res.Format())
 				return nil
+			}
+
+			// Show the dry run as the confirmation. The user sees exactly what is
+			// about to happen rather than being asked to agree to a verb name.
+			preview, err := r.Reconcile(true, "")
+			if err != nil {
+				return err
+			}
+			if err := confirmChange(c, preview.Format(), yes); err != nil {
+				return err
 			}
 
 			pw := ""
@@ -77,6 +87,7 @@ func newReconcileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview without writing")
 	cmd.Flags().BoolVar(&noPin, "no-pin", false, "don't auto-pin reachable hosts' known_hosts")
 	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect newly minted keys (prompts without echo)")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "apply without confirming (implied when there is no terminal)")
 	return cmd
 }
 

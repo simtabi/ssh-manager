@@ -5,6 +5,8 @@ import (
 	"fmt"
 	"os"
 
+	"github.com/simtabi/ssh-manager/internal/platform"
+
 	"github.com/spf13/cobra"
 )
 
@@ -61,4 +63,26 @@ func confirmOrAbort(c *cobra.Command, prompt string, skip bool) error {
 		return nil
 	}
 	return errAborted
+}
+
+// confirmChange asks before a command changes anything, and is the guard every
+// mutating verb goes through.
+//
+// It asks only when someone is there to answer. With no terminal - a pipe, a
+// cron job, a CI step - there is nobody to prompt, so it proceeds: refusing
+// instead would turn every existing script into a silent no-op, and a command
+// that declines on its own is not safer than one that runs, it is just harder to
+// diagnose. `--yes` skips the question outright, which is how a script says so
+// explicitly rather than relying on the absence of a terminal.
+//
+// summary is what the command is about to do, printed above the prompt. A
+// confirmation that does not say what it is confirming trains people to type y.
+func confirmChange(c *cobra.Command, summary string, yes bool) error {
+	if yes || !platform.StdinIsTerminal() {
+		return nil
+	}
+	if summary != "" {
+		_, _ = fmt.Fprintln(c.OutOrStdout(), summary)
+	}
+	return confirmOrAbort(c, "Proceed?", false)
 }
