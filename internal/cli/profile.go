@@ -76,7 +76,7 @@ func newProfileCmd() *cobra.Command {
 		},
 	}
 	edit.Flags().StringVar(&editScope, "key-scope", "", "per_service | shared")
-	edit.Flags().StringVar(&editKeyName, "key-name", "", "")
+	edit.Flags().StringVar(&editKeyName, "key-name", "", "the shared key every host in this profile uses (key_scope: shared)")
 	cmd.AddCommand(edit)
 
 	var yes, revoke, purge, noKeyBackup bool

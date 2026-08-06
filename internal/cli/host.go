@@ -53,9 +53,9 @@ func newHostCmd() *cobra.Command {
 	add.Flags().StringVarP(&hostname, "hostname", "H", "", "host to connect to")
 	add.Flags().StringVarP(&user, "user", "u", "", "ssh user")
 	add.Flags().IntVarP(&port, "port", "p", 22, "ssh port")
-	add.Flags().StringVar(&provider, "provider", "", "")
-	add.Flags().StringVar(&tokenEnv, "token-env", "", "")
-	add.Flags().StringVar(&keyName, "key-name", "", "")
+	add.Flags().StringVar(&provider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
+	add.Flags().StringVar(&tokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
+	add.Flags().StringVar(&keyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	add.Flags().StringArrayVar(&tags, "tag", nil, "repeatable")
 	_ = add.MarkFlagRequired("hostname")
 	_ = add.MarkFlagRequired("user")
@@ -97,12 +97,12 @@ func newHostCmd() *cobra.Command {
 			return nil
 		},
 	}
-	edit.Flags().StringVarP(&eHostname, "hostname", "H", "", "")
-	edit.Flags().StringVarP(&eUser, "user", "u", "", "")
-	edit.Flags().IntVarP(&ePort, "port", "p", 22, "")
-	edit.Flags().StringVar(&eProvider, "provider", "", "")
-	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "")
-	edit.Flags().StringVar(&eKeyName, "key-name", "", "")
+	edit.Flags().StringVarP(&eHostname, "hostname", "H", "", "host to connect to")
+	edit.Flags().StringVarP(&eUser, "user", "u", "", "ssh user")
+	edit.Flags().IntVarP(&ePort, "port", "p", 22, "ssh port")
+	edit.Flags().StringVar(&eProvider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
+	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
+	edit.Flags().StringVar(&eKeyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	cmd.AddCommand(edit)
 
 	var yes, revoke, purge, noKeyBackup bool

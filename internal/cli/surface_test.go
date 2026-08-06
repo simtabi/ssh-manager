@@ -1,0 +1,237 @@
+package cli
+
+import (
+	"sort"
+	"strings"
+	"testing"
+
+	"github.com/spf13/cobra"
+	"github.com/spf13/pflag"
+)
+
+// The command surface, checked against the Python it was ported from.
+//
+// Transcribed from `git show python-final:src/ssh_manager/cli.py`, where Typer
+// declares every flag inline. This is the "same flags" half of the parity
+// definition the matrix header uses, and it is the thing most at risk in a CLI
+// port: a verb quietly renamed, a flag dropped in translation, a shorthand that
+// silently changed meaning. None of that shows up in a service-level test.
+//
+// The table is checked in BOTH directions. A Python flag that is missing fails;
+// a Go verb or flag with no Python counterpart fails too, unless it is listed in
+// `goOnly` with the deviation that authorises it. So the surface cannot widen
+// without someone writing down why.
+
+// pythonSurface is verb -> the long flags Python declared on it. Subcommands are
+// spelled "parent child". Verbs with no flags map to an empty slice.
+var pythonSurface = map[string][]string{
+	"version":   {},
+	"tui":       {},
+	"recover":   {},
+	"doctor":    {"fix", "json"},
+	"init":      {"force", "backup"},
+	"migrate":   {"force"},
+	"import":    {"dry-run", "force"},
+	"reconcile": {"dry-run", "passphrase", "no-pin"},
+	"diff":      {},
+	"keygen":    {"passphrase", "force", "no-pin"},
+	"deploy":    {},
+	"list":      {"profile", "provider", "type", "tag"},
+	"view":      {},
+	"load":      {},
+	"rotate":    {"allow-unverified", "passphrase"},
+	"rollback":  {},
+	"expiry":    {},
+	"providers": {"export", "force"},
+	"net":       {},
+	"validate":  {},
+	"audit":     {"notify"},
+	"bundle":    {"recipient", "output"},
+	"restore":   {"identity"},
+
+	"config check":  {},
+	"config render": {"dry-run"},
+	"config show":   {},
+
+	"profile add":    {"shared", "key-name"},
+	"profile edit":   {"key-scope", "key-name"},
+	"profile delete": {"revoke"},
+
+	"host add":    {"hostname", "user", "port", "provider", "token-env", "key-name", "tag"},
+	"host edit":   {"hostname", "user", "port", "provider", "token-env", "key-name"},
+	"host delete": {"revoke"},
+
+	"notify install": {},
+	"notify test":    {},
+
+	"snapshots list":    {},
+	"snapshots restore": {},
+	"snapshots prune":   {"keep"},
+
+	// --user is gone on purpose: there is one trust store now, not one per
+	// profile plus the user's, so there is nothing left for it to select (D4).
+	"knownhosts init": {"all", "force"},
+	"knownhosts pin":  {"all", "port", "yes"},
+}
+
+// goOnly names every verb and flag with no Python counterpart, against the
+// deviation that authorises it. An entry here is a decision someone made; an
+// addition without one is a test failure.
+var goOnly = map[string]string{
+	"key":        "D1 - key add/list/delete, the dangling-key lifecycle Python had no verb for",
+	"key add":    "D1",
+	"key list":   "D1",
+	"key delete": "D1",
+	"show":       "D1 - reconciles manifest, key files, rendered config and trust store in one view",
+	"clean":      "D1 - prunes stale pins and records left by deletions",
+
+	"doctor --strict":       "D7 - CI gate: escalates every dangling-key state to fatal",
+	"doctor --no-preflight": "D7",
+
+	// Confirmation and safety flags. Python prompted; the Go verbs take an
+	// explicit --yes so they are usable from a script, and refuse to destroy key
+	// material without a backup path.
+	"keygen --yes":                   "confirmation flag; Python prompted only",
+	"keygen --no-key-backup":         "refuses to destroy key material unless told; no Python counterpart",
+	"rotate --yes":                   "confirmation flag",
+	"rollback --yes":                 "confirmation flag",
+	"restore --yes":                  "confirmation flag",
+	"snapshots restore --yes":        "confirmation flag",
+	"profile delete --yes":           "confirmation flag",
+	"profile delete --purge":         "D1 - removes the key files, not just the manifest entry",
+	"profile delete --no-key-backup": "as keygen",
+	"host delete --yes":              "confirmation flag",
+	"host delete --purge":            "D1",
+	"host delete --no-key-backup":    "as keygen",
+
+	"host add --requires-vpn":  "VPN-gated hosts; recorded in the manifest schema",
+	"host add --vpn-name":      "as above",
+	"host add --vpn-url":       "as above",
+	"host edit --requires-vpn": "as above",
+	"host edit --vpn-name":     "as above",
+	"host edit --vpn-url":      "as above",
+	"host edit --tag":          "parity gap in Python: add took --tag, edit did not",
+
+	"bundle --keep":             "retention for the encrypted bundles",
+	"clean --dry-run":           "D1",
+	"clean --adopt":             "D1",
+	"reconcile --no-passphrase": "the explicit half of Python's --passphrase/--no-passphrase pair",
+	"keygen --no-passphrase":    "as above",
+	"rotate --no-passphrase":    "as above",
+	"rotate --no-key-backup":    "as keygen",
+}
+
+// walk collects the tree as "parent child" -> long flag names.
+func walk(c *cobra.Command, prefix string, out map[string][]string) {
+	for _, sub := range c.Commands() {
+		if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" {
+			continue
+		}
+		name := strings.TrimSpace(prefix + " " + sub.Name())
+		var flags []string
+		sub.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			if f.Name != "help" {
+				flags = append(flags, f.Name)
+			}
+		})
+		sort.Strings(flags)
+		out[name] = flags
+		walk(sub, name, out)
+	}
+}
+
+func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
+	got := map[string][]string{}
+	walk(newRootCmd(), "", got)
+
+	// Groups exist only to hold subcommands; Python had them as Typer sub-apps
+	// with no flags of their own.
+	groups := map[string]bool{"config": true, "profile": true, "host": true,
+		"notify": true, "snapshots": true, "knownhosts": true, "key": true}
+
+	// 1. Everything Python had, Go still has - verb and flag.
+	for verb, want := range pythonSurface {
+		have, ok := got[verb]
+		if !ok {
+			t.Errorf("%q is in python-final:src/ssh_manager/cli.py and gone from the Go tree", verb)
+			continue
+		}
+		for _, f := range want {
+			if !contains(have, f) {
+				t.Errorf("%s: --%s was declared in Python and is missing here (have: %v)", verb, f, have)
+			}
+		}
+	}
+
+	// 2. Nothing widened without a written reason.
+	for verb, flags := range got {
+		if groups[verb] {
+			continue
+		}
+		known, inPython := pythonSurface[verb]
+		if !inPython {
+			if _, allowed := goOnly[verb]; !allowed {
+				t.Errorf("%q has no Python counterpart and no entry in goOnly; "+
+					"add the deviation that authorises it", verb)
+			}
+			continue
+		}
+		for _, f := range flags {
+			if contains(known, f) {
+				continue
+			}
+			if _, allowed := goOnly[verb+" --"+f]; !allowed {
+				t.Errorf("%s: --%s is not in Python and has no entry in goOnly; "+
+					"add the deviation that authorises it", verb, f)
+			}
+		}
+	}
+
+	// 3. Every command explains itself. A verb with no Short is invisible in
+	//    `sshmgr --help`, which is the only place most users look.
+	var noShort []string
+	var check func(c *cobra.Command, prefix string)
+	check = func(c *cobra.Command, prefix string) {
+		for _, sub := range c.Commands() {
+			if sub.Hidden || sub.Name() == "help" || sub.Name() == "completion" {
+				continue
+			}
+			name := strings.TrimSpace(prefix + " " + sub.Name())
+			if strings.TrimSpace(sub.Short) == "" {
+				noShort = append(noShort, name)
+			}
+			sub.LocalFlags().VisitAll(func(f *pflag.Flag) {
+				if f.Name != "help" && strings.TrimSpace(f.Usage) == "" {
+					noShort = append(noShort, name+" --"+f.Name)
+				}
+			})
+			check(sub, name)
+		}
+	}
+	check(newRootCmd(), "")
+	if len(noShort) > 0 {
+		sort.Strings(noShort)
+		t.Errorf("these carry no description and so are undocumented in --help: %v", noShort)
+	}
+}
+
+// The root's own contract: --version answers without a manifest, and an unknown
+// verb is an error rather than a silent no-op.
+func TestTheRootAnswersVersionAndRejectsAnUnknownVerb(t *testing.T) {
+	editHome(t)
+	if out := run(t, "--version"); !strings.Contains(out, "sshmgr") {
+		t.Errorf("--version printed %q", out)
+	}
+	if _, err := runErr(t, "no-such-verb"); err == nil {
+		t.Error("an unknown verb should be an error")
+	}
+}
+
+func contains(xs []string, v string) bool {
+	for _, x := range xs {
+		if x == v {
+			return true
+		}
+	}
+	return false
+}
