@@ -203,3 +203,38 @@ func TestExists(t *testing.T) {
 		t.Error("a directory should exist")
 	}
 }
+
+// The traversal guard, with the shapes a crafted archive actually uses. Both
+// tar extractors call this, so a hole here is a hole in `snapshots restore` and
+// `restore <bundle>` at once.
+func TestWithinRefusesEveryShapeThatEscapesTheRoot(t *testing.T) {
+	root := filepath.Join(string(filepath.Separator), "home", "user", ".ssh")
+
+	inside := []string{
+		root, // the archive's own root entry
+		filepath.Join(root, "config"),
+		filepath.Join(root, "profiles", "work", "k"),
+		filepath.Join(root, "a", "..", "b"), // resolves back inside
+	}
+	for _, p := range inside {
+		if !Within(root, p) {
+			t.Errorf("Within(%q, %q) = false, want true", root, p)
+		}
+	}
+
+	outside := []string{
+		filepath.Join(root, ".."),                        // the parent itself
+		filepath.Join(root, "..", ".bashrc"),             // straight out
+		filepath.Join(root, "..", "..", "etc", "passwd"), // further out
+		filepath.Join(root, "x", "..", "..", "escaped"),  // out via a plausible prefix
+		// The sibling case a naive string-prefix check gets wrong: "/home/user/.ssh"
+		// is a prefix of "/home/user/.ssh-evil" as a string, but not as a path.
+		filepath.Join(string(filepath.Separator), "home", "user", ".ssh-evil", "k"),
+		filepath.Join(string(filepath.Separator), "tmp", "elsewhere"),
+	}
+	for _, p := range outside {
+		if Within(root, p) {
+			t.Errorf("Within(%q, %q) = true; that path is outside the root", root, p)
+		}
+	}
+}

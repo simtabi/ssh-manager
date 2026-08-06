@@ -17,6 +17,17 @@ server, and editing a server's `authorized_keys` never touches the dashboard.
 
 ---
 
+
+> **The cloud adapters' response shapes are pinned by tests, not by a live API
+> call.** No adapter here has been exercised against a real DigitalOcean, Vultr,
+> Hetzner, Linode or Scaleway account, in this implementation or the one it was
+> ported from — the Python tests stubbed the HTTP layer entirely. The endpoint
+> paths and JSON shapes are therefore assumptions that both implementations
+> agree on, which is what a port can prove and no more. DigitalOcean is
+> additionally exercised over a real local HTTP server, so the request path
+> itself — URL construction, method, auth header, pagination — is covered for one
+> of them. All five degrade to the manual path when no token is set.
+
 ## 1. Account keys - DigitalOcean, Vultr, Hetzner, Linode (built-in)
 
 These manage the keys in the dashboard via each provider's REST API. Set the
@@ -127,7 +138,7 @@ instances, or their own tooling for project/account-level keys:
 
 A brand-new provider with a REST API can be added either with **no code**
 (`kind: rest`, see [providers.md](providers.md#add-a-rest-provider-with-no-code-kind-rest))
-or as a first-class adapter in `providers/cloud.py` (subclass `RestVpsProvider`).
+or as a first-class adapter in `internal/core/providers/cloud.go`.
 
 ---
 
@@ -162,16 +173,16 @@ Every feature of the original standalone VPS key tool has a home in ssh-manager:
 
 | Original tool (`providers.py` / `serverkeys.py` / `vpskeys.py` / `fixkeys.sh`) | ssh-manager |
 |---|---|
-| `Provider` REST base (token, session, retry/backoff) | `providers/cloud.py::RestVpsProvider` + `util/http.py` (stdlib urllib + retry) |
-| `DigitalOcean` / `Vultr` / `Hetzner` / `Linode` / `Scaleway` | same-named adapters in `providers/cloud.py` |
+| `Provider` REST base (token, session, retry/backoff) | `internal/core/providers/cloud.go` + `internal/util/httpjson` (stdlib net/http + bounded retry) |
+| `DigitalOcean` / `Vultr` / `Hetzner` / `Linode` / `Scaleway` | same-named adapters in `internal/core/providers/cloud.go` |
 | `list_keys` | `verify` / `list_deployed` |
 | `add_key` | `deploy` (idempotent; renames a stale ssh-manager title) |
 | `rename_key` | `rename` (+ auto on re-deploy) |
 | `delete_key` | `remove` (matched by key body) |
-| `GenericSpec` + `config.json` `extra_providers` (no-code provider) | `kind: "rest"` + `rest` block in `providers.json` (`providers/cloud.py::GenericRest`) |
+| `GenericSpec` + `config.json` `extra_providers` (no-code provider) | `kind: "rest"` + `rest` block in `providers.json` (`internal/core/providers/cloud.go`, `GenericRest`) |
 | `available_providers` (which tokens are set) | `sshmgr providers` |
-| `KEY_TYPES`, `_split_key_line`, `_looks_like_base64`, `key_body`, `same_key`, `is_valid_public_key`, `count_keys`, `add/remove_key_from_text` | `core/authorized_keys.py` (stricter: validates the base64 wire-type) |
-| `Server` read/write `authorized_keys` (backup, atomic, lockout guard) | `providers/ssh_generic.py` (`generic-ssh`) |
+| `KEY_TYPES`, `_split_key_line`, `_looks_like_base64`, `key_body`, `same_key`, `is_valid_public_key`, `count_keys`, `add/remove_key_from_text` | `internal/core/authkeys` (stricter: validates the base64 wire type, and bounds the length prefix in 64-bit arithmetic so a crafted line cannot wrap it) |
+| `Server` read/write `authorized_keys` (backup, atomic, lockout guard) | `internal/core/providers/ssh_generic.go` (`generic-ssh`) |
 | `Server.fix_permissions` | `fixkeys.sh` menu **4. fix permissions** (shipped + emitted by `sshmgr recover`) |
 | Account-keys interactive menu | `deploy` / `rotate` / `remove` / `rename` + `tui` |
 | Server-keys interactive menu | `generic-ssh` deploy/revoke + the `recover` recovery tool |
@@ -180,3 +191,7 @@ Every feature of the original standalone VPS key tool has a home in ssh-manager:
 | `requirements.txt` (`requests`) | none - stdlib `urllib` (smaller supply-chain surface) |
 
 The original tool can be retired; nothing it did is missing here.
+
+---
+
+[← Docs index](../../README.md#documentation)

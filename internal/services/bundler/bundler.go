@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/simtabi/ssh-manager/internal/util/fs"
 )
 
 const ageHint = "install age: brew install age  (Linux: apt install age / get from FiloSottile/age)"
@@ -340,7 +342,7 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 		case strings.HasPrefix(m.name, sshPrefix):
 			rel := strings.TrimPrefix(m.name, sshPrefix)
 			dest = filepath.Join(b.sshDir, filepath.FromSlash(rel))
-			if !within(b.sshDir, dest) {
+			if !fs.Within(b.sshDir, dest) {
 				return res, fmt.Errorf("refusing path traversal in bundle: %s", m.name)
 			}
 			label = rel
@@ -431,13 +433,6 @@ func readTarGz(r io.Reader) ([]member, error) {
 
 // within reports whether dest stays inside root, so a crafted member name cannot
 // write outside the tree it claims to belong to.
-func within(root, dest string) bool {
-	rel, err := filepath.Rel(root, dest)
-	if err != nil {
-		return false
-	}
-	return rel != ".." && !strings.HasPrefix(rel, ".."+string(os.PathSeparator))
-}
 
 func writeBytesAtomic(path string, data []byte) error {
 	dir := filepath.Dir(path)

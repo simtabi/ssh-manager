@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/simtabi/ssh-manager/internal/util/fs"
 	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
 
@@ -300,11 +301,9 @@ func extractTarGz(tarball, destParent string) error {
 	if err := os.MkdirAll(destParent, 0o700); err != nil {
 		return err
 	}
-	cleanParent := filepath.Clean(destParent) + string(os.PathSeparator)
 	for _, m := range members {
 		dest := filepath.Join(destParent, filepath.FromSlash(m.hdr.Name))
-		if !strings.HasPrefix(filepath.Clean(dest)+string(os.PathSeparator), cleanParent) &&
-			filepath.Clean(dest) != filepath.Clean(destParent) {
+		if !fs.Within(destParent, dest) {
 			return fmt.Errorf("refusing path traversal in archive: %s", m.hdr.Name)
 		}
 		mode := os.FileMode(m.hdr.Mode).Perm()
