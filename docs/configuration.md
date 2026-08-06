@@ -3,7 +3,7 @@
 Everything lives in the **manifest** (`~/.config/ssh-manager/manifest.json`) - the single
 source of truth. You never hand-edit ssh-manager's part of `~/.ssh/config`; you edit the
 manifest (or use the `host`/`profile` verbs) and re-render. A JSON Schema for the
-manifest and inventory lives in `config/schema/` (and matches the pydantic models,
+manifest and inventory lives in `config/schema/` (and matches the Go models in `internal/core`,
 which reject unknown keys). See [installation.md](installation.md) for how the home
 is resolved.
 
@@ -146,7 +146,9 @@ under `~/.ssh/profiles/<profile>/`** - its keys, rendered `config`, and its own
 - Two GitHub accounts are two profiles sharing `hostname: github.com` via distinct
   aliases (`github.com` vs `github-simtabi`) and `IdentitiesOnly yes`, so each
   offers only its own key.
-- Each profile renders `UserKnownHostsFile ~/.ssh/profiles/<p>/known_hosts`, so a
+- Every host renders `UserKnownHostsFile ~/.ssh/known_hosts` - one hashed store,
+  not one per profile. Identity isolation comes from `IdentityFile` plus a
+  per-host `IdentitiesOnly yes`, not from where the trust store lives. A
   host key trusted as `personal` is **not** trusted as `simtabi` - even on the
   same `github.com` host. Pin host keys with `sshmgr knownhosts pin --all`.
 
@@ -186,7 +188,7 @@ or `shared`.
 ## `.env` (gitignored)
 
 Secrets/refs (age recipient, per-host provider tokens) live
-in `~/.config/ssh-manager/.env`, loaded via python-dotenv. A committed `.env-example` documents
+in `~/.config/ssh-manager/.env`, read by `internal/util/secrets`. A committed `.env-example` documents
 the shape with empty values, and `sshmgr init` seeds your `.env` from it. The
 `.env` is **never** committed (it's gitignored, mode 0600) and is **excluded from
 the encrypted bundle**.
