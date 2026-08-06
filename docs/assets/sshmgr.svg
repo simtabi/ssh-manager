@@ -1,0 +1,36 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64" role="img" aria-labelledby="sshmgr-icon-title">
+  <title id="sshmgr-icon-title">sshmgr</title>
+  <!--
+    One mark, drawn as strokes on a 64-unit grid so it stays legible from a 16px
+    favicon up to a README-sized render.
+
+    The tile is a constant dark navy rather than a theme-swapped fill: an icon
+    that inverts is a different icon, and a tab strip shows it beside whatever
+    the page happens to be. Only the hairline border reacts to the theme, so the
+    tile never dissolves into a dark page.
+
+    The key sits on a 45-degree diagonal because a horizontal one leaves the top
+    and bottom of a square tile empty and crops badly when a platform rounds the
+    corners harder than we do. Teeth are unequal so the silhouette reads as a key
+    rather than a bracket, and the ring stays closed - a gap in it was meant to
+    suggest rotation and just looked like a rendering fault below 24px.
+  -->
+  <style>
+    .tile { fill: #0b1220; }
+    .edge { stroke: rgba(255, 255, 255, .14); }
+    .mark { stroke: #38bdf8; }
+    @media (prefers-color-scheme: light) {
+      .edge { stroke: rgba(15, 23, 42, .18); }
+    }
+  </style>
+
+  <rect class="tile" x="1" y="1" width="62" height="62" rx="15" />
+  <rect class="edge" x="1.75" y="1.75" width="60.5" height="60.5" rx="14.25" fill="none" stroke-width="1.5" />
+
+  <g class="mark" fill="none" stroke-width="4.5" stroke-linecap="round" transform="rotate(-45 32 32)">
+    <circle cx="20" cy="32" r="10.5" />
+    <path d="M30.5 32 H54.5" />
+    <path d="M43.5 32 V42.5" />
+    <path d="M50.5 32 V38.5" />
+  </g>
+</svg>

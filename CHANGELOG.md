@@ -29,6 +29,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - `scripts/build-all.sh` no longer deletes `build/targets.txt`, which is tracked,
   as a side effect of a release build.
 
+### Added
+
+- A project icon at `docs/assets/sshmgr.svg` — a single scalable mark for the
+  docs site, the repository's social preview and a favicon.
+
 ### Changed
 
 - **The Go module moved to `src/`.** The repository now keeps its Go code under
