@@ -86,3 +86,40 @@ jobs:
           sudo install -m 0755 gitleaks /usr/local/bin/gitleaks
       - name: Scan for secrets
         run: gitleaks detect --source . --redact --no-banner --exit-code 1
+
+  scripts:
+    # The four shell artifacts nothing else exercises. install.sh and install.ps1
+    # are user-facing `curl | bash` entry points with no test of any kind - a
+    # broken arch detection or a renamed asset would surface as a user report -
+    # and fixkeys.sh runs as root on a machine its user is locked out of.
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          persist-credentials: false
+      - name: shellcheck
+        run: |
+          shellcheck --severity=warning \
+            scripts/install.sh \
+            scripts/build-all.sh \
+            scripts/extract-changelog.sh \
+            internal/services/recover/fixkeys.sh
+      - name: PowerShell parses
+        shell: pwsh
+        run: |
+          $errors = $null
+          [System.Management.Automation.Language.Parser]::ParseFile(
+            "scripts/install.ps1", [ref]$null, [ref]$errors) | Out-Null
+          if ($errors) { $errors | ForEach-Object { Write-Error $_ }; exit 1 }
+          Write-Output "scripts/install.ps1 parses"
+      - name: The installers reconstruct the artifact names GoReleaser writes
+        run: |
+          # Both installers build "sshmgr_{os}_{arch}", and .goreleaser.yaml maps
+          # darwin -> macos. A drift here is invisible until a release is cut.
+          grep -q 'darwin' scripts/install.sh || { echo "install.sh no longer maps darwin"; exit 1; }
+          grep -q 'macos'  scripts/install.sh || { echo "install.sh no longer produces the macos token"; exit 1; }
+          grep -q 'macos'  .goreleaser.yaml   || { echo ".goreleaser.yaml no longer produces the macos token"; exit 1; }
+          grep -q 'checksums.txt' scripts/install.sh || { echo "install.sh stopped verifying checksums"; exit 1; }
+          grep -qi 'checksums.txt' scripts/install.ps1 || { echo "install.ps1 stopped verifying checksums"; exit 1; }
+          echo "installers and GoReleaser agree on the artifact naming"

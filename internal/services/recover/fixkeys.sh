@@ -35,7 +35,14 @@ ensure_file() {
 body_of() { awk '{for(i=1;i<=NF;i++) if($i ~ /^(ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)$/){if(i+1<=NF) print $(i+1); exit}}' <<<"$1"; }
 label_of() { awk '{for(i=1;i<=NF;i++) if($i ~ /^(ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)$/){if(i+2<=NF){s="";for(j=i+2;j<=NF;j++)s=s (j>i+2?" ":"") $j;print s}else print $i;exit}}' <<<"$1"; }
 fp_of() { command -v ssh-keygen >/dev/null 2>&1 || { printf '(no ssh-keygen)'; return; }; local t o; t="$(mktemp)"; printf '%s\n' "$1" >"$t"; o="$(ssh-keygen -lf "$t" 2>/dev/null)"; rm -f "$t"; printf '%s' "${o:-(unreadable)}"; }
-backup() { local d="$AK_FILE.bak.$(date +%Y%m%d-%H%M%S)"; cp -p "$AK_FILE" "$d" && say "  backup: $d"; }
+# Assign separately: `local d=$(...)` takes local's exit status, not the
+# command's, so a failure inside would be invisible - and this is the backup a
+# locked-out user is relying on.
+backup() {
+  local d
+  d="$AK_FILE.bak.$(date +%Y%m%d-%H%M%S)" || return 1
+  cp -p "$AK_FILE" "$d" && say "  backup: $d"
+}
 write_atomic() { local t="$AK_FILE.new.$$"; cat >"$t"; chmod 600 "$t"; mv "$t" "$AK_FILE"; id "$AK_USER" >/dev/null 2>&1 && chown "$AK_USER":"$(id -gn "$AK_USER" 2>/dev/null || echo "$AK_USER")" "$AK_FILE" 2>/dev/null || true; }
 real_keys() { awk '{for(i=1;i<=NF;i++) if($i ~ /^(ssh-rsa|ssh-dss|ssh-ed25519|ecdsa-sha2-nistp256|ecdsa-sha2-nistp384|ecdsa-sha2-nistp521|sk-ssh-ed25519@openssh\.com|sk-ecdsa-sha2-nistp256@openssh\.com)$/){print;break}}' "$AK_FILE"; }
 
