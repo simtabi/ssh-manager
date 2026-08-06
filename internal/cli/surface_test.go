@@ -85,8 +85,7 @@ var goOnly = map[string]string{
 	"show":       "D1 - reconciles manifest, key files, rendered config and trust store in one view",
 	"clean":      "D1 - prunes stale pins and records left by deletions",
 
-	"doctor --strict":       "D7 - CI gate: escalates every dangling-key state to fatal",
-	"doctor --no-preflight": "D7",
+	"doctor --strict": "D7 - CI gate: escalates every dangling-key state to fatal",
 
 	// Confirmation and safety flags. Python prompted; the Go verbs take an
 	// explicit --yes so they are usable from a script, and refuse to destroy key
@@ -104,21 +103,10 @@ var goOnly = map[string]string{
 	"host delete --purge":            "D1",
 	"host delete --no-key-backup":    "as keygen",
 
-	"host add --requires-vpn":  "VPN-gated hosts; recorded in the manifest schema",
-	"host add --vpn-name":      "as above",
-	"host add --vpn-url":       "as above",
-	"host edit --requires-vpn": "as above",
-	"host edit --vpn-name":     "as above",
-	"host edit --vpn-url":      "as above",
-	"host edit --tag":          "parity gap in Python: add took --tag, edit did not",
-
-	"bundle --keep":             "retention for the encrypted bundles",
-	"clean --dry-run":           "D1",
-	"clean --adopt":             "D1",
-	"reconcile --no-passphrase": "the explicit half of Python's --passphrase/--no-passphrase pair",
-	"keygen --no-passphrase":    "as above",
-	"rotate --no-passphrase":    "as above",
-	"rotate --no-key-backup":    "as keygen",
+	"bundle --keep":          "retention for the encrypted bundles",
+	"clean --dry-run":        "D1",
+	"clean --adopt":          "D1",
+	"rotate --no-key-backup": "as keygen",
 }
 
 // walk collects the tree as "parent child" -> long flag names.
@@ -187,7 +175,26 @@ func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
 		}
 	}
 
-	// 3. Every command explains itself. A verb with no Short is invisible in
+	// 3. goOnly is the record of why each addition exists, so it must not carry
+	//    entries for things that are not there. An unused allowlist entry is
+	//    silently ignored - three sat here claiming a --no-passphrase that was
+	//    dropped in the 2.0.0 rewrite, and docs/features.md documented it because
+	//    this table said it existed.
+	present := map[string]bool{}
+	for verb, flags := range got {
+		present[verb] = true
+		for _, f := range flags {
+			present[verb+" --"+f] = true
+		}
+	}
+	for entry := range goOnly {
+		if !present[entry] {
+			t.Errorf("goOnly has an entry for %q, which does not exist. "+
+				"Remove it: an unused justification reads as documentation of a real flag.", entry)
+		}
+	}
+
+	// 4. Every command explains itself. A verb with no Short is invisible in
 	//    `sshmgr --help`, which is the only place most users look.
 	var noShort []string
 	var check func(c *cobra.Command, prefix string)

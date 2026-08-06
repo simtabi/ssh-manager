@@ -36,17 +36,27 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `reconcile --dry-run` | Preview the plan; write nothing. | E·F |
 | `keygen <profile\|host> [--no-pin]` | Targeted key generation; warns + **skips** keys that already exist; auto-pins the affected profiles' `known_hosts` for reachable hosts. | U·E·F |
 | `keygen ... --force [--yes]` | Overwrite existing keys (prompted; `~/.ssh` snapshotted first). | U·E·F |
-| `keygen ... --passphrase/--no-passphrase` | Protect new keys with a passphrase (off by default; prompts on a TTY). | U |
+| `keygen ... --passphrase` | Protect new keys with a passphrase (off by default, so omitting the flag is the "no" answer; prompts without echo on a TTY). | U |
 | `config check` | Verify the on-disk config byte-for-byte matches a fresh render (exit ≠0 on drift). | U·E·F |
 | `config render [--dry-run]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
 | `import [path] [--force]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
 | `diff` | Preview manifest vs. on-disk reality (config + which keys are missing/present). | U·F |
 
+## Keys
+
+| Command | What it does | Tests |
+|---|---|---|
+| `key list [selector]` | Every key with its fingerprint, expiry, the hosts using it, and its state — including keys nothing references. | U |
+| `key add <profile> <name> [--type] [--rotate-after-days] [--host] [--passphrase]` | Declare a key on a profile and mint it. Without `--host` the key is minted **unwired**: it exists and nothing uses it, which `doctor` then reports. | U |
+| `key delete <profile/key> [--purge] [--revoke] [--yes] [--no-key-backup]` | Remove the declaration and the inventory record. **Refuses while any host still resolves to the key** — a `Host` block pointing at a missing `IdentityFile` fails as a bare "Permission denied (publickey)" with nothing naming the cause. `--purge` also deletes the files. | U |
+| `clean [--dry-run] [--adopt]` | Prune stale `known_hosts` pins, stale inventory records and write residue. Only removes pins tagged `sshmgr`; `--adopt` opts an untagged pin that matches a manifest host into management, since an untagged pin is presumed to be yours. | U |
+
 ## Inspect
 
 | Command | What it does | Tests |
 |---|---|---|
+| `show <profile\|alias\|profile/key>` | Everything about one thing at once: the manifest entry, the key files and their modes, the rendered config block, and the pins. An auth failure is usually a disagreement between those four, and this is where you see it. | U |
 | `list [--profile/--provider/--type/--tag]` | Filterable tree across profiles. | U·E·F |
 | `view <profile\|alias>` | Resolved host config + key + deployment status; shows a **VPN reminder** for `requires_vpn` hosts. | U·F |
 | `validate [key\|profile]` | Check each keypair: both parse, public key is *derived from* the private (`ssh-keygen -y`), perms correct; encrypted keys are noted not failed. Exit ≠0 on failure. | U·E·F |
@@ -84,15 +94,19 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 
 | Command | What it does | Tests |
 |---|---|---|
-| `profile add\|edit\|delete [--yes] [--revoke]` | Manage a profile (delete can revoke deployed keys + prune). | U·F |
-| `host add <profile> <alias> ...\|edit\|delete [--yes] [--revoke]` | Manage a host within a profile (alias is **positional**). | U·F |
-| `knownhosts init [PROFILE] [--all] [--user] [--force]` | Initialize known_hosts (create file + pin reachable hosts, TOFU, fingerprints reported): a profile, `--all` profiles, and/or `--user` (the per-user `~/.ssh/known_hosts`). Per-store status report. | U·F |
+| `profile add <name> [--shared] [--key-name]` | Add a profile. | U·F |
+| `profile edit <name> [--key-scope] [--key-name]` | Change a profile in place. | U·F |
+| `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
+| `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag]` | Add a host to a profile (alias is **positional**). | U·F |
+| `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name]` | Change a host in place. | U·F |
+| `host delete <profile> <alias> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a host; `--revoke` pulls the key off its targets, `--purge` deletes the key files if nothing else names them. | U·F |
+| `knownhosts init [PROFILE] [--all] [--force]` | Initialize the trust store (create the file + pin reachable hosts, TOFU, fingerprints reported) for one profile or, with `--all`, every host in the manifest. There is one hashed store, so a host used by two profiles is pinned once. | U·F |
 | `knownhosts pin [HOST] [--all]` | Seed per-profile `known_hosts` via `ssh-keyscan`, showing each fingerprint and asking first. | U·F |
 | `notify install\|test` | Scheduled desktop expiry reminders (launchd / systemd-user-or-cron / schtasks). | U·F |
-| `tui` | Interactive arrow-key UI over the whole facade. | U |
+| `tui` (or a bare `sshmgr` on a terminal) | Interactive arrow-key UI over the whole facade. | U |
 
 Cross-cutting flags: `--yes`/`-y` on destructive verbs (with `--revoke` on deletes);
-`--passphrase`/`--no-passphrase` on key generation.
+`--passphrase` on key generation (a plain flag: leaving it off is the "no" answer).
 
 ## Providers
 

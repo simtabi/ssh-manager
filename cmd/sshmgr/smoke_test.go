@@ -86,8 +86,10 @@ func TestTheBinaryReportsItsVersionAndExitsZero(t *testing.T) {
 		}
 	}
 
-	// No arguments is help, not an error: a user who types the bare name should
-	// not get a failing exit code for looking.
+	// No arguments opens the TUI on a terminal. There is no terminal here - the
+	// runner gives the child a pipe - so it falls back to help, which is the
+	// behaviour a script or a CI job gets and the one worth pinning: a TUI
+	// reading from a pipe would consume whatever is on it as menu answers.
 	out, _, code := run("")
 	if code != 0 {
 		t.Errorf("the bare command exited %d, want 0 with help", code)

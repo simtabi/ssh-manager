@@ -112,13 +112,17 @@ func newTuiCmd() *cobra.Command {
 		Use:   "tui",
 		Short: "Interactive menu over the manager",
 		Args:  cobra.NoArgs,
-		RunE: func(c *cobra.Command, _ []string) error {
-			out := c.OutOrStdout()
-			t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out, c.InOrStdin()), out: out}
-			t.run()
-			return nil
-		},
+		RunE:  func(c *cobra.Command, _ []string) error { return runTUI(c) },
 	}
+}
+
+// runTUI is the entry point for both `sshmgr tui` and a bare `sshmgr` on a
+// terminal, so the two cannot drift into behaving differently.
+func runTUI(c *cobra.Command) error {
+	out := c.OutOrStdout()
+	t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out, c.InOrStdin()), out: out}
+	t.run()
+	return nil
 }
 
 func (t *tui) run() {

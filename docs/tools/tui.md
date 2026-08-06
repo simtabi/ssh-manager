@@ -4,8 +4,14 @@ A numbered stdin menu over the same services the CLI verbs use, so nothing is
 reimplemented and the two cannot drift.
 
 ```sh
-sshmgr tui
+sshmgr          # on a terminal, this opens the menu
+sshmgr tui      # the same thing, explicitly
 ```
+
+Running the binary with no arguments opens the menu when standard input is a
+terminal. With any argument it is a plain CLI, and without a terminal — a pipe, a
+script, a CI job — it prints help instead. That fallback matters: a menu reading
+from a pipe would take whatever is on it as answers.
 
 ## What it is
 

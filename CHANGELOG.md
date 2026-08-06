@@ -17,6 +17,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **A bare `sshmgr` opens the interactive menu** when standard input is a
+  terminal, instead of printing help. With any argument it is a plain CLI, and
+  without a terminal it still prints help — a menu reading from a pipe would
+  take whatever is on it as answers.
 - Build output is consolidated under `build/`: `make build` writes
   `build/sshmgr` instead of `bin/sshmgr`, and `build/dist/` holds the release
   artifacts as before. There is no `bin/` any more.

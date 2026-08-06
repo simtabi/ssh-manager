@@ -202,3 +202,37 @@ func TestReleasingTheHeldLockClosesItRatherThanForgettingIt(t *testing.T) {
 		t.Fatal("the lock is still held, so the release forgot the descriptor rather than closing it")
 	}
 }
+
+// A bare `sshmgr` opens the menu on a terminal and prints help everywhere else.
+// The fallback is the load-bearing half: a TUI given a pipe would read whatever
+// is on it as menu answers, so a script that runs the binary with no arguments
+// would select an action nobody chose.
+func TestABareInvocationFallsBackToHelpWithoutATerminal(t *testing.T) {
+	editHome(t)
+
+	root := newRootCmd()
+	var out bytes.Buffer
+	root.SetOut(&out)
+	root.SetErr(&out)
+	root.SetIn(strings.NewReader("5\n")) // would be "Reconcile" if it reached the menu
+	root.SetArgs(nil)
+	if err := root.Execute(); err != nil {
+		t.Fatalf("a bare invocation should not fail: %v", err)
+	}
+
+	if !strings.Contains(out.String(), "Available Commands:") {
+		t.Errorf("expected help without a terminal:\n%s", out.String())
+	}
+	if strings.Contains(out.String(), "ssh-manager:\n  1)") {
+		t.Error("the menu was opened without a terminal; piped input would be read as answers")
+	}
+}
+
+// An unknown bare argument is still an error rather than silently opening the
+// menu - a typo'd verb must not be read as "no verb".
+func TestABareArgumentIsNotTreatedAsNoVerb(t *testing.T) {
+	editHome(t)
+	if _, err := runErr(t, "reconcil"); err == nil {
+		t.Error("a mistyped verb should be an error, not a TUI launch")
+	}
+}
