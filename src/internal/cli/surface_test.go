@@ -68,10 +68,22 @@ var pythonSurface = map[string][]string{
 	"snapshots restore": {},
 	"snapshots prune":   {"keep"},
 
-	// --user is gone on purpose: there is one trust store now, not one per
-	// profile plus the user's, so there is nothing left for it to select (D4).
 	"knownhosts init": {"all", "force"},
 	"knownhosts pin":  {"all", "port", "yes"},
+}
+
+// pythonDropped names every Python flag deliberately NOT carried into Go, with
+// the decision that removed it.
+//
+// It exists because omission is invisible. pythonSurface is a transcription, and
+// the check below can only compare what was transcribed - so a flag left out of
+// it is unverified in both directions at once: nothing notices it is gone, and
+// nothing notices if it comes back. --user was recorded that way, as a comment
+// next to a shortened list, which documents the decision for a reader and
+// asserts nothing. Listing it here makes the removal a checked fact.
+var pythonDropped = map[string]string{
+	"knownhosts init --user": "D4: there is one trust store now, not one per profile " +
+		"plus the user's, so there is nothing left for the flag to select",
 }
 
 // goOnly names every verb and flag with no Python counterpart, against the
@@ -206,7 +218,23 @@ func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
 		}
 	}
 
-	// 4. Every command explains itself. A verb with no Short is invisible in
+	// 4. A dropped flag stays dropped, and every drop is a recorded decision.
+	//    Both halves matter: re-adding one silently would undo the design change
+	//    that removed it, and an entry here for a flag that is present would mean
+	//    the record and the tree disagree about what the tool does.
+	for entry, why := range pythonDropped {
+		if present[entry] {
+			t.Errorf("%q is listed in pythonDropped (%s) but exists in the Go tree. "+
+				"Either the removal was reverted, or the record is stale.", entry, why)
+		}
+		verb := strings.TrimSpace(strings.Split(entry, " --")[0])
+		if _, ok := got[verb]; !ok {
+			t.Errorf("pythonDropped names %q, whose verb %q does not exist; "+
+				"the entry can no longer be checked against anything", entry, verb)
+		}
+	}
+
+	// 5. Every command explains itself. A verb with no Short is invisible in
 	//    `sshmgr --help`, which is the only place most users look.
 	var noShort []string
 	var check func(c *cobra.Command, prefix string)

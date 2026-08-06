@@ -20,6 +20,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   shrunk the next release to that single target. Its build loop also read
   `targets.txt` rather than the matrix it had just selected, so the override was
   ignored in any case where the two differed.
+- `make feature-check` ran 9 tests, not the 80 in the package, because its
+  `-run 'TestCommandSurface|TestVerbs'` regex did not match
+  `TestTheCommandSurfaceMatchesThePythonItReplaced` — the one test that pins the
+  command surface against the Python implementation it replaced. A target
+  documented as "exercise every command with assertions" was excluding the
+  assertion that matters most. It now runs the package.
 - The pre-commit `gofmt` hook can now fail. It ran `gofmt -l`, which lists
   unformatted files and exits 0, so it reported problems and passed.
 - `make clean` now removes the release artifacts. It ran `rm -rf bin dist`,

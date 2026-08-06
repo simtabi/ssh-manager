@@ -86,8 +86,16 @@ e2e: ## end-to-end smoke in a throwaway sandbox
 # The per-command assertions live in internal/cli/commands_test.go now, so they
 # run in the ordinary suite. Kept as a target because the docs and the shipping
 # checklist name it.
+#
+# It runs the whole package rather than a -run regex. The regex was
+# 'TestCommandSurface|TestVerbs', which selected 9 tests and silently excluded
+# TestTheCommandSurfaceMatchesThePythonItReplaced - the one test that pins the
+# command surface against the implementation it replaced, and the thing a target
+# called "feature-check" most obviously promises. A pattern that has to be kept
+# in step with test names drifts the moment one is renamed, and says nothing when
+# it does.
 feature-check: ## exercise every command with assertions
-	$(GO) test -count=1 -run 'TestCommandSurface|TestVerbs' ./internal/cli/
+	$(GO) test -count=1 ./internal/cli/
 
 # GoReleaser is configured in src/.goreleaser.yaml but runs from the repo root:
 # its archives bundle LICENSE/README/CHANGELOG, and GoReleaser's file globbing
