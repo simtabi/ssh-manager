@@ -1,7 +1,7 @@
 # Feature catalog
 
 The complete, tested surface of ssh-manager. Every row is exercised by the test suite:
-**U** = unit tests (`pytest`), **E** = end-to-end smoke (`make e2e`), **F** =
+**U** = unit tests (`go test ./...`), **E** = end-to-end smoke (`make e2e`), **F** =
 per-command feature check (`make feature-check`, which exercises every command in
 a sandbox). Run all three with `make test e2e feature-check`.
 
