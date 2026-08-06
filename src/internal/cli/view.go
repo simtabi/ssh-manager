@@ -10,7 +10,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/query"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newViewCmd is the native view verb: resolved config + key + deployment status
@@ -21,7 +20,10 @@ func newViewCmd() *cobra.Command {
 		Short: "Resolved host config + key + deployment status",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

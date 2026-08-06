@@ -31,7 +31,10 @@ func newImportCmd() *cobra.Command {
 			if len(args) > 0 {
 				configPath = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			if !dryRun {
 				if err := confirmChange(c,
 					"import replaces "+p.Manifest()+" with what it reads from "+configPath+

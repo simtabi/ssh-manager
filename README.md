@@ -55,6 +55,7 @@ per-user state lives, is in [docs/installation.md](docs/installation.md).
 - [Two GitHub accounts on one machine](docs/recipes/two-github-accounts.md) — one hostname, two identities, neither able to act as the other.
 - [Onboard an existing `~/.ssh`](docs/recipes/onboard-an-existing-ssh-dir.md) — bring a hand-built setup under management without regenerating anything.
 - [Rotate a key with no downtime](docs/recipes/rotate-a-key.md) — stage, verify, commit; and how to step back.
+- [Work against a sandbox](docs/recipes/dev-mode.md) — exercise every verb without touching your real `~/.ssh`.
 - [Back up, and restore onto a new machine](docs/recipes/back-up-and-restore.md) — the only path that recovers the same keys.
 - [Recover from a locked-out server](docs/recipes/recover-from-lockout.md) — break-glass with no working SSH.
 - [Run it in CI](docs/recipes/run-in-ci.md) — non-interactive, sandboxed, failing loudly.

@@ -9,6 +9,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 	"github.com/simtabi/ssh-manager/src/v3/internal/version"
 )
 
@@ -35,6 +36,13 @@ func newRootCmd() *cobra.Command {
 			return runTUI(c)
 		},
 	}
+	// A sandbox root for the whole run: --dev-root ./scratch puts the ssh dir and
+	// the config home under it and touches nothing in $HOME. Persistent, because
+	// it has to apply to every verb - a flag that only some commands honoured
+	// would produce a run that reads the sandbox and writes the real tree.
+	root.PersistentFlags().String(devRootFlag, "",
+		"run against a sandbox directory instead of ~/.ssh (also $"+paths.DevRootEnv+")")
+
 	root.AddCommand(newVersionCmd())
 	root.AddCommand(newConfigCmd())     // native Go (first verb off the engine)
 	root.AddCommand(newValidateCmd())   // native Go

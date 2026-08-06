@@ -11,7 +11,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newDiffCmd is the native diff verb: preview the manifest vs. on-disk reality -
@@ -22,7 +21,10 @@ func newDiffCmd() *cobra.Command {
 		Short: "Preview manifest vs. on-disk reality",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

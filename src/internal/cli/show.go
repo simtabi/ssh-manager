@@ -13,7 +13,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newShowCmd is the "what is actually going on with this thing" verb. `view`
@@ -31,7 +30,10 @@ func newShowCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			selector := args[0]
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

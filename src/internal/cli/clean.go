@@ -11,7 +11,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newCleanCmd sweeps what deleting things leaves behind: trust-store pins for
@@ -32,7 +31,10 @@ func newCleanCmd() *cobra.Command {
 			"away. It is opt-in: an untagged pin is presumed to be yours.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			if !dryRun {
 				if err := confirmChange(c,
 					"clean removes known_hosts pins tagged sshmgr that no host needs, "+

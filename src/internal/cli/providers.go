@@ -10,7 +10,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/providers"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/homeperms"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
 )
 
@@ -24,7 +23,10 @@ func newProvidersCmd() *cobra.Command {
 		Short: "List the active provider catalog + credential state",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			out := c.OutOrStdout()
 			if export {
 				dest := p.Providers()

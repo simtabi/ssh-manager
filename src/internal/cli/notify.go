@@ -11,7 +11,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/notifier"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/scheduler"
 )
 
@@ -29,6 +28,15 @@ func newNotifyCmd() *cobra.Command {
 		Short: "Install the scheduled expiry notifier",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
+			if err := refuseInDevMode(p, "notify install",
+				"it registers a job with launchd, systemd or schtasks, which is "+
+					"machine-wide and outlives the sandbox"); err != nil {
+				return err
+			}
 			command := schedulerExe() + " audit --notify"
 			if err := confirmChange(c,
 				"notify install registers a scheduled job with this system's scheduler:\n  "+
@@ -50,7 +58,10 @@ func newNotifyCmd() *cobra.Command {
 		Short: "Fire a test notification",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

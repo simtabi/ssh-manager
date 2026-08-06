@@ -208,6 +208,14 @@ token (the provider falls back to the manual paste path). Note: a literal token
 that itself begins with `cmd:` would be treated as a command - real OAuth/PAT
 tokens never do, but if needed, fetch such a value via `cmd:` instead.
 
+## Dev mode
+
+`--dev-root <dir>` (or `$SSHMGR_DEV_ROOT`) points the whole tool at a scratch
+directory: `<dir>/ssh` stands in for `~/.ssh` and `<dir>/config` for the config
+home. It is one root rather than two overrides, so a run cannot end up reading a
+sandbox and writing your real tree. See
+[Work against a sandbox](recipes/dev-mode.md).
+
 ---
 
 [← Docs index](../README.md#documentation)

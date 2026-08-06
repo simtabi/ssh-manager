@@ -226,7 +226,11 @@ func newTuiCmd() *cobra.Command {
 // terminal, so the two cannot drift into behaving differently.
 func runTUI(c *cobra.Command) error {
 	out := c.OutOrStdout()
-	t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out, c.InOrStdin()), out: out}
+	p, err := resolvePaths(c)
+	if err != nil {
+		return err
+	}
+	t := &tui{p: p, pr: newStdinPrompter(out, c.InOrStdin()), out: out}
 	t.run()
 	return nil
 }

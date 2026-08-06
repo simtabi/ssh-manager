@@ -53,6 +53,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a session pointed at a sandbox and one pointed at a real tree were
   indistinguishable. Rows marked `!` carry the command that fixes them, and the
   banner is redrawn after any action that changes `~/.ssh`.
+- **Dev mode: `--dev-root <dir>` (or `$SSHMGR_DEV_ROOT`) runs the whole tool
+  against a scratch directory** instead of `~/.ssh`, so every verb that mints,
+  renders or pins can be exercised without touching the tree you use. Previously
+  impossible: the config home had `$SSH_MANAGER_HOME` but `~/.ssh` had no
+  override at all, so the only option was moving `$HOME` — which also moves the
+  ssh-agent socket and the launchd session. One root holding `ssh/` and
+  `config/`, not two independent overrides, because the half-applied case looks
+  sandboxed until it overwrites a real key. Announced on stderr by every command
+  and led with in the TUI banner; `deploy` and `notify install` are refused,
+  since neither takes effect inside a directory.
 - `make ci-linux` runs the CI gate inside a Linux container on the Go version
   `go.mod` asks for. `make check` only tests the machine you are on and
   `lint-all` cross-compiles without running anything, so a Linux-only failure was

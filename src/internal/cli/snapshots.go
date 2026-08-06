@@ -11,7 +11,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 const defaultSnapshotRetain = 10
@@ -45,7 +44,10 @@ func newSnapshotsCmd() *cobra.Command {
 		Short: "List local ~/.ssh snapshots (oldest -> newest)",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			snaps := snapshots.List(p.SnapshotsDir())
 			out := c.OutOrStdout()
 			if len(snaps) == 0 {
@@ -94,7 +96,10 @@ func newSnapshotsCmd() *cobra.Command {
 			if len(args) > 0 {
 				id = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			chosen, err := snapshots.RestoreByID(p.SSHDir, p.SnapshotsDir(), snapshotRetain(), id)
 			if err != nil {
 				return err
@@ -112,7 +117,10 @@ func newSnapshotsCmd() *cobra.Command {
 		Short: "Prune old snapshots, keeping the most recent N",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			removed := snapshots.Prune(p.SnapshotsDir(), keep)
 			_, _ = fmt.Fprintf(c.OutOrStdout(), "pruned %d snapshot(s)\n", removed)
 			return nil

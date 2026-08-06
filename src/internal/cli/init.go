@@ -8,7 +8,6 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/initsvc"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newInitCmd is the native init verb: create/converge the per-user home.
@@ -19,7 +18,10 @@ func newInitCmd() *cobra.Command {
 		Short: "Create/converge the per-user home",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			stamp := ""
 			if force && backup {
 				stamp = time.Now().Format("20060102-150405")

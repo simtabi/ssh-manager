@@ -11,7 +11,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/expiry"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/notifier"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newExpiryCmd is the native expiry verb: per-key rotation-age table.
@@ -21,7 +20,10 @@ func newExpiryCmd() *cobra.Command {
 		Short: "Per-key rotation-age table",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

@@ -8,7 +8,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/doctor"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newDoctorCmd is the native (engine-free) doctor verb: diagnose deps, perms,
@@ -21,7 +20,10 @@ func newDoctorCmd() *cobra.Command {
 		Short: "Diagnose deps, perms, agent, known_hosts, drift, dangling keys",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			// A missing/invalid manifest is non-fatal: drift checks are skipped.
 			m, _ := manifest.Load(p.Manifest())
 			svc := doctor.New(p, m, platform.EmitUseKeychain())

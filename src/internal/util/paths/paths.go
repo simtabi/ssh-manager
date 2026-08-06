@@ -6,6 +6,7 @@
 package paths
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -86,6 +87,10 @@ func firstNonEmpty(vals ...string) string {
 type Paths struct {
 	SSHDir    string
 	ConfigDir string
+	// DevRoot is the sandbox root when this layout came from --dev-root, and
+	// empty otherwise. Its presence is what every "am I sandboxed" check reads,
+	// so there is one answer rather than a comparison rebuilt per call site.
+	DevRoot string
 }
 
 // Resolve builds the Paths bundle. sshDir "" defaults to ~/.ssh.
@@ -136,3 +141,94 @@ func (p Paths) FirstLegacyHome() string {
 	}
 	return ""
 }
+
+// --- dev mode ---------------------------------------------------------------
+
+// DevRootEnv is the environment variable form of --dev-root.
+const DevRootEnv = "SSHMGR_DEV_ROOT"
+
+// DevSSHDir and DevConfigDir are the fixed subdirectories a dev root is split
+// into.
+const (
+	DevSSHDir    = "ssh"
+	DevConfigDir = "config"
+)
+
+// ResolveDev builds the layout for a sandboxed run: one root, holding both the
+// sandbox's ~/.ssh and its config home.
+//
+// It is deliberately ONE root rather than two independent overrides. The config
+// home already had an override ($SSH_MANAGER_HOME) and ~/.ssh had none, so the
+// only way to test against a scratch tree was to move $HOME - which also moves
+// the ssh-agent socket, the launchd session and everything else that reads it.
+// Two knobs would allow the worse failure: a run with its config redirected and
+// its keys still going to the real ~/.ssh, which looks sandboxed right up until
+// it overwrites a key you use.
+//
+// The root is created on demand by the caller; this only computes and checks it.
+func ResolveDev(get Getenv, cwd, devRoot string) (Paths, error) {
+	get = resolve(get)
+	root := expandUser(devRoot, get)
+	if !filepath.IsAbs(root) {
+		if cwd == "" {
+			cwd, _ = os.Getwd()
+		}
+		root = filepath.Join(cwd, root)
+	}
+	root = filepath.Clean(root)
+
+	real := Resolve(get, cwd, "")
+	if err := checkDevRoot(root, real); err != nil {
+		return Paths{}, err
+	}
+	return Paths{
+		SSHDir:    filepath.Join(root, DevSSHDir),
+		ConfigDir: filepath.Join(root, DevConfigDir),
+		DevRoot:   root,
+	}, nil
+}
+
+// checkDevRoot refuses a sandbox that is not one.
+//
+// Both directions matter. A root inside the real ~/.ssh would have the tool
+// write keys into the tree it is supposed to be avoiding; a root that CONTAINS
+// the real ~/.ssh (the home directory, or /) means a later snapshot, clean or
+// restore walks the real tree while believing it is scratch.
+func checkDevRoot(root string, real Paths) error {
+	if root == "" || root == string(filepath.Separator) {
+		return fmt.Errorf("--dev-root %q is not a usable sandbox", root)
+	}
+	for _, danger := range []struct{ path, what string }{
+		{real.SSHDir, "your real ~/.ssh"},
+		{real.ConfigDir, "your real config home"},
+	} {
+		if danger.path == "" {
+			continue
+		}
+		if within(danger.path, root) {
+			return fmt.Errorf("--dev-root %s is inside %s (%s); "+
+				"a sandbox there would write to the tree it exists to avoid",
+				root, danger.what, danger.path)
+		}
+		if within(root, danger.path) {
+			return fmt.Errorf("--dev-root %s contains %s (%s); "+
+				"a snapshot or restore under it would walk the real tree",
+				root, danger.what, danger.path)
+		}
+	}
+	return nil
+}
+
+// within reports whether dest is at or below root. It is the same rule as
+// util/fs.Within, repeated here because util/fs imports nothing from paths and
+// this package must not start a cycle by importing it.
+func within(root, dest string) bool {
+	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(dest))
+	if err != nil {
+		return false
+	}
+	return rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel))
+}
+
+// IsDev reports whether this layout is a sandbox.
+func (p Paths) IsDev() bool { return p.DevRoot != "" }

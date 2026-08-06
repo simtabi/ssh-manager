@@ -9,7 +9,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/lifecycle"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 func intPtrIf(cmd *cobra.Command, flag string, val int) *int {
@@ -30,7 +29,10 @@ func newHostCmd() *cobra.Command {
 		Short: "Add a host to a profile",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			f := editor.HostFields{
 				Hostname: &hostname, User: &user, Port: &port,
 				Provider: strPtrIf(c, "provider", provider),
@@ -68,7 +70,10 @@ func newHostCmd() *cobra.Command {
 		Short: "Edit a host",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			f := editor.HostFields{
 				Hostname: strPtrIf(c, "hostname", eHostname),
 				User:     strPtrIf(c, "user", eUser),
@@ -124,7 +129,10 @@ func newHostCmd() *cobra.Command {
 			if !yes {
 				doRevoke = confirm(c, "Revoke the deployed public key from its targets first?")
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			out := c.OutOrStdout()
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {

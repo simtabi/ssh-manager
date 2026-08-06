@@ -7,7 +7,6 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/recover"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newRecoverCmd is the native recover verb: print a break-glass recovery script.
@@ -21,7 +20,10 @@ func newRecoverCmd() *cobra.Command {
 			if len(args) > 0 {
 				keyName = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			// The manifest is only needed for a per-key snippet; tolerate its
 			// absence when emitting the full fixkeys tool.
 			m, _ := manifest.Load(p.Manifest())

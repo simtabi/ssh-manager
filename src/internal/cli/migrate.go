@@ -7,7 +7,6 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/migratesvc"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newMigrateCmd is the native migrate verb: move a legacy home to the standard one.
@@ -18,7 +17,10 @@ func newMigrateCmd() *cobra.Command {
 		Short: "Move a legacy home to the standard location",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			if err := confirmChange(c,
 				"migrate moves a legacy home into "+p.ConfigDir+
 					"; with --force the current home is backed up aside and replaced.", yes); err != nil {

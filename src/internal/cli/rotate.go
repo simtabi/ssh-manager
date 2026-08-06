@@ -8,7 +8,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/rotator"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 func newRotateCmd() *cobra.Command {
@@ -27,7 +26,10 @@ func newRotateCmd() *cobra.Command {
 				"replacing any earlier predecessor)", key), yes); err != nil {
 				return err
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			if err := backupKeysBeforeDestroying(p, c.OutOrStdout(), noKeyBackup); err != nil {
 				return err
 			}
@@ -83,7 +85,10 @@ func newRollbackCmd() *cobra.Command {
 			if err := confirmOrAbort(c, fmt.Sprintf("Roll back %s to its /old/ predecessor?", key), yes); err != nil {
 				return err
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

@@ -16,7 +16,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newKeyCmd is the key lifecycle verb. A key used to exist only as a property of
@@ -41,7 +40,10 @@ func newKeyDeleteCmd() *cobra.Command {
 			"--purge deletes the files too, after writing an encrypted backup.",
 		Args: cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -95,7 +97,10 @@ func newKeyAddCmd() *cobra.Command {
 		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
 			profile, name := args[0], args[1]
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			out := c.OutOrStdout()
 
 			// Prompt before mutating anything, so an abandoned prompt leaves the
@@ -163,7 +168,10 @@ func newKeyListCmd() *cobra.Command {
 			if len(args) > 0 {
 				selector = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

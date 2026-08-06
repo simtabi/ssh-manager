@@ -9,7 +9,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/lifecycle"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // strPtrIf returns &val if the named flag was set, else nil.
@@ -34,7 +33,10 @@ func newProfileCmd() *cobra.Command {
 			if shared {
 				scope = "shared"
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			snapshotBeforeMutation(p)
 			if err := editor.New(p).AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
 				return err
@@ -54,7 +56,10 @@ func newProfileCmd() *cobra.Command {
 		Short: "Edit a profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			snapshotBeforeMutation(p)
 			if err := editor.New(p).EditProfile(args[0],
 				strPtrIf(c, "key-scope", editScope), strPtrIf(c, "key-name", editKeyName)); err != nil {
@@ -102,7 +107,10 @@ func newProfileCmd() *cobra.Command {
 			if !yes {
 				doRevoke = confirm(c, "Revoke deployed public keys from their targets first?")
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			out := c.OutOrStdout()
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {

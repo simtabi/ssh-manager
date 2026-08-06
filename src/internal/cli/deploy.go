@@ -8,7 +8,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/deployer"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newDeployCmd is the native deploy verb: install a key's public half on its
@@ -26,7 +25,15 @@ func newDeployCmd() *cobra.Command {
 			if len(args) > 1 {
 				target = args[1]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
+			if err := refuseInDevMode(p, "deploy",
+				"it uploads a public key to a live account, which is still there "+
+					"after the sandbox is deleted"); err != nil {
+				return err
+			}
 			if err := confirmChange(c,
 				"deploy installs the public half of "+key+" on its target.", yes); err != nil {
 				return err

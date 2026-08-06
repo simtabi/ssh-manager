@@ -16,8 +16,11 @@ import (
 
 // loadConfigService resolves the home, loads the manifest, and builds the config
 // service. emitUseKeychain matches the platform (macOS only), as in v1.
-func loadConfigService() (paths.Paths, *manifest.Manifest, *configsvc.Service, error) {
-	p := paths.Resolve(nil, "", "")
+func loadConfigService(c *cobra.Command) (paths.Paths, *manifest.Manifest, *configsvc.Service, error) {
+	p, err := resolvePaths(c)
+	if err != nil {
+		return paths.Paths{}, nil, nil, err
+	}
 	m, err := manifest.Load(p.Manifest())
 	if err != nil {
 		return paths.Paths{}, nil, nil, err
@@ -62,7 +65,7 @@ func newConfigCmd() *cobra.Command {
 		Short: "Verify the config matches the manifest (read-only; exit non-zero on drift)",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			_, _, svc, err := loadConfigService()
+			_, _, svc, err := loadConfigService(c)
 			if err != nil {
 				return err
 			}
@@ -84,7 +87,7 @@ func newConfigCmd() *cobra.Command {
 		Short: "Render the config files from the manifest",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p, _, svc, err := loadConfigService()
+			p, _, svc, err := loadConfigService(c)
 			if err != nil {
 				return err
 			}
@@ -128,7 +131,7 @@ func newConfigCmd() *cobra.Command {
 		Short: "Print the rendered config, or ssh -G for one alias",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			_, _, svc, err := loadConfigService()
+			_, _, svc, err := loadConfigService(c)
 			if err != nil {
 				return err
 			}

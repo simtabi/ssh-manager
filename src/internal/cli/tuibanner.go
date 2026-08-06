@@ -88,10 +88,19 @@ func bannerRows(p paths.Paths, m *manifest.Manifest, now time.Time) []bannerRow 
 	if rep.ProvidersSource != "" {
 		home += "   (providers: " + rep.ProvidersSource + ")"
 	}
-	rows := []bannerRow{
-		{label: "home", value: home},
-		{label: "ssh", value: p.SSHDir},
+	rows := []bannerRow{}
+	// First row, and marked, when sandboxed. Someone who forgets they passed
+	// --dev-root and reconciles will wonder why their real config did not
+	// change; someone who thinks they passed it and did not has the opposite,
+	// worse problem. Neither is possible if the screen says which it is.
+	if p.IsDev() {
+		rows = append(rows, bannerRow{
+			label: "DEV MODE", value: "sandboxed under " + p.DevRoot, fix: "not your real ~/.ssh"})
 	}
+	rows = append(rows,
+		bannerRow{label: "home", value: home},
+		bannerRow{label: "ssh", value: p.SSHDir},
+	)
 
 	// Counts, or the first-run state. "none yet" plus the command that creates
 	// one is the whole of what a new user needs from this screen.

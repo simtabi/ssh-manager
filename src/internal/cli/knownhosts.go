@@ -7,7 +7,6 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 func newKnownHostsCmd() *cobra.Command {
@@ -34,7 +33,10 @@ func newKnownHostsCmd() *cobra.Command {
 			if len(args) > 0 {
 				profile = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -64,7 +66,10 @@ func newKnownHostsCmd() *cobra.Command {
 			if len(args) > 0 {
 				host = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

@@ -12,7 +12,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newKeygenCmd is the native keygen verb: targeted key generation for a profile or
@@ -26,7 +25,10 @@ func newKeygenCmd() *cobra.Command {
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
 			target := args[0]
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

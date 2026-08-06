@@ -7,7 +7,6 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/validate"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newValidateCmd is the native (engine-free) validate verb. It checks that each
@@ -27,7 +26,10 @@ func newValidateCmd() *cobra.Command {
 			if len(args) > 0 {
 				selector = args[0]
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

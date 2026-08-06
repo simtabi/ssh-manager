@@ -33,7 +33,10 @@ func newBundleCmd() *cobra.Command {
 			"trim the destination once the new bundle is written.",
 		Args: cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			recip := recipient
 			if recip == "" {
 				recip = os.Getenv("SSH_MANAGER_AGE_RECIPIENT")
@@ -135,7 +138,10 @@ func newRestoreCmd() *cobra.Command {
 			if err := confirmOrAbort(c, "Restore ~/.ssh from this bundle? (current tree is snapshotted first)", yes); err != nil {
 				return err
 			}
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			ident := identity
 			if ident == "" {
 				if env := os.Getenv("SSH_MANAGER_AGE_IDENTITY_FILE"); env != "" {

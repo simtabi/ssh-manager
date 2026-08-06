@@ -13,7 +13,6 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newReconcileCmd is the native reconcile verb: apply the manifest to ~/.ssh
@@ -26,7 +25,10 @@ func newReconcileCmd() *cobra.Command {
 		Short: "Build ~/.ssh from the manifest",
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
-			p := paths.Resolve(nil, "", "")
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
