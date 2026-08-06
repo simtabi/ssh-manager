@@ -53,9 +53,13 @@ jobs:
       # v3.0.1 and mirrors src/v3.0.1 onto the same commit here, where it cannot
       # be forgotten. src/... does not match this workflow's v[0-9]* trigger, so
       # pushing it starts no second run.
+      #
+      # It runs before GoReleaser rather than after: `go install` builds from
+      # source and needs no release assets, so an alias tag on a release that
+      # later failed is still self-consistent - whereas a release whose alias
+      # never got pushed is not installable at all. Re-running a failed release
+      # finds the tag already there and skips it.
       - name: Mirror the tag Go resolves the module through
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
           alias_tag="src/${GITHUB_REF_NAME}"
           if git rev-parse -q --verify "refs/tags/${alias_tag}" >/dev/null; then
