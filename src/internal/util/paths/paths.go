@@ -173,7 +173,16 @@ func ResolveDev(get Getenv, cwd, devRoot string) (Paths, error) {
 		if cwd == "" {
 			cwd, _ = os.Getwd()
 		}
-		root = filepath.Join(cwd, root)
+		// On Windows `\scratch` is rooted but not absolute - Go wants a volume
+		// too - and it means "that location on the current drive". Joining it to
+		// the working directory instead silently turns it into a relative path,
+		// so someone who typed `\` for the drive root would sandbox their
+		// current directory and be told nothing.
+		if vol := filepath.VolumeName(cwd); vol != "" && isRooted(root) {
+			root = vol + root
+		} else {
+			root = filepath.Join(cwd, root)
+		}
 	}
 	root = filepath.Clean(root)
 
@@ -195,8 +204,13 @@ func ResolveDev(get Getenv, cwd, devRoot string) (Paths, error) {
 // the real ~/.ssh (the home directory, or /) means a later snapshot, clean or
 // restore walks the real tree while believing it is scratch.
 func checkDevRoot(root string, real Paths) error {
-	if root == "" || root == string(filepath.Separator) {
-		return fmt.Errorf("--dev-root %q is not a usable sandbox", root)
+	// A filesystem root, checked after the path has been absolutized rather than
+	// by comparing the input to a separator. On Windows the input never looks
+	// like the root it resolves to: `\` has no volume, so the literal
+	// comparison matched nothing and the whole guard was dead there.
+	// Dir(root) == root is true at "/" and at "C:\" alike.
+	if root == "" || filepath.Dir(root) == root {
+		return fmt.Errorf("--dev-root %q is not a usable sandbox: it is a filesystem root", root)
 	}
 	for _, danger := range []struct{ path, what string }{
 		{real.SSHDir, "your real ~/.ssh"},
@@ -228,6 +242,12 @@ func within(root, dest string) bool {
 		return false
 	}
 	return rel == "." || (!strings.HasPrefix(rel, "..") && !filepath.IsAbs(rel))
+}
+
+// isRooted reports whether p begins at a path separator without naming a
+// volume - the Windows "\somewhere" form.
+func isRooted(p string) bool {
+	return p != "" && (p[0] == '\\' || p[0] == '/') && filepath.VolumeName(p) == ""
 }
 
 // IsDev reports whether this layout is a sandbox.

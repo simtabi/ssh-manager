@@ -69,7 +69,11 @@ func TestASandboxMayNotOverlapTheRealTree(t *testing.T) {
 		{"the real ssh dir itself", real.SSHDir, "is inside"},
 		{"a directory under it", filepath.Join(real.SSHDir, "scratch"), "is inside"},
 		{"the home directory, which contains it", home, "contains"},
-		{"the filesystem root", string(filepath.Separator), "not a usable sandbox"},
+		// Computed, not written as "/" or "\\": on Windows a bare separator is
+		// not the root it resolves to, and hard-coding one meant this case
+		// asserted nothing there. filesystemRoot walks up from the working
+		// directory until Dir stops moving, which is the root on either system.
+		{"the filesystem root", filesystemRoot(t), "filesystem root"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			_, err := runErr(t, "--dev-root", tc.root, "doctor")
@@ -168,5 +172,22 @@ func TestNoVerbResolvesPathsBehindDevMode(t *testing.T) {
 		if strings.Contains(string(body), "paths.Resolve(") {
 			t.Errorf("%s calls paths.Resolve directly; use resolvePaths(c) so --dev-root applies to it too", name)
 		}
+	}
+}
+
+// filesystemRoot is the root of the volume the tests run on: "/" on Unix,
+// "C:\\" (or whichever drive) on Windows.
+func filesystemRoot(t *testing.T) string {
+	t.Helper()
+	dir, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	for {
+		parent := filepath.Dir(dir)
+		if parent == dir {
+			return dir
+		}
+		dir = parent
 	}
 }
