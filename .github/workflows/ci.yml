@@ -1,6 +1,13 @@
 name: CI
 
 on:
+  # Manually runnable, from the Actions tab or `gh workflow run`. Push events are
+  # not a reliable trigger: during the 2026-08-06 Actions incident GitHub
+  # throttled webhook delivery, so four consecutive pushes to main produced no
+  # runs at all and there was no supported way to ask for one. It is also how you
+  # re-run a green commit after changing a secret or a runner image, without
+  # pushing an empty commit to do it.
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:

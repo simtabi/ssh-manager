@@ -14,6 +14,16 @@ on:
     # published either way, but the run is noise and the failure looks real.
     tags: ["v[0-9]*"]
 
+  # Recovery path for when a tag push does not trigger anything - which is not
+  # theoretical: during the 2026-08-06 Actions incident webhook delivery was
+  # throttled and pushes stopped starting runs. Dispatch it with --ref pointing
+  # at the tag, e.g. `gh workflow run release.yml --ref v3.0.1`.
+  #
+  # It stays tag-driven either way: GoReleaser reads the version from the ref it
+  # is run against, so dispatching this on a branch fails at "current tag is not
+  # semver" rather than publishing something unversioned.
+  workflow_dispatch:
+
 # Releases must never be cancelled mid-publish by a newer tag.
 concurrency:
   group: release-${{ github.ref }}
