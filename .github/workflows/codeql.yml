@@ -67,5 +67,8 @@ jobs:
           # There is no silent-success risk in leaving it to autobuild: a build
           # that finds nothing produces exactly that error and fails the job,
           # which is the vacuity check.
-          build-mode: autobuild
+          # Per language, because the two require opposite modes and each
+          # rejects the other's: "Go does not support the none build mode" and
+          # "GitHub Actions does not support the autobuild build mode".
+          build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
       - uses: github/codeql-action/analyze@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
