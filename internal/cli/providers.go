@@ -9,6 +9,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/providers"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
+	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 	"github.com/simtabi/ssh-manager/internal/util/perms"
 )
@@ -33,16 +34,19 @@ func newProvidersCmd() *cobra.Command {
 				if err := fs.EnsureDir(p.ConfigDir, perms.DirMode); err != nil {
 					return err
 				}
-				if err := fs.WriteTextAtomic(dest, string(providers.DefaultCatalog()), 0o644); err != nil {
+				// Owner-only: the catalog names every deployment endpoint and the
+				// env var each token lives in, which is reconnaissance for anyone
+				// else with a local account.
+				if err := fs.WriteTextAtomic(dest, string(providers.DefaultCatalog()), homeperms.FileMode); err != nil {
 					return err
 				}
-				fmt.Fprintf(out, "wrote provider catalog to %s - edit it to customize "+
+				_, _ = fmt.Fprintf(out, "wrote provider catalog to %s - edit it to customize "+
 					"(delete it to track the shipped default again)\n", dest)
 				return nil
 			}
 			infos := providers.List(p.Providers(), os.Getenv)
 			tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-			fmt.Fprintln(tw, "PROVIDER\tCATEGORY\tKIND\tTOKEN ENV\tCREDENTIAL")
+			_, _ = fmt.Fprintln(tw, "PROVIDER\tCATEGORY\tKIND\tTOKEN ENV\tCREDENTIAL")
 			for _, i := range infos {
 				tokenEnv := i.TokenEnv
 				if tokenEnv == "" {
@@ -55,7 +59,7 @@ func newProvidersCmd() *cobra.Command {
 						cred = "present"
 					}
 				}
-				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", i.Name, i.Category, i.Kind, tokenEnv, cred)
+				_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\n", i.Name, i.Category, i.Kind, tokenEnv, cred)
 			}
 			return tw.Flush()
 		},

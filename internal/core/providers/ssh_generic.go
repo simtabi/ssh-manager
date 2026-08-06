@@ -69,7 +69,7 @@ func (g GenericSSH) sshBase(t Target) []string {
 
 func (g GenericSSH) Deploy(t Target) DeployOutcome {
 	if _, err := exec.LookPath("ssh-copy-id"); err != nil {
-		return DeployOutcome{Method: "ssh-copy-id", Detail: "ssh-copy-id not found", Error: true}
+		return g.deployOverSSH(t)
 	}
 	args := append([]string{"-o", "ConnectTimeout=10"}, g.knownHostsOpts(t)...)
 	args = append(args, "-i", t.PubkeyPath)
@@ -85,6 +85,40 @@ func (g GenericSSH) Deploy(t Target) DeployOutcome {
 		return DeployOutcome{Method: "ssh-copy-id", Detail: "ssh-copy-id failed: " + err.Error(), Error: true}
 	}
 	return DeployOutcome{Method: "ssh-copy-id", Verified: true, Detail: "authorized_keys updated"}
+}
+
+// appendKeyScript is what ssh-copy-id does, as one POSIX sh command: create
+// ~/.ssh restrictively, append the key unless it is already there, and leave
+// authorized_keys owner-only. The key arrives on stdin rather than in the
+// command line, so it stays out of the remote process list.
+const appendKeyScript = `umask 077; mkdir -p ~/.ssh || exit 1; ` +
+	`touch ~/.ssh/authorized_keys && chmod 600 ~/.ssh/authorized_keys || exit 1; ` +
+	`k=$(cat); [ -n "$k" ] || exit 1; ` +
+	`grep -qxF "$k" ~/.ssh/authorized_keys || printf '%s\n' "$k" >> ~/.ssh/authorized_keys`
+
+// deployOverSSH installs the key with plain ssh, for hosts where ssh-copy-id is
+// not available.
+//
+// Microsoft's OpenSSH port does not ship ssh-copy-id, so on Windows this is the
+// normal path rather than a fallback - and refusing to deploy there was the
+// reason ssh-copy-id had to be a hard dependency in the first place. ssh-copy-id
+// is a shell script around exactly this command, so nothing is given up: same
+// modes, same dedupe, same result.
+func (g GenericSSH) deployOverSSH(t Target) DeployOutcome {
+	if t.PubkeyText == "" {
+		return DeployOutcome{Method: "ssh", Detail: "no public key text to install", Error: true}
+	}
+	args := append(g.sshBase(t), t.SSHDest(), appendKeyScript)
+	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
+	defer cancel()
+	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
+	cmd.Stdin = strings.NewReader(strings.TrimSpace(t.PubkeyText) + "\n")
+	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if err := cmd.Run(); err != nil {
+		return DeployOutcome{Method: "ssh", Error: true,
+			Detail: "ssh-copy-id is not installed and the ssh fallback failed: " + err.Error()}
+	}
+	return DeployOutcome{Method: "ssh", Verified: true, Detail: "authorized_keys updated (via ssh)"}
 }
 
 func (g GenericSSH) Verify(t Target) bool {

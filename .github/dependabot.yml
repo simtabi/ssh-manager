@@ -1,6 +1,6 @@
 version: 2
 updates:
-  - package-ecosystem: "pip"
+  - package-ecosystem: "gomod"
     directory: "/"
     schedule:
       interval: "weekly"
@@ -8,9 +8,9 @@ updates:
       time: "06:00"
       timezone: "America/New_York"
     open-pull-requests-limit: 5
-    labels: ["dependencies"]
+    labels: ["dependencies", "go"]
     groups:
-      python-minor-patch:
+      gomod-minor-patch:
         update-types: ["minor", "patch"]
 
   - package-ecosystem: "github-actions"
@@ -26,8 +26,9 @@ updates:
       actions:
         patterns: ["*"]
 
-  # Keeps .pre-commit-config.yaml hook revisions current (gitleaks, ruff,
-  # pre-commit-hooks). Dependabot gained pre-commit support on 2026-03-10.
+  # Keeps .pre-commit-config.yaml hook revisions current (gitleaks and
+  # pre-commit-hooks; the ruff hook went with the Python). Dependabot gained
+  # pre-commit support on 2026-03-10.
   - package-ecosystem: "pre-commit"
     directory: "/"
     schedule:

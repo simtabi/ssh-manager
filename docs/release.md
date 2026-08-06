@@ -1,22 +1,16 @@
 # Release
 
-Tag-driven. A `v*` tag builds a self-contained binary per OS/arch and attaches
-them, with checksums and a cosign signature, to a GitHub Release. Not published
-to PyPI; install the binary, or from the repo
-(`pip install git+https://github.com/simtabi/ssh-manager.git`) for the engine.
+Tag-driven. A `v*` tag builds a static binary per OS/arch and attaches them,
+with checksums, to a GitHub Release. Install the binary, or build from source
+with `go install github.com/simtabi/ssh-manager/cmd/sshmgr@latest`.
 
-## How a release is built (v2)
+## How a release is built
 
-Each binary is the Go front-end with the Python engine frozen and embedded
-(`-tags bundled`). CPython cannot cross-compile, so `release.yml` builds every
-target on a matching native runner: macOS arm64 (`macos-14`) and amd64
-(`macos-13`), Linux amd64 (`ubuntu-24.04`) and arm64 (`ubuntu-24.04-arm`), and
-Windows amd64. A final job combines checksums, cosign-signs them keylessly
-(OIDC), and creates the GitHub Release. The binary version comes from the tag via
-ldflags (`internal/version.Version`).
-
-Note: macOS Intel (`macos-13`) runners are scarce, so `darwin/amd64` can sit
-queued well after the others finish; that is runner latency, not a failure.
+Each binary is pure Go with no runtime dependency of any kind - there is no
+embedded interpreter and no `-tags bundled` build any more, so every target
+cross-compiles from one Linux runner (`CGO_ENABLED=0`) instead of needing a
+matching native one per OS. The binary version comes from the tag via ldflags
+(`internal/version.Version`).
 
 ## Cut a release
 
@@ -24,8 +18,26 @@ queued well after the others finish; that is runner latency, not a failure.
 2. Tag and push: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
    A tag with a pre-release suffix (`-rc.1`, `-beta`) is published as a GitHub
    pre-release.
-3. The `Release` workflow builds all targets and publishes the binaries,
-   `SHA256SUMS`, and the cosign signature/cert.
+3. The `Release` workflow builds every target and publishes the per-OS/arch
+   binaries and archives, the deb/rpm/apk packages, per-archive SBOMs,
+   `checksums.txt`, and a signed build-provenance attestation. Verify any
+   downloaded artifact with
+   `gh attestation verify <file> --repo simtabi/ssh-manager`.
+
+> There is no cosign signature. Provenance attestation is the org default and is
+> what `release.yml` produces; a `signs:` block would be added against a named
+> downstream need, not speculatively.
+
+## First release (one-time setup)
+
+1. Make the repo public and enable Issues.
+2. Set the metadata:
+   `gh repo edit simtabi/ssh-manager --homepage "https://opensource.simtabi.com/products/simtabi/ssh-manager"`,
+   topics `oss ssh ssh-keys ssh-config key-rotation cli go`.
+3. Create the `release` GitHub Environment (`release.yml` runs in it).
+4. Green on macOS, Linux and Windows: `make check`, `make e2e`, `make feature-check`.
+5. After the tag lands, confirm the published artifact installs:
+   `curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash -s vX.Y.Z && sshmgr version`.
 
 ## Channels still to wire (need external setup)
 
@@ -40,3 +52,7 @@ dependency PR.
 
 For the org-wide OIDC reference across channels, see
 `/opensource/package-publishing-guide.md`.
+
+---
+
+[← Docs index](../README.md#documentation)

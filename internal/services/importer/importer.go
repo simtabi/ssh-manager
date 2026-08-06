@@ -279,9 +279,14 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 		}
 	}
 
+	// Counted from what actually reached the manifest, not from what was parsed.
+	// Duplicate Host blocks are dropped above (first wins) - appending to an ssh
+	// config rather than editing it in place is normal, so a repeated alias is
+	// normal - and counting parsed hosts reported an import larger than the one
+	// written, with nothing in the summary to say which number was real.
 	result := ImportResult{DryRun: dryRun, KeysFound: len(inv.Keys), Adopted: adopted, Profiles: map[string]int{}}
-	for _, h := range parsed {
-		result.Profiles[h.Profile]++
+	for name, hosts := range byProfile {
+		result.Profiles[name] = len(hosts)
 	}
 	if !dryRun {
 		if err := m.Save(im.p.Manifest()); err != nil {
@@ -374,16 +379,24 @@ func pairs(extra []kv) [][2]string {
 	return out
 }
 
+// expanduser resolves a leading ~ against the user's home directory.
+//
+// Both separators are accepted. An ssh config written on Windows can say
+// `~\.ssh\id_ed25519`, and honouring only "~/" left that as a literal path
+// beginning with a tilde - which then failed to glob, so the key was silently
+// skipped and the host imported without its identity.
 func expanduser(p string) string {
-	if p == "~" || strings.HasPrefix(p, "~/") {
-		if home, err := os.UserHomeDir(); err == nil {
-			if p == "~" {
-				return home
-			}
-			return filepath.Join(home, p[2:])
-		}
+	if p != "~" && !strings.HasPrefix(p, "~/") && !strings.HasPrefix(p, `~\`) {
+		return p
 	}
-	return p
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return p
+	}
+	if p == "~" {
+		return home
+	}
+	return filepath.Join(home, filepath.FromSlash(strings.ReplaceAll(p[2:], `\`, "/")))
 }
 
 func exists(path string) bool { _, err := os.Stat(path); return err == nil }

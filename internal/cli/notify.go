@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/notifier"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 	"github.com/simtabi/ssh-manager/internal/util/scheduler"
@@ -32,7 +32,7 @@ func newNotifyCmd() *cobra.Command {
 			if err := scheduler.Install(command, scheduler.Label); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "installed scheduled notifier: %s\n", command)
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "installed scheduled notifier: %s\n", command)
 			return nil
 		},
 	})
@@ -47,10 +47,10 @@ func newNotifyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if notifier.New(p, m.Defaults).Test() {
-				fmt.Fprintln(c.OutOrStdout(), "sent a test desktop notification.")
+			if notifier.New(p, m).Test() {
+				_, _ = fmt.Fprintln(c.OutOrStdout(), "sent a test desktop notification.")
 			} else {
-				fmt.Fprintln(os.Stderr, "no notification backend found (install notify-send / terminal-notifier).")
+				_, _ = fmt.Fprintln(c.ErrOrStderr(), "no notification backend found (install notify-send / terminal-notifier).")
 			}
 			return nil
 		},
@@ -71,7 +71,7 @@ func schedulerExe() string {
 			exe = "sshmgr"
 		}
 	}
-	if runtime.GOOS == "windows" {
+	if platform.IsWindows() {
 		return `"` + exe + `"`
 	}
 	return shellQuote(exe)

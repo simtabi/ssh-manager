@@ -10,13 +10,10 @@ import (
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 )
 
-func TestPathFor(t *testing.T) {
+func TestPath(t *testing.T) {
 	s := New("/h/.ssh")
-	if got := s.PathFor(""); got != filepath.Join("/h/.ssh", "known_hosts") {
-		t.Errorf("user store path=%q", got)
-	}
-	if got := s.PathFor("work"); got != filepath.Join("/h/.ssh", "profiles", "work", "known_hosts") {
-		t.Errorf("profile store path=%q", got)
+	if got := s.Path(); got != filepath.Join("/h/.ssh", "known_hosts") {
+		t.Errorf("known_hosts path=%q", got)
 	}
 }
 
@@ -24,26 +21,31 @@ func TestEnsureAndAddDedup(t *testing.T) {
 	ssh := t.TempDir()
 	s := New(ssh)
 
-	created, err := s.Ensure("work")
+	created, err := s.Ensure()
 	if err != nil || !created {
 		t.Fatalf("ensure: created=%v err=%v", created, err)
 	}
-	if c2, _ := s.Ensure("work"); c2 {
+	if c2, _ := s.Ensure(); c2 {
 		t.Error("second ensure should report not-created")
 	}
 
-	n, err := s.Add([]string{"github.com ssh-ed25519 AAAA", "github.com ssh-rsa BBBB"}, "work")
+	n, err := s.Add([]string{"github.com ssh-ed25519 AAAA", "github.com ssh-rsa BBBB"})
 	if err != nil || n != 2 {
 		t.Fatalf("add: n=%d err=%v", n, err)
 	}
 	// Re-adding one existing + one new -> only the new is appended.
-	n, _ = s.Add([]string{"github.com ssh-ed25519 AAAA", "gitlab.com ssh-ed25519 CCCC"}, "work")
+	n, _ = s.Add([]string{"github.com ssh-ed25519 AAAA", "gitlab.com ssh-ed25519 CCCC"})
 	if n != 1 {
 		t.Errorf("dedup add n=%d want 1", n)
 	}
-	body, _ := os.ReadFile(s.PathFor("work"))
-	if strings.Count(string(body), "github.com ssh-ed25519 AAAA") != 1 {
-		t.Errorf("duplicate line written:\n%s", body)
+	body, _ := os.ReadFile(s.Path())
+	// Names are hashed on the way in, so the store is checked by matching rather
+	// than by grepping for the plaintext host.
+	if strings.Contains(string(body), "github.com") {
+		t.Errorf("host names should be hashed, not stored in the clear:\n%s", body)
+	}
+	if n := strings.Count(string(body), "ssh-ed25519 AAAA"); n != 1 {
+		t.Errorf("the same key was pinned %d times:\n%s", n, body)
 	}
 	if !strings.HasSuffix(string(body), "\n") {
 		t.Error("known_hosts should end with a newline")
@@ -53,7 +55,7 @@ func TestEnsureAndAddDedup(t *testing.T) {
 func TestHostInKnownHosts(t *testing.T) {
 	dir := t.TempDir()
 	kh := filepath.Join(dir, "known_hosts")
-	os.WriteFile(kh, []byte(
+	_ = os.WriteFile(kh, []byte(
 		"# comment\n"+
 			"github.com,140.82.0.1 ssh-ed25519 AAAA\n"+
 			"[example.com]:2222 ssh-rsa BBBB\n"+
@@ -114,8 +116,9 @@ func TestAutoPinDisabledAndAlreadyTrusted(t *testing.T) {
 	}
 
 	// Enabled but the host is already trusted -> skipped (no network needed).
-	os.MkdirAll(filepath.Join(ssh, "profiles", "work"), 0o700)
-	os.WriteFile(s.PathFor("work"), []byte("github.com ssh-ed25519 AAAA\n"), 0o644)
+	if err := os.WriteFile(s.Path(), []byte("github.com ssh-ed25519 AAAA\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	on := func(string) string { return "" }
 	if got := s.AutoPin(&m, nil, on); len(got) != 0 {
 		t.Errorf("already-trusted host should not be re-pinned, got %v", got)

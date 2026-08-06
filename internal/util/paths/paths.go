@@ -8,8 +8,9 @@ package paths
 import (
 	"os"
 	"path/filepath"
-	"runtime"
 	"strings"
+
+	"github.com/simtabi/ssh-manager/internal/platform"
 )
 
 // Getenv is an env lookup, injectable for tests. nil means os.Getenv.
@@ -23,7 +24,7 @@ func resolve(get Getenv) Getenv {
 }
 
 func home(get Getenv) string {
-	if runtime.GOOS == "windows" {
+	if platform.IsWindows() {
 		if v := get("USERPROFILE"); v != "" {
 			return v
 		}
@@ -58,7 +59,7 @@ func ConfigDir(get Getenv, cwd string) string {
 		}
 		return p
 	}
-	if runtime.GOOS == "windows" {
+	if platform.IsWindows() {
 		base := get("APPDATA")
 		if base == "" {
 			base = filepath.Join(home(get), "AppData", "Roaming")

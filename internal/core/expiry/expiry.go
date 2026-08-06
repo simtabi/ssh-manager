@@ -36,8 +36,20 @@ type Status struct {
 // NeedsAttention is true for due_soon/overdue keys.
 func (s Status) NeedsAttention() bool { return s.State == DueSoon || s.State == Overdue }
 
+// Ref is how to name this key unambiguously: "profile/key". KeyName alone is
+// only unique within a profile, so it is a label, not an identifier.
+func (s Status) Ref() string {
+	if s.Profile == "" {
+		return s.KeyName
+	}
+	return s.Profile + "/" + s.KeyName
+}
+
+// keyName is the file name in an inventory path. Those are written in the
+// "~/.ssh/..." forward-slash form, but both separators are honoured so a record
+// carrying a native Windows path still yields a name rather than the whole path.
 func keyName(path string) string {
-	if i := strings.LastIndex(path, "/"); i >= 0 {
+	if i := strings.LastIndexAny(path, `/\`); i >= 0 {
 		return path[i+1:]
 	}
 	return path
@@ -147,8 +159,11 @@ func BannerLines(states []Status) []string {
 		if s.ExpiresOn != nil {
 			exp = *s.ExpiresOn
 		}
+		// The hint uses the profile/key form because a key name alone can belong
+		// to more than one profile.
+		selector := s.Ref()
 		lines = append(lines, fmt.Sprintf(
-			"⚠ %s %s (%s) - run: sshmgr rotate %s", s.KeyName, when, exp, s.KeyName))
+			"⚠ %s %s (%s) - run: sshmgr rotate %s", selector, when, exp, selector))
 	}
 	return lines
 }

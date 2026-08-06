@@ -19,8 +19,13 @@ type HostNet struct {
 	Status  netcheck.NetStatus
 }
 
-// Status returns reachability for every manifest host, filtered by selector
-// (alias, profile, or key name; empty for all). Mirrors facade.network_status.
+// Status returns reachability for every manifest host, filtered by selector: an
+// alias, a profile, a "profile/key" reference, or a bare key name.
+//
+// A bare key name matches in every profile that has one, and says so by
+// reporting the profile on each row. Key names are unique per profile, not
+// globally, so "imani_github-ed25519" is a legitimate name in several of them -
+// the composite form is there for when you mean exactly one.
 func Status(m *manifest.Manifest, selector string) ([]HostNet, error) {
 	rks, err := m.IterResolved()
 	if err != nil {
@@ -29,7 +34,9 @@ func Status(m *manifest.Manifest, selector string) ([]HostNet, error) {
 	var out []HostNet
 	for _, rk := range rks {
 		h := rk.Host
-		if selector != "" && selector != h.Alias && selector != rk.Profile && selector != rk.KeyName {
+		ref := manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
+		if selector != "" && selector != h.Alias && selector != rk.Profile &&
+			selector != rk.KeyName && selector != ref.String() {
 			continue
 		}
 		st := netcheck.Check(h.Hostname, h.Port, h.RequiresVPN, deref(h.VPNName), deref(h.VPNURL), probeTimeout, false)

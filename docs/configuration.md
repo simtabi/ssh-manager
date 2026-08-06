@@ -3,7 +3,7 @@
 Everything lives in the **manifest** (`~/.config/ssh-manager/manifest.json`) - the single
 source of truth. You never hand-edit ssh-manager's part of `~/.ssh/config`; you edit the
 manifest (or use the `host`/`profile` verbs) and re-render. A JSON Schema for the
-manifest and inventory lives in `config/schema/` (and matches the pydantic models,
+manifest and inventory lives in `config/schema/` (and matches the Go models in `internal/core`,
 which reject unknown keys). See [installation.md](installation.md) for how the home
 is resolved.
 
@@ -80,7 +80,7 @@ guarantees each alias offers only its own key and trusts only its own host keys.
 > identified by the **key**, not the SSH username - so a custom `user` (e.g.
 > `imani_git`) breaks any plain `git@host:...` remote. Prefix the **alias** to
 > separate identities; never prefix the `user`. (For real login servers like a
-> VPS or a university host, `user` *is* the real account, e.g. `ploi`, `uncgit`.)
+> VPS or a university host, `user` *is* the real account, e.g. `ploi`, `researcher`.)
 
 ## Manifest reference
 
@@ -94,13 +94,13 @@ guarantees each alias offers only its own key and trusts only its own host keys.
       "key_name": null,                    // set only when key_scope == "shared"
       "hosts": [
         {
-          "alias": "unc",                  // the ssh Host alias you type
-          "hostname": "sc.its.unc.edu",    // real host
-          "user": "uncgit",
+          "alias": "hpc",                  // the ssh Host alias you type
+          "hostname": "hpc.example.edu",    // real host
+          "user": "researcher",
           "port": 443,                      // default 22
           "provider": "generic-ssh",       // adapter name from providers.json (optional)
           "token_env": "GH_TOKEN_WORK",    // env var holding this host's provider token (optional)
-          "key_name": "work_unc-ed25519",  // omit on shared-scope profiles
+          "key_name": "work_hpc-ed25519",  // omit on shared-scope profiles
           "tags": ["app"],                  // free-form, used by `list --tag`
           "requires_vpn": false,            // true if this host is only reachable over a VPN
           "vpn_name": null,                 // which VPN (shown in the reachability hint)
@@ -146,7 +146,9 @@ under `~/.ssh/profiles/<profile>/`** - its keys, rendered `config`, and its own
 - Two GitHub accounts are two profiles sharing `hostname: github.com` via distinct
   aliases (`github.com` vs `github-simtabi`) and `IdentitiesOnly yes`, so each
   offers only its own key.
-- Each profile renders `UserKnownHostsFile ~/.ssh/profiles/<p>/known_hosts`, so a
+- Every host renders `UserKnownHostsFile ~/.ssh/known_hosts` - one hashed store,
+  not one per profile. Identity isolation comes from `IdentityFile` plus a
+  per-host `IdentitiesOnly yes`, not from where the trust store lives. A
   host key trusted as `personal` is **not** trusted as `simtabi` - even on the
   same `github.com` host. Pin host keys with `sshmgr knownhosts pin --all`.
 
@@ -168,9 +170,9 @@ For an option the schema doesn't model, add a host-level `raw_options` block
 rather than hand-editing the file:
 
 ```json
-{"alias": "unc", "hostname": "sc.its.unc.edu", "user": "uncgit", "port": 443,
- "key_name": "work_unc-ed25519",
- "raw_options": {"ProxyJump": "bastion.unc.edu"}}
+{"alias": "hpc", "hostname": "hpc.example.edu", "user": "researcher", "port": 443,
+ "key_name": "work_hpc-ed25519",
+ "raw_options": {"ProxyJump": "bastion.hpc.edu"}}
 ```
 
 Because the manifest is rendered verbatim into `~/.ssh/config` and its names become
@@ -186,7 +188,7 @@ or `shared`.
 ## `.env` (gitignored)
 
 Secrets/refs (age recipient, per-host provider tokens) live
-in `~/.config/ssh-manager/.env`, loaded via python-dotenv. A committed `.env-example` documents
+in `~/.config/ssh-manager/.env`, read by `internal/util/secrets`. A committed `.env-example` documents
 the shape with empty values, and `sshmgr init` seeds your `.env` from it. The
 `.env` is **never** committed (it's gitignored, mode 0600) and is **excluded from
 the encrypted bundle**.

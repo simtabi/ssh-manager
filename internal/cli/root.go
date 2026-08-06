@@ -5,7 +5,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -34,6 +33,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newDiffCmd())       // native Go
 	root.AddCommand(newProfileCmd())    // native Go
 	root.AddCommand(newHostCmd())       // native Go
+	root.AddCommand(newKeyCmd())        // native Go
 	root.AddCommand(newInitCmd())       // native Go
 	root.AddCommand(newImportCmd())     // native Go
 	root.AddCommand(newMigrateCmd())    // native Go
@@ -45,6 +45,8 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newRollbackCmd())   // native Go
 	root.AddCommand(newListCmd())       // native Go
 	root.AddCommand(newViewCmd())       // native Go
+	root.AddCommand(newShowCmd())       // native Go
+	root.AddCommand(newCleanCmd())      // native Go
 	root.AddCommand(newExpiryCmd())     // native Go
 	root.AddCommand(newAuditCmd())      // native Go
 	root.AddCommand(newNotifyCmd())     // native Go
@@ -58,16 +60,8 @@ func newVersionCmd() *cobra.Command {
 		Short: "Print the ssh-manager version",
 		Args:  cobra.NoArgs,
 		RunE: func(cmd *cobra.Command, _ []string) error {
-			fmt.Fprintf(cmd.OutOrStdout(), "sshmgr %s\n", version.Version)
+			_, _ = fmt.Fprintf(cmd.OutOrStdout(), "sshmgr %s\n", version.Version)
 			return nil
 		},
-	}
-}
-
-// Execute runs the root command and exits non-zero on error.
-func Execute() {
-	if err := newRootCmd().Execute(); err != nil {
-		fmt.Fprintln(os.Stderr, "sshmgr:", err)
-		os.Exit(1)
 	}
 }

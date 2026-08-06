@@ -1,30 +1,59 @@
 # Installation
 
+How to get `sshmgr` onto a machine, and where it keeps its state once it is there.
+
 ## Requirements
 
-- **Python ≥ 3.11**
-- OpenSSH: `ssh-keygen`, `ssh-add`, `ssh-copy-id`, `ssh-keyscan` (hard deps)
-- Optional, degrade gracefully: `age`, `sops`, `gitleaks`, `gh`, `glab`,
-  `age-plugin-yubikey`
+`sshmgr` is a single static binary. There is no runtime to install and no
+interpreter to keep current.
+
+- OpenSSH: `ssh`, `ssh-keygen`, `ssh-add`, `ssh-keyscan` (hard dependencies).
+  `ssh-copy-id` is used when present; Microsoft's OpenSSH port does not ship it,
+  so deployment falls back to plain `ssh` there.
+- Optional, each degrading to a manual path when absent: `age` and `age-keygen`
+  (encrypted bundles), `gh` and `glab` (VCS key deployment), `age-plugin-yubikey`.
+
+macOS, Linux and Windows are all first-class, each validated on its own CI runner.
 
 ## Install
 
+From a release binary:
+
 ```sh
-pip install git+https://github.com/simtabi/ssh-manager.git   # or pipx
+curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash
+sshmgr doctor           # verify deps, perms, agent, known_hosts, drift
 ```
 
-## From the repo (development)
+On Windows:
+
+```powershell
+irm https://opensource.simtabi.com/install/ssh-manager.ps1 | iex
+```
+
+With the Go toolchain:
+
+```sh
+go install github.com/simtabi/ssh-manager/cmd/sshmgr@latest
+```
+
+Or download the binary for your platform from
+[Releases](https://github.com/simtabi/ssh-manager/releases) and put it on `PATH`.
+Every artifact is checksummed and carries a build-provenance attestation
+(`gh attestation verify <file> --repo simtabi/ssh-manager`).
+
+## From a clone
 
 ```sh
 git clone https://github.com/simtabi/ssh-manager && cd ssh-manager
-.build/bootstrap.sh       # creates .venv, editable install, pre-commit hooks
-. .venv/bin/activate
-sshmgr doctor             # verify the environment
+make build                # -> bin/sshmgr
+./bin/sshmgr doctor
 ```
 
-`.build/bootstrap.sh` sets up the venv, the editable install, and pre-commit
-hooks. The `.env` (and the rest of the home) is created by `sshmgr init`, which
-seeds it from the shipped `.env-example` template at mode `0600` (gitignored).
+`make` is the development front door: `make check` runs the same gate as CI
+(gofmt, build, vet, tests) plus lint. There is no bootstrap step.
+
+The `.env` and the rest of the per-user home are created by `sshmgr init`, which
+seeds `.env` from the shipped `.env-example` at mode `0600`.
 
 ## The per-user home (OS-standard config dir)
 
@@ -91,11 +120,19 @@ Perms are load-bearing (SSH refuses loose key/config modes) and secrets must
 never be group/world readable. The tooling fixes this automatically:
 
 ```sh
-make perms                   # scripts +x, config secrets 0600, dirs 0700, ~/.ssh fixed
 sshmgr doctor --fix          # re-assert perms on managed ~/.ssh paths + secrets
-make doctor FIX=1            # same, via the front door
+make doctor FIX=1            # same, via the front door, against the binary you just built
 ```
 
-`bootstrap.sh` runs the perms pass automatically at the end of install. We never
-`chgrp`/`chown` (that needs root); denying group/other access is the safe,
-correct hardening for a single-user tool - run it as the file owner.
+`reconcile` sets the correct modes as it writes, and `doctor` reports and repairs
+them afterwards - the two walk the same enumeration, so they cannot disagree
+about what is managed.
+
+We never `chgrp`/`chown` (that needs root); denying group and other access is the
+safe, correct hardening for a single-user tool - run it as the file owner. On
+Windows the equivalent is an owner-only ACL applied with `icacls`, since mode
+bits do not apply there.
+
+---
+
+[← Docs index](../README.md#documentation)

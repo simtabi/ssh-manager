@@ -11,9 +11,9 @@ instead of hanging, and gives you a status indicator you can check first.
 Add `requires_vpn` (and optionally `vpn_name`) to the host in the manifest:
 
 ```json
-{"alias": "unc", "hostname": "sc.its.unc.edu", "user": "uncgit", "port": 443,
- "key_name": "work_unc-ed25519",
- "requires_vpn": true, "vpn_name": "UNC VPN", "vpn_url": "https://vpn.unc.edu"}
+{"alias": "hpc", "hostname": "hpc.example.edu", "user": "researcher", "port": 443,
+ "key_name": "work_hpc-ed25519",
+ "requires_vpn": true, "vpn_name": "Campus VPN", "vpn_url": "https://vpn.example.edu"}
 ```
 
 `view <alias>` then shows a reminder, and any unreachable network action names the
@@ -27,7 +27,7 @@ a VPN/tunnel indicator:
 ```sh
 sshmgr net
 # PROFILE  HOST        ADDRESS              STATUS     NOTE
-# work     unc         sc.its.unc.edu:443   ○ offline  needs VPN (UNC VPN)
+# work     hpc         hpc.example.edu:443   ○ offline  needs VPN (Campus VPN)
 # personal github.com  github.com:22        ● online
 # ...
 # VPN/tunnel interface: detected
@@ -51,8 +51,8 @@ anything.
 - As a backstop, every underlying `ssh` / `ssh-copy-id` call is bounded by a hard
   timeout, so no network operation can hang indefinitely.
 
-So if you forget the VPN, `sshmgr rotate work_unc-ed25519` returns in a few
-seconds with *"cannot rotate - ... requires a VPN (UNC VPN); connect it and retry"*
+So if you forget the VPN, `sshmgr rotate work_hpc-ed25519` returns in a few
+seconds with *"cannot rotate - ... requires a VPN (Campus VPN); connect it and retry"*
 rather than wedging your terminal.
 
 See also [deploy](deploy.md), [rotate](rotate.md), [vps](vps.md).

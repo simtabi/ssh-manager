@@ -2,12 +2,12 @@ package cli
 
 import (
 	"fmt"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/agent"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
@@ -29,7 +29,7 @@ func newLoadCmd() *cobra.Command {
 			if _, ok := m.Profiles[profile]; !ok {
 				return fmt.Errorf("unknown profile: %q", profile)
 			}
-			a := agent.New(runtime.GOOS == "darwin")
+			a := agent.New(platform.EmitUseKeychain())
 			added, err := agent.Load(m, p.SSHDir, profile, a.Add)
 			if err != nil {
 				return err
@@ -38,7 +38,7 @@ func newLoadCmd() *cobra.Command {
 			if len(added) > 0 {
 				names = strings.Join(added, ", ")
 			}
-			fmt.Fprintf(c.OutOrStdout(), "loaded %d key(s) into the agent: %s\n", len(added), names)
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "loaded %d key(s) into the agent: %s\n", len(added), names)
 			return nil
 		},
 	}

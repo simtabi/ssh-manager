@@ -39,7 +39,7 @@ func installSystemd(command, label string) error {
 	if err := os.WriteFile(filepath.Join(dir, label+".service"), []byte(buildService(command)), 0o644); err != nil {
 		return err
 	}
-	if err := os.WriteFile(filepath.Join(dir, label+".timer"), []byte(timerUnit), 0o644); err != nil {
+	if err := os.WriteFile(filepath.Join(dir, label+".timer"), []byte(timerUnit()), 0o644); err != nil {
 		return err
 	}
 	_ = exec.Command("systemctl", "--user", "daemon-reload").Run()

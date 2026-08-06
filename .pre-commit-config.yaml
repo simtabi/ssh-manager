@@ -8,6 +8,10 @@ repos:
     rev: v6.0.0
     hooks:
       - id: detect-private-key
+        # recover_test.go feeds a private-key header to the code that must
+        # REFUSE it - a user saving a private key to the .pub path is the error
+        # being tested, so the header is the fixture. Two lines, no key material.
+        exclude: ^internal/services/recover/recover_test\.go$
       - id: end-of-file-fixer
       - id: trailing-whitespace
       - id: mixed-line-ending
@@ -17,15 +21,16 @@ repos:
       - id: check-yaml
       - id: check-toml
       - id: check-json
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.20
-    hooks:
-      - id: ruff
   - repo: local
     hooks:
-      - id: sync-package-data
-        name: sync providers.json/.env-example into package data
-        entry: .build/sync-data.sh
+      - id: gofmt
+        name: gofmt
+        entry: gofmt -l
         language: system
+        types: [go]
+      - id: go-vet
+        name: go vet
+        entry: go vet ./...
+        language: system
+        types: [go]
         pass_filenames: false
-        files: '^(config/providers\.json|\.env-example)$'

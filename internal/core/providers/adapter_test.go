@@ -1,6 +1,9 @@
 package providers
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 func TestResolveRouting(t *testing.T) {
 	cases := []struct {
@@ -74,5 +77,98 @@ func TestRemoveByBody(t *testing.T) {
 	// No match -> no delete.
 	if removeByBody(rows, "AAAAsomeotherbody", func(string) bool { return true }) {
 		t.Error("no body match should not delete")
+	}
+}
+
+// P1's remaining gap: the Provider interface is a Strategy, and every adapter
+// has to satisfy the whole of it. A method that returns a zero value because
+// nobody implemented it is indistinguishable at the call site from one that
+// genuinely has nothing to say - `Rename` returning false, for instance, is a
+// real answer for GenericSSH and a bug anywhere it was simply forgotten.
+func TestEveryAdapterAnswersTheWholeInterface(t *testing.T) {
+	target := Target{Alias: "a", Hostname: "example.com", User: "git", Port: 22}
+	// Built through Resolve, the way the tool builds them, so the table cannot
+	// drift from the constructor.
+	for _, name := range []string{"generic-ssh", "github", "gitlab", "ploi", "digitalocean"} {
+		p := Resolve(name, "")
+		t.Run(name, func(t *testing.T) {
+			if p == nil {
+				t.Fatalf("Resolve(%q) returned nothing", name)
+			}
+		})
+	}
+	for name, p := range map[string]Provider{
+		"generic-ssh": Resolve("generic-ssh", ""),
+		"github":      Resolve("github", ""),
+		"gitlab":      Resolve("gitlab", ""),
+		"web-panel":   Resolve("ploi", ""),
+		"rest-vps":    Resolve("digitalocean", ""),
+	} {
+		t.Run(name, func(t *testing.T) {
+			if p.Name() == "" {
+				t.Error("Name is empty; the inventory records deployments under it")
+			}
+			if p.Category() == "" {
+				t.Error("Category is empty; --type filters on it")
+			}
+			// ManageURL may be empty (not every provider has a keys page), but it
+			// must not panic and must not return a placeholder.
+			if u := p.ManageURL(target); strings.Contains(u, "%") || strings.Contains(u, "{") {
+				t.Errorf("ManageURL = %q: an unexpanded template reached the user", u)
+			}
+		})
+	}
+}
+
+// P2 - a catalog entry always resolves to an adapter that can identify itself.
+//
+// The two fields that matter are not interchangeable: category is what
+// `list --type` filters on and what the provider label shows; kind is what
+// adapterFor switches on. Neither is checked against a fixed vocabulary here,
+// because neither has one - category is free-form so a user's providers.json can
+// introduce its own, and adapterFor's default branch is deliberate: a kind with
+// no API adapter (sourcehut, bitbucket, forgejo) falls to the universal manual
+// path, which is the right answer for a provider whose keys are added through a
+// web page.
+//
+// Nor is "the field is non-empty" worth asserting: specFromEntry defaults both
+// to "generic", so it cannot be otherwise and the check would be unfalsifiable.
+// What IS checkable is that the defaulting happens - a hand-edited
+// providers.json missing a field degrades to a labelled generic entry rather
+// than to a blank one - and that every shipped entry resolves to something that
+// answers.
+func TestACatalogEntryAlwaysResolvesToAnAdapterThatAnswers(t *testing.T) {
+	specs := AllSpecs("")
+	if len(specs) == 0 {
+		t.Fatal("the shipped catalog is empty")
+	}
+	for name := range specs {
+		p := Resolve(name, "")
+		if p == nil {
+			t.Errorf("%s resolves to nothing", name)
+			continue
+		}
+		// A blank name or category would render as an empty column and would
+		// never match a --type filter.
+		if p.Name() == "" || p.Category() == "" {
+			t.Errorf("%s resolved to an adapter that cannot identify itself (name=%q category=%q)",
+				name, p.Name(), p.Category())
+		}
+	}
+
+	// The defaulting, which is what makes the above true even for a malformed
+	// user file. Written as a table over specFromEntry so it fails if the
+	// fallback is ever removed and blank fields start reaching the renderer.
+	for _, c := range []struct{ kind, cat, wantKind, wantCat string }{
+		{"", "", "generic", "generic"},
+		{"github", "", "github", "generic"},
+		{"", "vcs", "generic", "vcs"},
+		{"rest", "vps", "rest", "vps"},
+	} {
+		got := specFromEntry("x", catalogEntry{Kind: c.kind, Category: c.cat})
+		if got.Kind != c.wantKind || got.Category != c.wantCat {
+			t.Errorf("specFromEntry(kind=%q cat=%q) = kind %q cat %q, want %q/%q",
+				c.kind, c.cat, got.Kind, got.Category, c.wantKind, c.wantCat)
+		}
 	}
 }

@@ -2,11 +2,13 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
+	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/editor"
+	"github.com/simtabi/ssh-manager/internal/services/lifecycle"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
 )
 
@@ -28,7 +30,7 @@ func newHostCmd() *cobra.Command {
 		Short: "Add a host to a profile",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			ed := editor.New(paths.Resolve(nil, "", ""))
+			p := paths.Resolve(nil, "", "")
 			f := editor.HostFields{
 				Hostname: &hostname, User: &user, Port: &port,
 				Provider: strPtrIf(c, "provider", provider),
@@ -36,19 +38,24 @@ func newHostCmd() *cobra.Command {
 				KeyName:  strPtrIf(c, "key-name", keyName),
 				Tags:     tags,
 			}
-			if err := ed.AddHost(args[0], args[1], f); err != nil {
+			snapshotBeforeMutation(p)
+			if err := editor.New(p).AddHost(args[0], args[1], f); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "added host %s to %s. Run `sshmgr reconcile` to apply.\n", args[1], args[0])
-			return nil
+			// The block renders now; the key it points at does not exist until
+			// something mints it, so say so rather than leaving ssh to report it
+			// as a permission denial.
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "added host %s to %s (run `sshmgr reconcile` to mint its "+
+				"key)\n", args[1], args[0])
+			return applyManifestEdit(c, p)
 		},
 	}
 	add.Flags().StringVarP(&hostname, "hostname", "H", "", "host to connect to")
 	add.Flags().StringVarP(&user, "user", "u", "", "ssh user")
 	add.Flags().IntVarP(&port, "port", "p", 22, "ssh port")
-	add.Flags().StringVar(&provider, "provider", "", "")
-	add.Flags().StringVar(&tokenEnv, "token-env", "", "")
-	add.Flags().StringVar(&keyName, "key-name", "", "")
+	add.Flags().StringVar(&provider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
+	add.Flags().StringVar(&tokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
+	add.Flags().StringVar(&keyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	add.Flags().StringArrayVar(&tags, "tag", nil, "repeatable")
 	_ = add.MarkFlagRequired("hostname")
 	_ = add.MarkFlagRequired("user")
@@ -61,7 +68,7 @@ func newHostCmd() *cobra.Command {
 		Short: "Edit a host",
 		Args:  cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			ed := editor.New(paths.Resolve(nil, "", ""))
+			p := paths.Resolve(nil, "", "")
 			f := editor.HostFields{
 				Hostname: strPtrIf(c, "hostname", eHostname),
 				User:     strPtrIf(c, "user", eUser),
@@ -70,45 +77,75 @@ func newHostCmd() *cobra.Command {
 				TokenEnv: strPtrIf(c, "token-env", eTokenEnv),
 				KeyName:  strPtrIf(c, "key-name", eKeyName),
 			}
-			if err := ed.EditHost(args[0], args[1], f); err != nil {
+			snapshotBeforeMutation(p)
+			if err := editor.New(p).EditHost(args[0], args[1], f); err != nil {
 				return err
 			}
-			fmt.Fprintf(c.OutOrStdout(), "edited host %s. Run `sshmgr reconcile` to apply.\n", args[1])
+			_, _ = fmt.Fprintf(c.OutOrStdout(), "edited host %s\n", args[1])
+			if c.Flags().Changed("key-name") {
+				_, _ = fmt.Fprintln(c.OutOrStdout(), "  the key it now names may not exist yet - "+
+					"run `sshmgr reconcile` to mint it")
+			}
+			if err := applyManifestEdit(c, p); err != nil {
+				return err
+			}
+			// Pointing a host at a different key strands the one it used to name,
+			// the same way deleting the host would - so it is reported the same way.
+			if m, err := manifest.Load(p.Manifest()); err == nil {
+				warnDangling(c.OutOrStdout(), p, m)
+			}
 			return nil
 		},
 	}
-	edit.Flags().StringVarP(&eHostname, "hostname", "H", "", "")
-	edit.Flags().StringVarP(&eUser, "user", "u", "", "")
-	edit.Flags().IntVarP(&ePort, "port", "p", 22, "")
-	edit.Flags().StringVar(&eProvider, "provider", "", "")
-	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "")
-	edit.Flags().StringVar(&eKeyName, "key-name", "", "")
+	edit.Flags().StringVarP(&eHostname, "hostname", "H", "", "host to connect to")
+	edit.Flags().StringVarP(&eUser, "user", "u", "", "ssh user")
+	edit.Flags().IntVarP(&ePort, "port", "p", 22, "ssh port")
+	edit.Flags().StringVar(&eProvider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
+	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
+	edit.Flags().StringVar(&eKeyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	cmd.AddCommand(edit)
 
-	var yes, revoke bool
+	var yes, revoke, purge, noKeyBackup bool
 	del := &cobra.Command{
 		Use:   "delete <profile> <alias>",
-		Short: "Delete a host (prompts to revoke + prune)",
-		Args:  cobra.ExactArgs(2),
+		Short: "Delete a host, its config block and its pins",
+		Long: "Delete a host, its config block and its pins.\n\n" +
+			"The key the host used is reported, not assumed: another host may still\n" +
+			"use it, or the profile may still declare it. --purge deletes its files\n" +
+			"only in the remaining case, where the key left the manifest with the host\n" +
+			"and nothing tracks it any more.",
+		Args: cobra.ExactArgs(2),
 		RunE: func(c *cobra.Command, args []string) error {
-			if !yes && !confirm(c, fmt.Sprintf("Delete host %q from %q?", args[1], args[0])) {
-				os.Exit(1)
+			profile, alias := args[0], args[1]
+			if err := confirmOrAbort(c, fmt.Sprintf("Delete host %q from %q?", alias, profile), yes); err != nil {
+				return err
 			}
 			doRevoke := revoke
 			if !yes {
 				doRevoke = confirm(c, "Revoke the deployed public key from its targets first?")
 			}
-			ed := editor.New(paths.Resolve(nil, "", ""))
-			res, err := ed.DeleteHost(args[0], args[1], doRevoke)
+			p := paths.Resolve(nil, "", "")
+			out := c.OutOrStdout()
+			if purge {
+				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
+					return err
+				}
+			}
+			snapshotBeforeMutation(p)
+			res, err := lifecycle.New(p, platform.EmitUseKeychain()).
+				DeleteHost(profile, alias, lifecycle.Options{Purge: purge, Revoke: doRevoke})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), res.Format())
+			_, _ = fmt.Fprintln(out, res.Format())
 			return nil
 		},
 	}
 	del.Flags().BoolVarP(&yes, "yes", "y", false, "skip confirmation prompts")
 	del.Flags().BoolVar(&revoke, "revoke", false, "also revoke the deployed key from targets (with --yes)")
+	del.Flags().BoolVar(&purge, "purge", false, "also delete the key files, if the host was the only thing naming the key")
+	del.Flags().BoolVar(&noKeyBackup, "no-key-backup", false,
+		"purge without writing an encrypted backup first (the key is then unrecoverable)")
 	cmd.AddCommand(del)
 
 	return cmd

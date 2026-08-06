@@ -13,7 +13,7 @@ import (
 // newRecoverCmd is the native recover verb: print a break-glass recovery script.
 func newRecoverCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "recover [key]",
+		Use:   "recover [[profile/]key]",
 		Short: "Break-glass recovery snippet / fixkeys tool",
 		Args:  cobra.MaximumNArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -29,7 +29,7 @@ func newRecoverCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprint(c.OutOrStdout(), script)
+			_, _ = fmt.Fprint(c.OutOrStdout(), script)
 			return nil
 		},
 	}

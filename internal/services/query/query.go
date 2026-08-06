@@ -76,9 +76,9 @@ type ProfileSummary struct {
 // Query answers read-only questions about the manifest + inventory.
 type Query struct {
 	m          *manifest.Manifest
-	inv        *inventory.Inventory
 	categories map[string]string // provider name -> category (resolved once)
 	byPath     map[string]inventory.KeyRecord
+	byPathFP   map[string]string // identity path -> the fingerprint byPath came from
 }
 
 // New builds a Query. providersFile is the user's providers.json (may be absent;
@@ -88,11 +88,20 @@ func New(m *manifest.Manifest, inv *inventory.Inventory, providersFile string) *
 	for name, spec := range providers.AllSpecs(providersFile) {
 		cats[name] = spec.Category
 	}
+	// Two records can point at one path - a rotation whose bookkeeping was
+	// interrupted, an import over an existing key. Map iteration is randomized, so
+	// last-wins meant the same tree reported different deployment status between
+	// runs. Break the tie by fingerprint instead, so it is at least stable.
 	byPath := make(map[string]inventory.KeyRecord, len(inv.Keys))
-	for _, r := range inv.Keys {
+	byPathFP := make(map[string]string, len(inv.Keys))
+	for fp, r := range inv.Keys {
+		if prev, ok := byPathFP[r.Path]; ok && prev <= fp {
+			continue
+		}
+		byPathFP[r.Path] = fp
 		byPath[r.Path] = r
 	}
-	return &Query{m: m, inv: inv, categories: cats, byPath: byPath}
+	return &Query{m: m, categories: cats, byPath: byPath, byPathFP: byPathFP}
 }
 
 // categoryOf mirrors query.category_of: the catalog category if known, else
@@ -194,13 +203,15 @@ func (q *Query) hostDetail(pname string, host manifest.Host) (*HostDetail, error
 	}
 	ident := q.m.IdentityFile(pname, kname)
 	rec, ok := q.byPath[ident]
+	// The same fingerprint byPath was built from, not a fresh scan of the
+	// inventory. Two records can point at one path, and picking again by map
+	// iteration meant the detail view could show one record's fingerprint above
+	// another record's status, expiry and deployment list - a mismatch with no
+	// sign in the output that the fields came from different keys.
 	var fp *string
-	for f, r := range q.inv.Keys {
-		if r.Path == ident {
-			fpCopy := f
-			fp = &fpCopy
-			break
-		}
+	if f, found := q.byPathFP[ident]; found {
+		fpCopy := f
+		fp = &fpCopy
 	}
 	var deps []DeploymentRow
 	var expiresOn *string
@@ -212,7 +223,7 @@ func (q *Query) hostDetail(pname string, host manifest.Host) (*HostDetail, error
 	}
 	return &HostDetail{
 		Profile: pname, Alias: host.Alias, Hostname: host.Hostname, User: host.User,
-		Port: host.Port, IdentityFile: ident, KnownHosts: q.m.KnownHostsFile(pname),
+		Port: host.Port, IdentityFile: ident, KnownHosts: q.m.KnownHostsFile(),
 		ProviderLabel: q.providerLabel(host), KeyName: kname, Status: status(rec, ok),
 		Fingerprint: fp, ExpiresOn: expiresOn, Tags: tagsOf(host), RawOptions: host.RawOptions,
 		Deployments: deps, RequiresVPN: host.RequiresVPN, VPNName: host.VPNName, VPNURL: host.VPNURL,

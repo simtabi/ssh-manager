@@ -1,7 +1,14 @@
-// Package snapshots is the local reversible-backup layer for ~/.ssh, ported from
-// the snapshot helpers in util/fs.py plus facade.{list,restore,prune}_snapshots.
-// A snapshot is an owner-only ssh-<stamp>.tar.gz of the whole tree; the mutation
-// guard takes one before every mutating op so any change can be rolled back.
+// Package snapshots is the local reversible-backup layer for ~/.ssh. A snapshot
+// is an owner-only ssh-<stamp>.tar.gz that the mutation guard writes before every
+// mutating op, so a change can be rolled back.
+//
+// Snapshots roll back configuration, not key material. They are plaintext
+// archives written on ordinary operations and kept several deep, so including
+// private keys would build a rolling unencrypted history of every key the user
+// has ever held - a far larger exposure than the mistake being guarded against.
+// Restoring therefore overwrites what the archive holds and removes nothing; key
+// files are only ever destroyed by an explicit purge, which takes its own
+// encrypted backup.
 package snapshots
 
 import (
@@ -10,6 +17,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path" // tar member names are always slash-separated
 	"path/filepath"
 	"sort"
 	"strings"
@@ -26,45 +34,98 @@ func tmpArtifact(name string) bool {
 	return strings.HasPrefix(name, ".") && strings.HasSuffix(name, ".tmp")
 }
 
-// CleanTempArtifacts sweeps crash residue: leftover .<name>.*.tmp files anywhere
-// under sshDir and any stray profiles/<p>/.staging dir. Returns the relative paths
-// removed. Mirrors fs.clean_temp_artifacts.
-func CleanTempArtifacts(sshDir string) []string {
+// archivable reports whether a file may be written into a plaintext snapshot.
+//
+// This is an allowlist of things known to be public, not a blocklist of things
+// known to be secret: an unrecognised file is assumed to hold key material and
+// left out. Getting that backwards would leak a private key the first time
+// someone put one somewhere the blocklist did not anticipate.
+func archivable(name string) bool {
+	return name == "config" ||
+		name == "authorized_keys" ||
+		strings.HasSuffix(name, ".pub") ||
+		strings.HasPrefix(name, "known_hosts")
+}
+
+// HoldsKeyMaterial reports whether a snapshot predates the exclusion of private
+// keys, so callers can warn that it is a plaintext key archive.
+func HoldsKeyMaterial(tarball string) bool {
+	f, err := os.Open(tarball)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = f.Close() }()
+	gz, err := gzip.NewReader(f)
+	if err != nil {
+		return false
+	}
+	defer func() { _ = gz.Close() }()
+	tr := tar.NewReader(gz)
+	for {
+		hdr, err := tr.Next()
+		if err != nil {
+			return false
+		}
+		if hdr.Typeflag == tar.TypeReg && !archivable(path.Base(hdr.Name)) {
+			return true
+		}
+	}
+}
+
+// FindTempArtifacts lists crash residue without removing it: leftover
+// .<name>.*.tmp files anywhere under sshDir, plus any stray
+// profiles/<p>/.staging or profiles/<p>/.mint-* dir. Paths are absolute and in
+// removal order; CleanTempArtifacts is this plus the deletion, so a preview
+// (`clean --dry-run`) reports exactly what the sweep would take.
+func FindTempArtifacts(sshDir string) []string {
 	if _, err := os.Stat(sshDir); err != nil {
 		return nil
 	}
-	var removed []string
+	var found []string
 	_ = filepath.WalkDir(sshDir, func(p string, d os.DirEntry, err error) error {
 		if err != nil || d.IsDir() {
 			return nil
 		}
 		if tmpArtifact(d.Name()) {
-			if os.Remove(p) == nil {
-				rel, _ := filepath.Rel(sshDir, p)
-				removed = append(removed, filepath.ToSlash(rel))
-			}
+			found = append(found, p)
 		}
 		return nil
 	})
 	profiles := filepath.Join(sshDir, "profiles")
 	if fi, err := os.Lstat(profiles); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
 		stagings, _ := filepath.Glob(filepath.Join(profiles, "*", ".staging"))
+		minting, _ := filepath.Glob(filepath.Join(profiles, "*", ".mint-*"))
+		stagings = append(stagings, minting...)
 		sort.Strings(stagings)
 		for _, s := range stagings {
+			// A symlink here would make RemoveAll follow it out of the tree.
 			if fi, err := os.Lstat(s); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
-				if os.RemoveAll(s) == nil {
-					rel, _ := filepath.Rel(sshDir, s)
-					removed = append(removed, filepath.ToSlash(rel))
-				}
+				found = append(found, s)
 			}
 		}
+	}
+	return found
+}
+
+// CleanTempArtifacts sweeps the crash residue FindTempArtifacts reports. Both
+// .staging and .mint-* can hold a private key a crash left behind, so this is a
+// leak sweep and not only tidiness. Returns the relative paths removed.
+func CleanTempArtifacts(sshDir string) []string {
+	var removed []string
+	for _, p := range FindTempArtifacts(sshDir) {
+		if os.RemoveAll(p) != nil {
+			continue
+		}
+		rel, _ := filepath.Rel(sshDir, p)
+		removed = append(removed, filepath.ToSlash(rel))
 	}
 	return removed
 }
 
-// Snapshot tars sshDir into snapshotsDir (owner-only) and prunes to the last
-// retain. Returns the snapshot path, or "" if sshDir does not exist. stamp ""
-// uses the current time. Mirrors fs.snapshot_ssh_dir.
+// Snapshot tars the archivable part of sshDir into snapshotsDir (owner-only) and
+// prunes to the last retain. Private keys are deliberately excluded; see the
+// package doc. Returns the snapshot path, or "" if sshDir does not exist. stamp
+// "" uses the current time.
 func Snapshot(sshDir, snapshotsDir string, retain int, stamp string) (string, error) {
 	fi, err := os.Lstat(sshDir)
 	if err != nil {
@@ -81,14 +142,14 @@ func Snapshot(sshDir, snapshotsDir string, retain int, stamp string) (string, er
 		stamp = time.Now().Format("20060102-150405")
 	}
 	dest := uniquePath(filepath.Join(snapshotsDir, "ssh-"+stamp+".tar.gz"))
-	// Create owner-only BEFORE streaming private keys in, so there is no window
-	// where the archive is group/world-readable mid-write.
+	// Owner-only from creation, so there is no window where the archive is
+	// group- or world-readable mid-write.
 	f, err := os.OpenFile(dest, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return "", err
 	}
 	if err := writeTarGz(f, sshDir); err != nil {
-		f.Close()
+		_ = f.Close()
 		return "", err
 	}
 	if err := f.Close(); err != nil {
@@ -100,7 +161,10 @@ func Snapshot(sshDir, snapshotsDir string, retain int, stamp string) (string, er
 }
 
 // writeTarGz writes a gzip-compressed tar of sshDir, rooted at its base name (so
-// it restores back to .../<base>), matching tarfile.add(ssh_dir, arcname=name).
+// it restores back to .../<base>). Directories are recorded so the tree shape
+// survives, but only archivable files carry content; anything else is skipped as
+// possible key material. Symlinks are skipped rather than recorded, since a
+// restored link could point outside the managed tree.
 func writeTarGz(w io.Writer, sshDir string) error {
 	gz := gzip.NewWriter(w)
 	tw := tar.NewWriter(gz)
@@ -109,6 +173,9 @@ func writeTarGz(w io.Writer, sshDir string) error {
 	err := filepath.Walk(root, func(p string, fi os.FileInfo, err error) error {
 		if err != nil {
 			return err
+		}
+		if !fi.IsDir() && (!fi.Mode().IsRegular() || !archivable(fi.Name())) {
+			return nil
 		}
 		rel, err := filepath.Rel(root, p)
 		if err != nil {
@@ -135,7 +202,7 @@ func writeTarGz(w io.Writer, sshDir string) error {
 				return err
 			}
 			_, copyErr := io.Copy(tw, src)
-			src.Close()
+			_ = src.Close()
 			if copyErr != nil {
 				return copyErr
 			}
@@ -172,8 +239,12 @@ func List(snapshotsDir string) []string {
 	return matches
 }
 
-// Restore replaces sshDir with the contents of tarball (exact restore). The caller
-// snapshots the current tree first. Mirrors fs.restore_snapshot.
+// Restore lays a snapshot back over sshDir. The caller snapshots the current tree
+// first.
+//
+// It overwrites the files the archive holds and deletes nothing else. Wiping the
+// directory first, as an exact restore would, is no longer possible: snapshots
+// exclude private keys, so it would destroy every key in the tree.
 func Restore(tarball, sshDir string) error {
 	if _, err := os.Stat(tarball); err != nil {
 		return fmt.Errorf("snapshot not found: %s", tarball)
@@ -196,12 +267,12 @@ func extractTarGz(tarball, destParent string) error {
 	if err != nil {
 		return err
 	}
-	defer f.Close()
+	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
 		return err
 	}
-	defer gz.Close()
+	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
 	// Read all members first (fail early if corrupt) before destroying the target.
 	type member struct {
@@ -226,11 +297,6 @@ func extractTarGz(tarball, destParent string) error {
 		}
 		members = append(members, member{hdr, data})
 	}
-	// The archive is rooted at ".ssh"; replace that dir under destParent.
-	target := filepath.Join(destParent, ".ssh")
-	if err := os.RemoveAll(target); err != nil {
-		return err
-	}
 	if err := os.MkdirAll(destParent, 0o700); err != nil {
 		return err
 	}
@@ -249,6 +315,11 @@ func extractTarGz(tarball, destParent string) error {
 			}
 		case tar.TypeReg:
 			if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
+				return err
+			}
+			// Unlink first: the destination may already exist, possibly as a
+			// symlink or read-only, and writing through either is wrong.
+			if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
 				return err
 			}
 			if err := os.WriteFile(dest, m.data, mode); err != nil {
@@ -278,7 +349,8 @@ func Prune(snapshotsDir string, keep int) int {
 // RestoreByID restores ~/.ssh from a snapshot (latest if id is empty, else the
 // last whose name contains id), snapshotting the current tree first so the restore
 // is itself reversible, then re-asserting perms. Returns the chosen snapshot path.
-// Mirrors facade.restore_snapshot (minus the advisory lock, not yet ported).
+// The advisory lock and the pre-restore snapshot are the CLI's mutation guard,
+// upstream of this, so they are not duplicated here.
 func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, error) {
 	snaps := List(snapshotsDir)
 	if len(snaps) == 0 {
@@ -303,7 +375,7 @@ func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, er
 	if err != nil {
 		return "", err
 	}
-	defer os.RemoveAll(tmp)
+	defer func() { _ = os.RemoveAll(tmp) }()
 	safe := filepath.Join(tmp, filepath.Base(chosen))
 	if err := copyFile(chosen, safe); err != nil {
 		return "", err
@@ -325,13 +397,13 @@ func copyFile(src, dst string) error {
 	if err != nil {
 		return err
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
 	if _, err := io.Copy(out, in); err != nil {
-		out.Close()
+		_ = out.Close()
 		return err
 	}
 	return out.Close()

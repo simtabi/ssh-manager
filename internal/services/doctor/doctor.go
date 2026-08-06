@@ -1,7 +1,9 @@
-// Package doctor diagnoses the install: deps, perms, agent, known_hosts, and
-// manifest-vs-disk drift/hygiene. Ported from facade.doctor + its helpers. Every
-// on-disk and manifest check mirrors v1 exactly; only the preflight runtime line
-// differs (the Go binary has no interpreter dependency).
+// Package doctor diagnoses the install: deps, perms, agent, known_hosts,
+// manifest-vs-disk drift, and dangling keys.
+//
+// It no longer mirrors v1 check for check. The dangling-key section comes from
+// the keyaudit service and, unlike the orphan list it replaced, decides the
+// verdict; --strict escalates every state for CI.
 package doctor
 
 import (
@@ -11,10 +13,14 @@ import (
 	"os/exec"
 	"path/filepath"
 	"sort"
+	"strconv"
 	"strings"
+	"time"
 
+	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
+	"github.com/simtabi/ssh-manager/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/internal/services/preflight"
@@ -33,8 +39,10 @@ type Report struct {
 	AgentStatus        string
 	KnownHosts         bool
 	OldKeys            map[string]int // key_name -> archived count
+	StaleOldKeys       []string       // archived predecessors past the retention window
 	ConfigInSync       bool
 	OrphanKeys         []string
+	Dangling           keyaudit.Report
 	DuplicateKeys      []string
 	UnpinnedHosts      []string
 	AliasCollisions    []string
@@ -42,9 +50,17 @@ type Report struct {
 	StrandedLegacyHome string
 }
 
-// OK is the overall verdict (mirrors DoctorReport.ok).
+// OK is the overall verdict.
+//
+// Dangling keys count. They used to be printed and then ignored by the verdict,
+// so doctor could list an orphaned key and still say "clean" - a check whose
+// result nothing acts on is not a check. Which states are fatal is keyaudit's
+// call, not this one's (--strict makes all of them fatal).
 func (r Report) OK() bool {
 	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync {
+		return false
+	}
+	if !r.Dangling.OK() {
 		return false
 	}
 	for _, n := range r.OldKeys {
@@ -113,12 +129,16 @@ func (r Report) Format() string {
 	if len(badOld) > 0 {
 		lines = append(lines, "WARNING: >1 archived predecessor (invariant <=1-old): "+strings.Join(badOld, ", "))
 	}
-	if len(r.OrphanKeys) > 0 {
-		lines = append(lines, "orphaned keys (on disk, not in the manifest):")
-		for _, k := range r.OrphanKeys {
+	if len(r.StaleOldKeys) > 0 {
+		lines = append(lines, "archived predecessors past the retention window "+
+			"(unencrypted private keys nobody is using):")
+		for _, k := range r.StaleOldKeys {
 			lines = append(lines, "  "+k)
 		}
+		lines = append(lines, "  -> remove them once the rotation is confirmed good "+
+			"(keep them longer with SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS)")
 	}
+	lines = append(lines, r.Dangling.Lines()...)
 	if len(r.DuplicateKeys) > 0 {
 		lines = append(lines, "WARNING: keys reuse the same fingerprint (blast radius): "+strings.Join(r.DuplicateKeys, ", "))
 	}
@@ -151,7 +171,9 @@ func (r Report) JSON() ([]byte, error) {
 		ConfigInSync       bool           `json:"config_in_sync"`
 		PermIssues         []string       `json:"perm_issues"`
 		OldKeys            map[string]int `json:"old_keys"`
+		StaleOldKeys       []string       `json:"stale_old_keys"`
 		OrphanKeys         []string       `json:"orphan_keys"`
+		DanglingKeys       []danglingJSON `json:"dangling_keys"`
 		DuplicateKeys      []string       `json:"duplicate_keys"`
 		UnpinnedHosts      []string       `json:"unpinned_hosts"`
 		AliasCollisions    []string       `json:"alias_collisions"`
@@ -171,7 +193,8 @@ func (r Report) JSON() ([]byte, error) {
 		OK: r.OK(), Home: strOrNil(r.Home), SSHDir: strOrNil(r.SSHDir),
 		ProvidersSource: r.ProvidersSource, PreflightOK: r.Preflight.OK(),
 		Agent: r.AgentStatus, KnownHosts: r.KnownHosts, ConfigInSync: r.ConfigInSync,
-		PermIssues: nz(r.PermIssues), OldKeys: old, OrphanKeys: nz(r.OrphanKeys),
+		PermIssues: nz(r.PermIssues), OldKeys: old, StaleOldKeys: nz(r.StaleOldKeys),
+		OrphanKeys: nz(r.OrphanKeys), DanglingKeys: danglingRows(r.Dangling),
 		DuplicateKeys: nz(r.DuplicateKeys), UnpinnedHosts: nz(r.UnpinnedHosts),
 		AliasCollisions: nz(r.AliasCollisions), StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
 	})
@@ -179,7 +202,7 @@ func (r Report) JSON() ([]byte, error) {
 
 // FixPerms re-asserts canonical perms on the tool-managed ~/.ssh paths and the
 // config-home secrets, returning the paths it changed. Mirrors facade.fix_perms
-// (the advisory lock is the Facade's mutation guard, not yet ported).
+// (the advisory lock is the CLI's mutation guard, upstream of this).
 func (s *Service) FixPerms() []string {
 	var changed []string
 	for _, mp := range perms.IterManagedPaths(s.p.SSHDir) {
@@ -209,8 +232,9 @@ func New(p paths.Paths, m *manifest.Manifest, emitUseKeychain bool) *Service {
 	return &Service{p: p, m: m, emitUseKeychain: emitUseKeychain}
 }
 
-// Run gathers the full report.
-func (s *Service) Run() Report {
+// Run gathers the full report. strict escalates every dangling-key state to
+// fatal, for CI.
+func (s *Service) Run(strict bool) Report {
 	rep := Report{
 		Preflight:       preflight.Check(),
 		Home:            s.p.ConfigDir,
@@ -223,15 +247,21 @@ func (s *Service) Run() Report {
 		rep.StrandedLegacyHome = legacy
 	}
 	ssh := s.p.SSHDir
-	rep.PermIssues = permIssues(ssh)
+	rep.PermIssues = permIssues(ssh, s.p)
 	rep.AgentStatus = agentStatus()
 	rep.KnownHosts = knownHostsPresent(ssh)
-	rep.OldKeys = oldKeyCounts(ssh)
+	rep.OldKeys, rep.StaleOldKeys = archivedKeys(ssh, OldKeyMaxAge(nil), time.Now())
 	if s.m != nil {
 		if chk, err := configsvc.New(ssh, s.m, s.emitUseKeychain).Check(false); err == nil {
 			rep.ConfigInSync = chk.InSync()
 		}
-		rep.OrphanKeys = s.orphanKeys(ssh)
+		rep.Dangling = s.dangling(strict)
+		// orphan_keys stays in the JSON as the untracked view of the same audit:
+		// same meaning as before, now without the .pub requirement that hid the
+		// worst cases.
+		for _, f := range rep.Dangling.ByState(keyaudit.Untracked) {
+			rep.OrphanKeys = append(rep.OrphanKeys, f.Subject)
+		}
 		rep.DuplicateKeys = duplicateKeys(ssh)
 		rep.UnpinnedHosts = s.unpinnedHosts(ssh)
 		rep.AliasCollisions = aliasCollisions(s.m)
@@ -246,18 +276,30 @@ func (s *Service) providersSource() string {
 	return "shipped default"
 }
 
-func permIssues(ssh string) []string {
+// permIssues walks exactly what FixPerms repairs, config home included. The two
+// used to disagree: FixPerms tightened the config home while the check only
+// looked at ~/.ssh, so a world-readable manifest or providers.json was silently
+// repaired but never reported, and doctor called it clean.
+func permIssues(ssh string, p paths.Paths) []string {
 	var issues []string
-	for _, mp := range perms.IterManagedPaths(ssh) {
+	report := func(mp perms.ManagedPath) {
 		if perms.PermsOK(mp.Path, mp.Mode) {
-			continue
+			return
 		}
 		fi, err := os.Lstat(mp.Path)
 		if err != nil {
-			continue
+			return
 		}
 		issues = append(issues, fmt.Sprintf("%s: %o (want %o)",
 			mp.Path, uint32(fi.Mode().Perm()), uint32(mp.Mode.Perm())))
+	}
+	for _, mp := range perms.IterManagedPaths(ssh) {
+		report(mp)
+	}
+	for _, mp := range homeperms.SecretPerms(p) {
+		if fs.Exists(mp.Path) {
+			report(mp)
+		}
 	}
 	return issues
 }
@@ -290,15 +332,42 @@ func agentStatus() string {
 }
 
 func knownHostsPresent(ssh string) bool {
-	if fs.Exists(filepath.Join(ssh, "known_hosts")) {
-		return true
-	}
-	matches, _ := filepath.Glob(filepath.Join(ssh, "profiles", "*", "known_hosts"))
-	return len(matches) > 0
+	return fs.Exists(filepath.Join(ssh, "known_hosts"))
 }
 
-func oldKeyCounts(ssh string) map[string]int {
+// DefaultOldKeyMaxAge is how long an archived predecessor is considered useful.
+// Past that, the rotation it belongs to has long since been verified in practice
+// and the file is just an unencrypted private key nobody is watching.
+const DefaultOldKeyMaxAge = 90 * 24 * time.Hour
+
+// OldKeyMaxAge is the staleness threshold, overridable with
+// $SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS. A value of 0 or less disables the check
+// rather than marking everything stale, so the escape hatch is not a footgun.
+func OldKeyMaxAge(get func(string) string) time.Duration {
+	if get == nil {
+		get = os.Getenv
+	}
+	raw := strings.TrimSpace(get("SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS"))
+	if raw == "" {
+		return DefaultOldKeyMaxAge
+	}
+	days, err := strconv.Atoi(raw)
+	if err != nil {
+		return DefaultOldKeyMaxAge
+	}
+	if days <= 0 {
+		return 0
+	}
+	return time.Duration(days) * 24 * time.Hour
+}
+
+// archivedKeys walks profiles/*/old/ once and returns both the per-key archive
+// count and the entries older than maxAge. They share a walk so the count and the
+// staleness verdict can never describe different sets of files. maxAge 0 skips
+// the staleness pass. Paths are relative to ssh, for display.
+func archivedKeys(ssh string, maxAge time.Duration, now time.Time) (map[string]int, []string) {
 	counts := map[string]int{}
+	var stale []string
 	olds, _ := filepath.Glob(filepath.Join(ssh, "profiles", "*", "old"))
 	sort.Strings(olds)
 	for _, old := range olds {
@@ -306,47 +375,66 @@ func oldKeyCounts(ssh string) map[string]int {
 		if err != nil || !fi.IsDir() {
 			continue
 		}
+		profile := filepath.Base(filepath.Dir(old))
 		entries, _ := os.ReadDir(old)
 		for _, e := range entries {
 			if e.IsDir() || strings.HasSuffix(e.Name(), ".pub") {
 				continue
 			}
-			counts[e.Name()]++
+			// Counted per profile: merging same-named archives from two profiles
+			// would falsely trip the "more than one predecessor" check.
+			counts[profile+"/"+e.Name()]++
+			if maxAge <= 0 {
+				continue
+			}
+			info, err := e.Info()
+			if err != nil {
+				continue
+			}
+			if age := now.Sub(info.ModTime()); age > maxAge {
+				stale = append(stale, fmt.Sprintf("%s/old/%s (%d days old)",
+					profile, e.Name(), int(age.Hours()/24)))
+			}
 		}
 	}
-	return counts
+	sort.Strings(stale)
+	return counts, stale
 }
 
-func (s *Service) orphanKeys(ssh string) []string {
-	referenced := map[string]bool{}
-	if rks, err := s.m.IterResolved(); err == nil {
-		for _, rk := range rks {
-			referenced[rk.KeyName] = true
-		}
+// dangling runs the key audit. A missing/unreadable inventory is not fatal here:
+// doctor's job is to report the state of a broken install, so it audits with an
+// empty inventory rather than refusing to run - every key then reads as
+// unrecorded, which is the truth.
+func (s *Service) dangling(strict bool) keyaudit.Report {
+	inv, err := inventory.Load(s.p.Inventory())
+	if err != nil {
+		inv = inventory.New()
 	}
-	profDir := filepath.Join(ssh, "profiles")
-	if !isDir(profDir) {
-		return nil
+	rep, err := keyaudit.New(s.m, inv, s.p.SSHDir).Audit(strict)
+	if err != nil {
+		return keyaudit.Report{Strict: strict}
 	}
-	privs, _ := filepath.Glob(filepath.Join(profDir, "*", "*"))
-	sort.Strings(privs)
-	var orphans []string
-	for _, priv := range privs {
-		base := filepath.Base(priv)
-		fi, err := os.Lstat(priv)
-		if err != nil || fi.IsDir() || strings.HasSuffix(base, ".pub") ||
-			base == "config" || strings.HasPrefix(base, ".") {
-			continue
-		}
-		if !fs.Exists(priv + ".pub") {
-			continue
-		}
-		if !referenced[base] {
-			rel, _ := filepath.Rel(ssh, priv)
-			orphans = append(orphans, filepath.ToSlash(rel))
-		}
+	return rep
+}
+
+// danglingJSON is one finding in the machine-readable report.
+type danglingJSON struct {
+	State    string `json:"state"`
+	Subject  string `json:"subject"`
+	Detail   string `json:"detail"`
+	Fix      string `json:"fix"`
+	Blocking bool   `json:"blocking"`
+}
+
+func danglingRows(rep keyaudit.Report) []danglingJSON {
+	out := make([]danglingJSON, 0, len(rep.Findings))
+	for _, f := range rep.Findings {
+		out = append(out, danglingJSON{
+			State: f.State, Subject: f.Subject, Detail: f.Detail, Fix: f.Fix,
+			Blocking: rep.Strict || keyaudit.Blocking(f.State),
+		})
 	}
-	return orphans
+	return out
 }
 
 func duplicateKeys(ssh string) []string {
@@ -370,7 +458,8 @@ func duplicateKeys(ssh string) []string {
 		if _, seen := byFP[fp]; !seen {
 			order = append(order, fp)
 		}
-		byFP[fp] = append(byFP[fp], strings.TrimSuffix(filepath.Base(pub), ".pub"))
+		name := strings.TrimSuffix(filepath.Base(pub), ".pub")
+		byFP[fp] = append(byFP[fp], filepath.Base(filepath.Dir(pub))+"/"+name)
 	}
 	var dups []string
 	for _, fp := range order {
@@ -397,7 +486,7 @@ func (s *Service) unpinnedHosts(ssh string) []string {
 			continue
 		}
 		seen[key] = true
-		kh := filepath.Join(ssh, "profiles", rk.Profile, "known_hosts")
+		kh := filepath.Join(ssh, "known_hosts")
 		token := h.Hostname
 		if h.Port != 22 {
 			token = fmt.Sprintf("[%s]:%d", h.Hostname, h.Port)

@@ -33,7 +33,7 @@ func newAuditCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), report)
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report)
 			return nil
 		},
 	}
@@ -73,7 +73,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 		}
 	}
 	lines = append(lines, "", "=== expiry ===")
-	states, err := notifier.New(p, m.Defaults).States(now)
+	states, err := notifier.New(p, m).States(now)
 	if err != nil {
 		return "", err
 	}
@@ -89,7 +89,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 		if s.ExpiresOn != nil {
 			expires = *s.ExpiresOn
 		}
-		lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", s.KeyName, s.State, expires, days))
+		lines = append(lines, fmt.Sprintf("  %s  %s  (%s, %s)", s.Ref(), s.State, expires, days))
 	}
 	lines = append(lines, "", "=== recent activity ===")
 	if recent := recentAudit(p.AuditLog(), 10); len(recent) > 0 {
@@ -99,7 +99,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 	}
 	if notify {
 		status := "not sent (not due, disabled, or no notifier backend)"
-		if notifier.New(p, m.Defaults).Notify(now, false) {
+		if notifier.New(p, m).Notify(now, false) {
 			status = "sent"
 		}
 		lines = append(lines, "", "desktop notification: "+status)

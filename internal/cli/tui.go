@@ -6,7 +6,6 @@ import (
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"sort"
 	"strconv"
 	"strings"
@@ -16,6 +15,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/services/deployer"
 	"github.com/simtabi/ssh-manager/internal/services/knownhosts"
@@ -45,16 +45,21 @@ type stdinPrompter struct {
 	in  *bufio.Reader
 }
 
-func newStdinPrompter(out io.Writer) *stdinPrompter {
-	return &stdinPrompter{out: out, in: bufio.NewReader(os.Stdin)}
+// newStdinPrompter builds the prompter over the streams it is given. Input
+// comes from the caller rather than os.Stdin directly, matching how the output
+// half already goes through the command: the two halves of one conversation
+// should not disagree about which streams they are on, and reaching past the
+// command meant the whole menu loop could only be driven by a real terminal.
+func newStdinPrompter(out io.Writer, in io.Reader) *stdinPrompter {
+	return &stdinPrompter{out: out, in: bufio.NewReader(in)}
 }
 
 func (s *stdinPrompter) Select(message string, choices []string) (string, bool) {
-	fmt.Fprintln(s.out, message+":")
+	_, _ = fmt.Fprintln(s.out, message+":")
 	for i, ch := range choices {
-		fmt.Fprintf(s.out, "  %d) %s\n", i+1, ch)
+		_, _ = fmt.Fprintf(s.out, "  %d) %s\n", i+1, ch)
 	}
-	fmt.Fprint(s.out, "> ")
+	_, _ = fmt.Fprint(s.out, "> ")
 	line, err := s.in.ReadString('\n')
 	if err != nil && line == "" {
 		return "", false
@@ -67,7 +72,7 @@ func (s *stdinPrompter) Select(message string, choices []string) (string, bool) 
 }
 
 func (s *stdinPrompter) Confirm(message string) bool {
-	fmt.Fprintf(s.out, "%s [y/N] ", message)
+	_, _ = fmt.Fprintf(s.out, "%s [y/N] ", message)
 	line, _ := s.in.ReadString('\n')
 	switch strings.ToLower(strings.TrimSpace(line)) {
 	case "y", "yes":
@@ -109,7 +114,7 @@ func newTuiCmd() *cobra.Command {
 		Args:  cobra.NoArgs,
 		RunE: func(c *cobra.Command, _ []string) error {
 			out := c.OutOrStdout()
-			t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out), out: out}
+			t := &tui{p: paths.Resolve(nil, "", ""), pr: newStdinPrompter(out, c.InOrStdin()), out: out}
 			t.run()
 			return nil
 		},
@@ -228,7 +233,7 @@ func (t *tui) showConfig() {
 		t.print("no manifest")
 		return
 	}
-	out, err := configsvc.New(t.p.SSHDir, m, runtime.GOOS == "darwin").Show("")
+	out, err := configsvc.New(t.p.SSHDir, m, platform.EmitUseKeychain()).Show("")
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
@@ -242,7 +247,7 @@ func (t *tui) expiry() {
 		t.print("no manifest")
 		return
 	}
-	states, err := notifier.New(t.p, m.Defaults).States(time.Now())
+	states, err := notifier.New(t.p, m).States(time.Now())
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
@@ -271,7 +276,7 @@ func (t *tui) reconcile() {
 		return
 	}
 	inv, _ := inventory.Load(t.p.Inventory())
-	emit := runtime.GOOS == "darwin"
+	emit := platform.EmitUseKeychain()
 	dry, err := reconciler.New(t.p, m, inv, emit).Reconcile(true, "")
 	if err != nil {
 		t.print("error: " + err.Error())
@@ -301,7 +306,7 @@ func (t *tui) knownhosts() {
 		return
 	}
 	snapshotBeforeMutation(t.p)
-	report, err := knownhosts.New(t.p.SSHDir).Init(m, "", true, false, false)
+	report, err := knownhosts.New(t.p.SSHDir).Init(m, "", true, false)
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
@@ -330,7 +335,11 @@ func (t *tui) deploy() {
 		t.print("error: " + err.Error())
 		return
 	}
-	_ = inv.Save(t.p.Inventory())
+	// A swallowed save is a deploy that happened remotely and is recorded
+	// nowhere: audit keeps saying needs-redeploy and nobody knows why.
+	if err := inv.Save(t.p.Inventory()); err != nil {
+		t.print("WARNING: the key was deployed but the inventory could not be saved: " + err.Error())
+	}
 	t.print(report.Format())
 }
 
@@ -361,7 +370,9 @@ func (t *tui) rotate() {
 		return
 	}
 	if report.Committed {
-		_ = inv.Save(t.p.Inventory())
+		if err := inv.Save(t.p.Inventory()); err != nil {
+			t.print("WARNING: the rotation completed but the inventory could not be saved: " + err.Error())
+		}
 	}
 	t.print(report.Format())
 }
@@ -383,7 +394,7 @@ func (t *tui) snapshots() {
 	if !t.pr.Confirm(fmt.Sprintf("Restore %s? (current tree snapshotted first)", choice)) {
 		return
 	}
-	chosen, err := snapshots.RestoreByID(t.p.SSHDir, t.p.SnapshotsDir(), snapshotRetain, choice)
+	chosen, err := snapshots.RestoreByID(t.p.SSHDir, t.p.SnapshotsDir(), snapshotRetain(), choice)
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
@@ -393,26 +404,25 @@ func (t *tui) snapshots() {
 
 func (t *tui) banner() {
 	if m := t.manifest(); m != nil {
-		if text := notifier.New(t.p, m.Defaults).Banner(time.Now()); text != "" {
+		if text := notifier.New(t.p, m).Banner(time.Now()); text != "" {
 			t.print(text)
 		}
 	}
 }
 
-func (t *tui) print(text string) { fmt.Fprintln(t.out, text) }
+func (t *tui) print(text string) { _, _ = fmt.Fprintln(t.out, text) }
 
+// keyNames lists keys as "profile/key" selectors. The composite form is used
+// even when a name is unique, so the picker never hides which profile a key
+// belongs to when the same person's name appears under several orgs.
 func keyNames(m *manifest.Manifest) []string {
-	rks, err := m.IterResolved()
+	refs, err := m.KeyRefs()
 	if err != nil {
 		return nil
 	}
-	set := map[string]bool{}
-	for _, rk := range rks {
-		set[rk.KeyName] = true
-	}
-	out := make([]string, 0, len(set))
-	for k := range set {
-		out = append(out, k)
+	out := make([]string, 0, len(refs))
+	for _, ref := range refs {
+		out = append(out, ref.String())
 	}
 	sort.Strings(out)
 	return out

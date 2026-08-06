@@ -36,21 +36,21 @@ func newListCmd() *cobra.Command {
 			out := c.OutOrStdout()
 			filtered := profile != "" || provider != "" || typ != "" || tag != ""
 			if len(groups) == 0 && filtered {
-				fmt.Fprintln(out, "no hosts match the filter")
+				_, _ = fmt.Fprintln(out, "no hosts match the filter")
 				return nil
 			}
 			for _, g := range groups {
 				if g.Empty {
-					fmt.Fprintf(out, "%s  (no hosts)\n", g.Name)
+					_, _ = fmt.Fprintf(out, "%s  (no hosts)\n", g.Name)
 					continue
 				}
-				fmt.Fprintln(out, g.Name)
+				_, _ = fmt.Fprintln(out, g.Name)
 				for _, r := range g.Rows {
 					tags := ""
 					if len(r.Tags) > 0 {
 						tags = "  #" + strings.Join(r.Tags, " #")
 					}
-					fmt.Fprintf(out, "  %s  %s  [%s]  %s  (%s)%s\n",
+					_, _ = fmt.Fprintf(out, "  %s  %s  [%s]  %s  (%s)%s\n",
 						r.Alias, r.Hostname, r.ProviderLabel, r.KeyName, r.Status, tags)
 				}
 			}

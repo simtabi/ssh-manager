@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"os"
 
 	"github.com/spf13/cobra"
 
@@ -17,7 +16,7 @@ import (
 // record it. Exits non-zero if any attempted deploy failed.
 func newDeployCmd() *cobra.Command {
 	return &cobra.Command{
-		Use:   "deploy <key> [target]",
+		Use:   "deploy <[profile/]key> [target]",
 		Short: "Install a public key on its target",
 		Args:  cobra.RangeArgs(1, 2),
 		RunE: func(c *cobra.Command, args []string) error {
@@ -35,6 +34,12 @@ func newDeployCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// Deploy writes the inventory and installs a key on a remote target, so
+			// it takes the same guard every other mutating verb does. Without it two
+			// concurrent deploys - a scheduled `audit --notify` and a manual run,
+			// say - could interleave their inventory writes, and there was no
+			// snapshot to go back to.
+			snapshotBeforeMutation(p)
 			report, err := deployer.New(p, m, inv).Deploy(key, target)
 			if err != nil {
 				return err
@@ -42,11 +47,11 @@ func newDeployCmd() *cobra.Command {
 			if err := inv.Save(p.Inventory()); err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), report.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
 			// A failed automated deploy / unreachable host is non-zero; a manual
 			// target that still needs a paste is not (exit 0).
 			if report.AnyError() {
-				os.Exit(1)
+				return errNotClean
 			}
 			return nil
 		},

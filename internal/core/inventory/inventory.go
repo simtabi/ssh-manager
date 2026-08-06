@@ -10,6 +10,8 @@ import (
 	"os"
 	"strings"
 	"time"
+
+	"github.com/simtabi/ssh-manager/internal/util/fs"
 )
 
 const schemaVersion = 1
@@ -123,13 +125,19 @@ func Load(path string) (*Inventory, error) {
 	return &inv, nil
 }
 
-// Save writes the inventory as indented JSON.
+// Save writes the inventory as indented JSON, atomically.
+//
+// Via a temp file and a rename, not os.WriteFile: WriteFile truncates the target
+// and then writes, so a crash or a full disk mid-write leaves a truncated
+// inventory - the record of every key's expiry and deployments, lost to a
+// partial write. It also keeps whatever mode the file already had, so an
+// inventory that had somehow become group-readable stayed that way.
 func (inv *Inventory) Save(path string) error {
 	b, err := json.MarshalIndent(inv, "", "  ")
 	if err != nil {
 		return err
 	}
-	return os.WriteFile(path, append(b, '\n'), 0o600)
+	return fs.WriteTextAtomic(path, string(b)+"\n", 0o600)
 }
 
 // Record stores a key record under its fingerprint.

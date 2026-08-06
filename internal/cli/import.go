@@ -1,16 +1,17 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
-	"runtime"
 	"time"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/importer"
 	"github.com/simtabi/ssh-manager/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -31,14 +32,14 @@ func newImportCmd() *cobra.Command {
 				configPath = args[0]
 			}
 			p := paths.Resolve(nil, "", "")
-			imp := importer.New(p, runtime.GOOS == "darwin")
+			imp := importer.New(p, platform.EmitUseKeychain())
 
 			if dryRun {
 				res, err := imp.Run(configPath, true)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintln(c.OutOrStdout(), res.Format())
+				_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 				return nil
 			}
 
@@ -47,9 +48,9 @@ func newImportCmd() *cobra.Command {
 			snapshotBeforeMutation(p)
 			if m, err := manifest.Load(p.Manifest()); err == nil && len(m.Profiles) > 0 {
 				if !force {
-					return fmt.Errorf("a non-empty manifest already exists - importing replaces it " +
-						"(it does not merge). Re-run with --force; the current manifest + " +
-						"inventory are backed up to <home>/.state/ first.")
+					return errors.New("a non-empty manifest already exists - importing replaces it " +
+						"rather than merging; re-run with --force, which backs the current " +
+						"manifest and inventory up to <home>/.state/ first")
 				}
 				backupImportTargets(p)
 			}
@@ -57,7 +58,7 @@ func newImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), res.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 			return nil
 		},
 	}
@@ -85,7 +86,7 @@ func copyToBackup(src, dst string) {
 	if err != nil {
 		return
 	}
-	defer in.Close()
+	defer func() { _ = in.Close() }()
 	out, err := os.OpenFile(dst, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, homeperms.FileMode)
 	if err != nil {
 		return

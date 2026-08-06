@@ -23,7 +23,7 @@ func newMigrateCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(c.OutOrStdout(), res.Format())
+			_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 			return nil
 		},
 	}

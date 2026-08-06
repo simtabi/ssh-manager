@@ -3,12 +3,12 @@ package cli
 import (
 	"fmt"
 	"path/filepath"
-	"runtime"
 	"strings"
 
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/internal/platform"
 	"github.com/simtabi/ssh-manager/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/internal/util/fs"
 	"github.com/simtabi/ssh-manager/internal/util/paths"
@@ -27,7 +27,7 @@ func newDiffCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			svc := configsvc.New(p.SSHDir, m, runtime.GOOS == "darwin")
+			svc := configsvc.New(p.SSHDir, m, platform.EmitUseKeychain())
 			chk, err := svc.Check(true)
 			if err != nil {
 				return err
@@ -39,17 +39,23 @@ func newDiffCmd() *cobra.Command {
 			}
 			var missing []string
 			present := 0
+			seen := map[manifest.KeyRef]bool{}
 			for _, rk := range rks {
-				priv := filepath.Join(p.SSHDir, "profiles", rk.Profile, rk.KeyName)
+				ref := manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName}
+				if seen[ref] {
+					continue // hosts sharing one key are one key to mint
+				}
+				seen[ref] = true
+				priv := filepath.Join(p.SSHDir, "profiles", ref.Profile, ref.KeyName)
 				if fs.Exists(priv) {
 					present++
 				} else {
-					missing = append(missing, fmt.Sprintf("  MINT  %s (manifest wants it; not on disk)", rk.KeyName))
+					missing = append(missing, fmt.Sprintf("  MINT  %s (manifest wants it; not on disk)", ref))
 				}
 			}
 			lines = append(lines, missing...)
 			lines = append(lines, fmt.Sprintf("  %d key(s) already present", present))
-			fmt.Fprintln(c.OutOrStdout(), strings.Join(lines, "\n"))
+			_, _ = fmt.Fprintln(c.OutOrStdout(), strings.Join(lines, "\n"))
 			return nil
 		},
 	}

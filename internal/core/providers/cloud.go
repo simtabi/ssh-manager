@@ -1,6 +1,7 @@
 package providers
 
 import (
+	"errors"
 	"fmt"
 	"net/url"
 	"os"
@@ -245,7 +246,12 @@ func remoteKeys(items []any, idF, nameF, bodyF string) []RemoteKey {
 
 // --- DigitalOcean ----------------------------------------------------------
 
-const doBase = "https://api.digitalocean.com/v2"
+// Base URLs are vars, not consts, so a test can point one at a local server and
+// exercise the real request path: URL construction, method, auth header and
+// pagination. Stubbing the JSON layer instead would leave every one of those
+// unverified, which for five adapters nobody has run against a live API is the
+// part most likely to be wrong.
+var doBase = "https://api.digitalocean.com/v2"
 
 type doOps struct{}
 
@@ -284,7 +290,7 @@ func (doOps) renameKey(token, id, name string) (bool, error) {
 
 // --- Vultr -----------------------------------------------------------------
 
-const vultrBase = "https://api.vultr.com/v2"
+var vultrBase = "https://api.vultr.com/v2"
 
 type vultrOps struct{}
 
@@ -328,7 +334,7 @@ func (vultrOps) renameKey(token, id, name string) (bool, error) {
 
 // --- Hetzner ---------------------------------------------------------------
 
-const hetznerBase = "https://api.hetzner.cloud/v1"
+var hetznerBase = "https://api.hetzner.cloud/v1"
 
 type hetznerOps struct{}
 
@@ -372,7 +378,7 @@ func (hetznerOps) renameKey(token, id, name string) (bool, error) {
 
 // --- Linode ----------------------------------------------------------------
 
-const linodeBase = "https://api.linode.com/v4"
+var linodeBase = "https://api.linode.com/v4"
 
 type linodeOps struct{}
 
@@ -419,7 +425,7 @@ func (linodeOps) renameKey(token, id, name string) (bool, error) {
 
 // --- Scaleway (project-scoped, X-Auth-Token) -------------------------------
 
-const scwBase = "https://api.scaleway.com/iam/v1alpha1"
+var scwBase = "https://api.scaleway.com/iam/v1alpha1"
 
 type scwOps struct{}
 
@@ -433,7 +439,8 @@ func scwProject() string                        { return os.Getenv("SCW_PROJECT_
 func (scwOps) listKeys(token string) ([]RemoteKey, error) {
 	project := scwProject()
 	if project == "" {
-		return nil, fmt.Errorf("Scaleway requires SCW_PROJECT_ID (the project the keys belong to) - set it alongside SCW_SECRET_KEY")
+		return nil, errors.New("the Scaleway adapter requires SCW_PROJECT_ID (the project the keys " +
+			"belong to) - set it alongside SCW_SECRET_KEY")
 	}
 	var out []RemoteKey
 	page, done := 1, false

@@ -7,6 +7,7 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 func requireTool(t *testing.T) {
@@ -114,4 +115,71 @@ func keyBody(line string) string {
 		return f[0] + " " + f[1]
 	}
 	return strings.TrimSpace(line)
+}
+
+// Hardware key types fall back to their software equivalent when no FIDO2
+// device answers. python-final:src/ssh_manager/services/keystore.py:51-56 did
+// the same: `ed25519-sk` is attempted, and on failure `ed25519` is minted with
+// "(sk-fallback)" in the comment so the substitution is visible afterwards.
+//
+// Without this a user with no security key cannot mint a key at all - the
+// manifest asks for -sk and ssh-keygen refuses.
+//
+// Run under a timeout: on a machine that *does* have a device inserted,
+// ssh-keygen waits for a touch, and this test is about the no-device path.
+func TestHardwareKeyTypeFallsBackToSoftware(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	dir := t.TempDir()
+	priv := filepath.Join(dir, "work_yubi-ed25519-sk")
+
+	type result struct {
+		gen GenResult
+		err error
+	}
+	done := make(chan result, 1)
+	go func() {
+		g, err := New().Generate(priv, "ed25519-sk", "work/yubi", "", false)
+		done <- result{g, err}
+	}()
+
+	select {
+	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("generate should fall back rather than fail: %v", r.err)
+		}
+		if _, err := os.Stat(priv); err != nil {
+			t.Fatalf("no key at the requested path: %v", err)
+		}
+		pub, err := os.ReadFile(priv + ".pub")
+		if err != nil {
+			t.Fatal(err)
+		}
+		text := string(pub)
+		switch {
+		case strings.Contains(text, "sk-ssh-ed25519"):
+			// A device was present and answered: the real -sk key was minted,
+			// so there is nothing to fall back from.
+			t.Log("a FIDO2 device answered; the fallback path was not taken")
+		case strings.Contains(text, "ssh-ed25519"):
+			// The fallback ran. The comment has to say so, or a user cannot
+			// tell a software key from the hardware one they asked for.
+			if !strings.Contains(text, "sk-fallback") {
+				t.Errorf("the software fallback must be marked in the comment:\n%s", text)
+			}
+		default:
+			t.Errorf("unrecognised key type:\n%s", text)
+		}
+	case <-time.After(20 * time.Second):
+		t.Skip("ssh-keygen is waiting on a security key; the no-device path cannot be tested here")
+	}
+}
+
+// Fingerprinting something that is not there is an error, not an empty string -
+// a caller treating "" as a fingerprint would write a bogus inventory key.
+func TestFingerprintOfAMissingFileErrors(t *testing.T) {
+	if _, err := New().Fingerprint(filepath.Join(t.TempDir(), "nope.pub")); err == nil {
+		t.Error("fingerprinting a missing file should error")
+	}
 }

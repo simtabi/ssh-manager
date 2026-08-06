@@ -9,40 +9,30 @@ import (
 	"os/user"
 )
 
-// broadPrincipals are the over-broad ACEs we strip from keys/dirs/configs so no
-// other principal retains access. Mirrors platforms/windows._BROAD_PRINCIPALS.
-var broadPrincipals = []string{"Everyone", "Authenticated Users", "Users", `BUILTIN\Users`}
-
 // SetPerms restricts path to the current user (the Windows ACL equivalent of
-// 600/700): drop inherited ACEs, grant only this user, strip broad grants. The
-// POSIX mode is advisory on Windows. Mirrors platforms/windows.set_perms.
+// 600/700). The commands and their order come from icaclsCommands in
+// windows_acl.go, which is compiled everywhere and tested there; this file is
+// only the part that runs them.
 func SetPerms(path string, _ os.FileMode) error {
 	if _, err := exec.LookPath("icacls"); err != nil {
 		return fmt.Errorf("icacls not found: icacls ships with Windows; ensure it's on PATH")
 	}
-	u := os.Getenv("USERNAME")
-	if u == "" {
-		if cu, err := user.Current(); err == nil {
-			u = cu.Username
+	owner := aclOwner(os.Getenv, user.Current)
+	if owner == "" {
+		return fmt.Errorf("cannot determine the current user to grant %s to", path)
+	}
+	required, optional := icaclsCommands(path, owner)
+	for _, argv := range required {
+		if err := exec.Command(argv[0], argv[1:]...).Run(); err != nil {
+			return fmt.Errorf("%v failed for %s: %w", argv[1:], path, err)
 		}
 	}
-	if err := exec.Command("icacls", path, "/inheritance:r").Run(); err != nil {
-		return fmt.Errorf("icacls /inheritance:r failed for %s: %w", path, err)
-	}
-	if err := exec.Command("icacls", path, "/grant:r", u+":F").Run(); err != nil {
-		return fmt.Errorf("icacls /grant:r failed for %s: %w", path, err)
-	}
-	for _, p := range broadPrincipals {
+	for _, argv := range optional {
 		// Removing an ACE that isn't present is a harmless no-op.
-		_ = exec.Command("icacls", path, "/remove:g", p).Run()
+		_ = exec.Command(argv[0], argv[1:]...).Run()
 	}
 	return nil
 }
 
-// PermsOK treats any existing file as ok: Windows perms are ACLs, not POSIX mode
-// bits (a synthetic st_mode would flag every file), and they are enforced via
-// icacls on write. Mirrors platforms.windows.perms_ok.
-func PermsOK(path string, _ os.FileMode) bool {
-	_, err := os.Stat(path)
-	return err == nil
-}
+// PermsOK - see windowsPermsOK for why any existing file passes.
+func PermsOK(path string, _ os.FileMode) bool { return windowsPermsOK(path) }

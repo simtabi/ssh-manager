@@ -6,6 +6,103 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+
+- **`~/.ssh` layout.** One inline `config` holds every `Host` entry, grouped by a
+  profile banner with `Host *` last, instead of a root config plus a per-profile
+  file stitched together with `Include`. One hashed `known_hosts` replaces the
+  per-profile trust stores; every line ssh-manager writes carries an `sshmgr`
+  comment tag so it only ever prunes its own. `profiles/<name>/` now holds keys
+  only. Identity isolation is unchanged and stronger: it comes from `IdentityFile`
+  plus a **per-host** `IdentitiesOnly yes`, which the rendered config states
+  explicitly for every host. Run `reconcile` once and the old files are migrated.
+- `known_hosts` is mode 0600, not 0644. ssh has never needed the trust store
+  world-readable, and its contents are an inventory of every host you connect to.
+- A `key_name` may now repeat across profiles. v1 rejected that manifest; one
+  person working under two organisations uses the same file name in both, so the
+  ban prevented a normal setup. A key's identity is the pair `profile/key`.
+- `knownhosts init` no longer takes `--user`. There is one store, so there is
+  nothing left for it to select.
+
+### Added
+
+- `key add`, `key list`, `key delete` — declare, mint and remove a key
+  independently of the host that uses it, with a guarded delete that refuses
+  while any host still resolves to it.
+- `show <selector>` — reconciles the manifest, the key files, the rendered config
+  and the trust store in one view, because an auth failure is usually a
+  disagreement between them.
+- `clean [--dry-run] [--adopt]` — prunes stale pins and inventory records left
+  behind by deletions.
+- `doctor --strict` — escalates every dangling-key state to fatal, for CI.
+- `--yes` on the destructive verbs, so they are usable from a script, and
+  `--no-key-backup` to accept an overwrite that cannot be undone.
+- `SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS` — when an archived predecessor is called stale.
+
+### Fixed
+
+- **Rotation could lose a key on a crash.** Commit renamed four files with no
+  rollback; an interruption between them left the tree without a usable pair.
+  Rollback was worse: it deleted the live pair before moving the predecessor in.
+  Both now preserve by hard link and rename over atomically.
+- **`keygen --force` destroyed same-named keys in other profiles.** The overwrite
+  set was keyed by bare name, so confirming one key regenerated every key that
+  shared its name — silently invalidating identities the user was never asked
+  about.
+- **`init --force` could reset the manifest while reporting a backup it never
+  wrote.** Every error from the backup copy was swallowed. A failed backup now
+  stops the reset.
+- **`migrate` flattened symlinks into world-readable copies** when the legacy
+  home and the new one were on different filesystems. Symlinking a config file
+  out to a dotfiles repo is ordinary; the migration left the user editing a stale
+  copy.
+- **A locked password store stayed locked.** `cmd:` secret lookups memoised
+  failures, so unlocking and retrying returned the same empty token for the life
+  of the process — invisible in a one-shot run, permanent in the TUI.
+- **The TUI froze on the second mutating action of a session.** The advisory lock
+  is per file descriptor, so a second acquire in one process waited forever on a
+  lock that process already held.
+- **A crafted `authorized_keys` line could panic the tool** on 32-bit builds
+  (386, armv6, armv7 all ship): an attacker-controlled length prefix was bounds-
+  checked in `int`, where it wraps.
+- `sshmgr view` could pair one inventory record's fingerprint with another's
+  status, expiry and deployments when two records pointed at the same key path.
+- `sshmgr diff` counted a shared key once per host that used it.
+- `import` reported more hosts than it wrote when a config repeated a `Host` block
+  — which is what appending to a config rather than editing it produces.
+- `sshmgr clean` dropped the inventory record of a key that had merely become
+  unwired, leaving the key on disk with nothing tracking its expiry.
+- `manifest.json` and `inventory.json` claimed atomic persistence while using a
+  truncating write, and kept whatever mode the file already had — so a manifest
+  loosened once stayed loose through every later save.
+- The TUI menu, the passphrase prompt and `notify test`'s diagnostic reached past
+  the command to the process's own streams, so a caller that redirected them was
+  ignored.
+- `host edit`'s flags, and `--provider`, `--token-env` and `--key-name` on
+  `host add`, had no help text at all.
+
+### Security
+
+- Passphrases reach `ssh-keygen` through the askpass protocol rather than the
+  command line, where any local user could read them from the process list.
+- `authorized_keys` parsing rejects an oversized wire-format length prefix
+  instead of trusting it.
+- The shipped example `config/manifest.json` no longer contains real
+  infrastructure. It held three live addresses, a university host with its login
+  name, and the VPN endpoint fronting it — a target list, published as
+  documentation.
+- CodeQL scans Go. It was configured for Python, so the Go code had never been
+  analysed.
+
+### Removed
+
+- The Python implementation and its test suite, preserved at the `python-final`
+  tag. The binary has had no interpreter since 2.0.0; this removes the parity
+  reference that was still in the tree.
+- The `.build/` shell harnesses. Their assertions are Go tests now, so they run on
+  every platform instead of macOS alone — and the last executing Python in CI
+  went with them.
+
 ## [2.0.0] - 2026-06-17
 
 ssh-manager is **rewritten in Go** as a single self-contained binary - no Python
@@ -35,7 +132,8 @@ environment variables. A v1 home works as-is.
 - The list/view/expiry views now print plain text rather than the v1 `rich`
   tables; the data shown is the same.
 - The v1 Python implementation remains available at the `v0.1.0` tag and as the
-  parity reference in `src/`.
+  parity reference in `src/`. (Since removed - see Unreleased. The reference is
+  now the `python-final` tag.)
 
 ## [0.1.0] - 2026-06-16
 

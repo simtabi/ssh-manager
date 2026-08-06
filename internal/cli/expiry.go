@@ -26,7 +26,7 @@ func newExpiryCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			states, err := notifier.New(p, m.Defaults).States(time.Now())
+			states, err := notifier.New(p, m).States(time.Now())
 			if err != nil {
 				return err
 			}
@@ -37,13 +37,17 @@ func newExpiryCmd() *cobra.Command {
 }
 
 // writeExpiryTable renders the per-key expiry table (shared with the TUI).
+//
+// Rows are keyed by profile/key. A bare key name is ambiguous - the same name
+// legitimately exists in several profiles - so a table of bare names showed two
+// rows with one label and no way to tell which was due.
 func writeExpiryTable(out io.Writer, states []expiry.Status) {
 	if len(states) == 0 {
-		fmt.Fprintln(out, "no keys tracked (run reconcile, then deploy)")
+		_, _ = fmt.Fprintln(out, "no keys tracked (run reconcile, then deploy)")
 		return
 	}
 	tw := tabwriter.NewWriter(out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "KEY\tSTATE\tEXPIRES\tDAYS LEFT")
+	_, _ = fmt.Fprintln(tw, "KEY\tSTATE\tEXPIRES\tDAYS LEFT")
 	for _, s := range states {
 		expires := "?"
 		if s.ExpiresOn != nil {
@@ -53,7 +57,7 @@ func writeExpiryTable(out io.Writer, states []expiry.Status) {
 		if s.DaysRemaining != nil {
 			days = fmt.Sprintf("%d", *s.DaysRemaining)
 		}
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.KeyName, s.State, expires, days)
+		_, _ = fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", s.Ref(), s.State, expires, days)
 	}
 	_ = tw.Flush()
 }

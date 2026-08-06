@@ -168,3 +168,83 @@ func mustKey(t *testing.T, m *manifest.Manifest, profile, alias string) string {
 	t.Fatalf("no host %q in %q", alias, profile)
 	return ""
 }
+
+// Two inventory records can point at one identity path: a rotation whose
+// bookkeeping was interrupted, or an import over an existing key. Which one the
+// view reports was decided by map iteration, so the same tree showed a different
+// deployment status between runs of the same command.
+//
+// The tie is broken by lowest fingerprint - arbitrary, but stable - and the
+// detail view has to read the same record for every field. Reporting one
+// record's fingerprint above another's status, expiry and deployments produces a
+// view that is internally inconsistent with nothing in the output to show it.
+func TestDuplicateRecordsForOnePathResolveConsistently(t *testing.T) {
+	m := loadManifest(t)
+	ident := m.IdentityFile("work", mustKey(t, m, "work", "gh"))
+	inv := inventory.New()
+	// Deliberately different in every field the view surfaces, so a mix-up shows.
+	inv.Record("fp-bbb", inventory.KeyRecord{
+		Profile: "work", Path: ident, ExpiresOn: ptr("2027-12-31"),
+		Deployments: []inventory.Deployment{{Target: "github", Method: "github-gh", Verified: true}},
+	})
+	inv.Record("fp-aaa", inventory.KeyRecord{
+		Profile: "work", Path: ident, ExpiresOn: ptr("2026-06-30"),
+	})
+
+	// Map iteration is randomized per range, so repeat: a last-wins bug shows up
+	// as disagreement across builds of the same inventory, not as one bad answer.
+	for i := range 50 {
+		hd, err := New(m, inv, "").Detail("gh")
+		if err != nil {
+			t.Fatal(err)
+		}
+		d := hd.(*HostDetail)
+		if d.Fingerprint == nil || *d.Fingerprint != "fp-aaa" {
+			t.Fatalf("run %d: fingerprint = %v, want the stable lowest one", i, d.Fingerprint)
+		}
+		// fp-aaa has no deployments, so every field must agree with that record.
+		if d.Status != NeedsRedeploy {
+			t.Fatalf("run %d: status = %q, but the reported key has no deployments", i, d.Status)
+		}
+		if d.ExpiresOn == nil || *d.ExpiresOn != "2026-06-30" {
+			t.Fatalf("run %d: expires_on = %v, taken from a different record than the fingerprint", i, d.ExpiresOn)
+		}
+		if len(d.Deployments) != 0 {
+			t.Fatalf("run %d: deployments = %+v, taken from a different record than the fingerprint", i, d.Deployments)
+		}
+	}
+}
+
+// A host may name a provider the catalog does not know - a self-hosted forge, a
+// provider added to the manifest before its spec - or name none at all. Neither
+// is an error: the category falls back to "server", which is what the generic
+// SSH path treats it as anyway.
+func TestUnknownAndAbsentProvidersFallBackToServer(t *testing.T) {
+	const j = `{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "work":{"key_scope":"per_service","hosts":[
+	    {"alias":"forge","hostname":"git.internal","user":"git","provider":"self-hosted-forge"},
+	    {"alias":"plain","hostname":"10.0.0.9","user":"root"}]}}}`
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(j), &m); err != nil {
+		t.Fatal(err)
+	}
+	rows, err := New(&m, inventory.New(), "").Groups("", "", "", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := rows[0].Rows[0].ProviderLabel; got != "self-hosted-forge/server" {
+		t.Errorf("unknown provider label = %q, want it kept with the server category", got)
+	}
+	// No provider means no name to print, so the label is the category alone.
+	if got := rows[0].Rows[1].ProviderLabel; got != "server" {
+		t.Errorf("absent provider label = %q, want a bare category", got)
+	}
+	// --type server still finds both; the fallback is a real category, not a gap.
+	g, err := New(&m, inventory.New(), "").Groups("", "", "server", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(g) != 1 || len(g[0].Rows) != 2 {
+		t.Errorf("type=server matched %+v, want both hosts", g)
+	}
+}
