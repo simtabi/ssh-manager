@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.0.0] - 2026-08-06
+
+The Python implementation is gone from the tree, the verification matrix is
+closed, and the documentation describes what ships.
+
+Major rather than minor for two reasons, both below under **Changed**: the
+`~/.ssh` layout moved, and `knownhosts init --user` was removed. Neither needs
+action beyond running `reconcile` once — but a script that passed `--user` will
+fail, and that is what a major version is for.
+
 ### Changed
 
 - **`~/.ssh` layout.** One inline `config` holds every `Host` entry, grouped by a
@@ -21,8 +31,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - A `key_name` may now repeat across profiles. v1 rejected that manifest; one
   person working under two organisations uses the same file name in both, so the
   ban prevented a normal setup. A key's identity is the pair `profile/key`.
-- `knownhosts init` no longer takes `--user`. There is one store, so there is
-  nothing left for it to select.
+- **`knownhosts init` no longer takes `--user`.** There is one store now, so
+  there is nothing left for it to select — but the flag existed in 2.0.0, so a
+  script that passes it will fail rather than being ignored. Drop it; `--all`
+  covers every host in the manifest, which is what `--user` aggregated.
 
 ### Added
 
@@ -363,6 +375,7 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
   build and attach artifacts to a GitHub Release on a `v*` tag.
 
-[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v2.0.0...HEAD
+[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.0.0...HEAD
+[3.0.0]: https://github.com/simtabi/ssh-manager/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/simtabi/ssh-manager/compare/v0.1.0...v2.0.0
 [0.1.0]: https://github.com/simtabi/ssh-manager/releases/tag/v0.1.0
