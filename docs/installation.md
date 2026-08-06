@@ -45,8 +45,8 @@ Every artifact is checksummed and carries a build-provenance attestation
 
 ```sh
 git clone https://github.com/simtabi/ssh-manager && cd ssh-manager
-make build                # -> bin/sshmgr
-./bin/sshmgr doctor
+make build                # -> build/sshmgr
+./build/sshmgr doctor
 ```
 
 `make` is the development front door: `make check` runs the same gate as CI

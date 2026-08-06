@@ -14,9 +14,11 @@
 # (CGO_ENABLED=0), reproducible (-trimpath), stripped (-s -w), with version
 # metadata embedded.
 #
-# The whole build/ folder is DELETED and REGENERATED on every run — its files
-# (targets.txt and all outputs) are rewritten from scratch, so nothing stale
-# from a removed/renamed target or a previous run ever survives.
+# build/dist/ is DELETED and REGENERATED on every run, so nothing stale from a
+# removed or renamed target survives. build/ itself is NOT wiped: targets.txt is
+# a tracked file and `make build` leaves a binary there, and deleting either as a
+# side effect of a release build is a surprise nobody asked for. targets.txt is
+# still rewritten from the effective matrix below.
 #
 #   VERSION=v1.2.3 ./scripts/build-all.sh          # normal
 #   ARCHIVES=0 ./scripts/build-all.sh              # binaries only, skip archives
@@ -85,10 +87,10 @@ for f in LICENSE README.md CHANGELOG.md; do
   [ -f "$f" ] && EXTRAS="${EXTRAS} ${f}"
 done
 
-# --- fresh build folder ------------------------------------------------------
-echo "==> ${BINARY} ${VERSION} (${COMMIT}) — regenerating ${BUILD_DIR}/"
-case "$BUILD_DIR" in ''|/|.|..) echo "error: unsafe BUILD_DIR='$BUILD_DIR'" >&2; exit 1 ;; esac
-rm -rf "$BUILD_DIR"
+# --- fresh output folder -----------------------------------------------------
+echo "==> ${BINARY} ${VERSION} (${COMMIT}) — regenerating ${OUT}/"
+case "$OUT" in ''|/|.|..|"$BUILD_DIR") echo "error: unsafe OUT='$OUT'" >&2; exit 1 ;; esac
+rm -rf "$OUT"
 mkdir -p "$OUT"
 [ "$WITH_ARCHIVES" = "1" ] && mkdir -p "$ARCHIVE_DIR"
 printf '%s\n' "$MATRIX" > "$TARGETS_FILE"   # regenerate the target list

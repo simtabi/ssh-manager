@@ -21,7 +21,7 @@ around it.
 
 ```sh
 git clone https://github.com/simtabi/ssh-manager && cd ssh-manager
-make build               # -> bin/sshmgr
+make build               # -> build/sshmgr
 make doctor              # verify the environment, using the binary you just built
 ```
 
@@ -63,6 +63,21 @@ These are enforced by tests, not by convention. Breaking one turns a test red.
 - **State I/O goes through `internal/util/fs` under `internal/util/lock`**, and
   every external command is an argv slice, never a shell string. The tool's whole
   external-binary surface is pinned by a test.
+
+## Build output
+
+Everything generated goes to `build/`, and nothing goes anywhere else:
+
+| Path | What | Tracked |
+|---|---|---|
+| `build/targets.txt` | the release target matrix | yes |
+| `build/sshmgr` | `make build` output | no |
+| `build/dist/` | GoReleaser and `build-all.sh` artifacts | no |
+
+`make clean` empties it, keeping `targets.txt`. There was a `bin/` as well until
+3.0.1 — two directories for one idea, and `make clean` removed a top-level
+`dist/` that GoReleaser had stopped writing to, so it left every release artifact
+in place while reporting success.
 
 ## Where things live
 

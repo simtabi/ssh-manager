@@ -3,7 +3,7 @@
 # Pure Go: no venv, no interpreter, no bootstrap step. `make build` is enough to
 # get a working binary, and every other target works off the toolchain already
 # needed to compile it.
-BIN     := bin/sshmgr
+BIN     := build/sshmgr
 PKG     := ./cmd/sshmgr
 # --match 'v[0-9]*' so no non-release tag can become the version. 'v*' was not
 # enough: it excludes python-final but admits anything else beginning with v,
@@ -17,8 +17,8 @@ LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/internal/version.Version=$(VE
 help:  ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | sort
 
-build: ## compile the binary into bin/
-	@mkdir -p bin
+build: ## compile the binary into build/
+	@mkdir -p build
 	go build -trimpath -ldflags '$(LDFLAGS)' -o $(BIN) $(PKG)
 
 build-all: ## compile every package (what CI gated on before `ci` existed)
@@ -68,14 +68,18 @@ e2e: ## end-to-end smoke in a throwaway sandbox
 feature-check: ## exercise every command with assertions
 	go test -count=1 -run 'TestCommandSurface|TestVerbs' ./internal/cli/
 
-cross: ## build every release target into dist/ (needs goreleaser)
+cross: ## build every release target into build/dist/ (needs goreleaser)
 	goreleaser build --clean --snapshot
 
-dist: ## full release artifacts into dist/ (needs goreleaser)
+dist: ## full release artifacts into build/dist/ (needs goreleaser)
 	goreleaser release --clean --snapshot
 
-clean: ## remove build output
-	rm -rf bin dist
+# Everything generated lives under build/, so this is the whole of it. It used
+# to remove `bin dist`, and GoReleaser has written to build/dist since the
+# single-folder layout was adopted - so `make clean` left every release artifact
+# behind while reporting success.
+clean: ## remove build output (keeps build/targets.txt, which is tracked)
+	rm -rf $(BIN) build/dist
 
 # --- running the tool against your own config -------------------------------
 # These build first and run the binary you just built, never an installed one,

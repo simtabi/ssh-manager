@@ -33,7 +33,6 @@ venv/
 .ruff_cache/
 .coverage
 htmlcov/
-dist/
 *.pyc
 
 # os / editor / tooling
@@ -60,10 +59,10 @@ cleaned/
 *.test
 /vendor/
 
-# Go release build outputs (build/targets.txt is tracked; build/dist/ is generated
-# by GoReleaser and scripts/build-all.sh).
-/build/dist/
-
-
-# Local build output (make build)
-bin/
+# Everything build-related lives under build/, per the note at the top of
+# .goreleaser.yaml. Only targets.txt is tracked; the rest is generated:
+#   build/targets.txt  the release matrix (TRACKED)
+#   build/sshmgr       `make build` output
+#   build/dist/        GoReleaser and scripts/build-all.sh artifacts
+/build/*
+!/build/targets.txt

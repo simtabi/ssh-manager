@@ -38,6 +38,12 @@ internal/
 config/             # the shipped example manifest/inventory, the providers
                     #   catalog, and the JSON schemas. providers.json here is
                     #   byte-identical to the copy embedded in the binary.
+build/              # everything build-related, and the only place anything is
+                    #   generated. targets.txt (the release matrix) is the one
+                    #   tracked file; build/sshmgr is `make build` output and
+                    #   build/dist/ is GoReleaser's. `make clean` empties it.
+scripts/            # install.sh, install.ps1, build-all.sh, extract-changelog.sh
+                    #   - the four artifacts that must stay shell
 ```
 
 One third-party dependency: `github.com/spf13/cobra`. That is asserted, not
