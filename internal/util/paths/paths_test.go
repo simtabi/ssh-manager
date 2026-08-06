@@ -3,7 +3,9 @@ package paths
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"runtime"
+	"strings"
 	"testing"
 )
 
@@ -202,4 +204,88 @@ func TestResolveDefaultsSSHDirToTheHomeItWasGiven(t *testing.T) {
 	if want := filepath.Join(h, ".ssh"); p.SSHDir != want {
 		t.Errorf("SSHDir = %q, want %q", p.SSHDir, want)
 	}
+}
+
+// X1 - the public environment variables, as one table.
+//
+// These are the tool's configuration API: a user sets them in a shell profile or
+// a CI job, and a rename is a silent break for everyone who did. There are
+// seven, and the pair at the top are aliases for the same thing.
+func TestThePublicEnvironmentVariablesResolveAsDocumented(t *testing.T) {
+	abs := absPath("elsewhere")
+	cwd := absPath("cwd")
+
+	// SSH_MANAGER_HOME and its alias both override, and HOME wins over the alias
+	// when both are set - it is the documented primary.
+	if got := ConfigDir(env(map[string]string{"SSH_MANAGER_HOME": abs}), cwd); got != abs {
+		t.Errorf("SSH_MANAGER_HOME = %q, want %q", got, abs)
+	}
+	if got := ConfigDir(env(map[string]string{"SSH_MANAGER_CONFIG_DIR": abs}), cwd); got != abs {
+		t.Errorf("SSH_MANAGER_CONFIG_DIR = %q, want %q", got, abs)
+	}
+	other := absPath("second")
+	if got := ConfigDir(env(map[string]string{
+		"SSH_MANAGER_HOME": abs, "SSH_MANAGER_CONFIG_DIR": other,
+	}), cwd); got != abs {
+		t.Errorf("with both set the result was %q; SSH_MANAGER_HOME is the primary", got)
+	}
+}
+
+// The names themselves, asserted against the source that reads them. A variable
+// renamed in code and not here - or here and not in code - is a break for every
+// user who set it, and nothing else in the suite would notice.
+func TestTheEnvironmentVariableNamesAreTheDocumentedOnes(t *testing.T) {
+	documented := map[string]string{
+		"SSH_MANAGER_HOME":                 "the config home; absolutised against cwd if relative",
+		"SSH_MANAGER_CONFIG_DIR":           "alias for SSH_MANAGER_HOME",
+		"SSH_MANAGER_AUTO_PIN":             "0 disables auto-pinning reachable hosts on reconcile",
+		"SSH_MANAGER_AGE_RECIPIENT":        "default age recipient for bundle",
+		"SSH_MANAGER_AGE_IDENTITY_FILE":    "default age identity for restore",
+		"SSH_MANAGER_SNAPSHOT_RETAIN":      "how many ~/.ssh snapshots to keep",
+		"SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS": "when an archived predecessor is called stale",
+	}
+	found := readEnvNamesFromSource(t)
+	for name := range documented {
+		if !found[name] {
+			t.Errorf("%s is documented here but nothing in the source reads it", name)
+		}
+	}
+	for name := range found {
+		if _, ok := documented[name]; !ok {
+			t.Errorf("%s is read by the source but not documented here; "+
+				"it is part of the tool's configuration API either way", name)
+		}
+	}
+}
+
+// readEnvNamesFromSource collects every SSH_MANAGER_* literal in the non-test
+// tree, so the table above is checked against the code rather than against
+// itself.
+func readEnvNamesFromSource(t *testing.T) map[string]bool {
+	t.Helper()
+	root, err := filepath.Abs(filepath.Join("..", "..", ".."))
+	if err != nil {
+		t.Fatal(err)
+	}
+	re := regexp.MustCompile(`SSH_MANAGER_[A-Z_]+`)
+	found := map[string]bool{}
+	for _, dir := range []string{"internal", "cmd"} {
+		err := filepath.WalkDir(filepath.Join(root, dir), func(p string, e os.DirEntry, err error) error {
+			if err != nil || e.IsDir() || !strings.HasSuffix(p, ".go") || strings.HasSuffix(p, "_test.go") {
+				return err
+			}
+			b, rerr := os.ReadFile(p)
+			if rerr != nil {
+				return rerr
+			}
+			for _, m := range re.FindAllString(string(b), -1) {
+				found[m] = true
+			}
+			return nil
+		})
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	return found
 }
