@@ -31,6 +31,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The interactive menu opens with a banner.** It names the binary and build
+  (version, platform, commit, date), the config home and `~/.ssh` it will
+  operate on, what it found there (profiles, hosts, keys), and the state of the
+  tree: agent, config drift, `known_hosts` coverage, permissions, dangling keys
+  and rotations due. Both locations are environment-overridable, so without them
+  a session pointed at a sandbox and one pointed at a real tree were
+  indistinguishable. Rows marked `!` carry the command that fixes them, and the
+  banner is redrawn after any action that changes `~/.ssh`.
 - A project icon at `docs/assets/sshmgr.svg` — a single scalable mark for the
   docs site, the repository's social preview and a favicon.
 
@@ -51,6 +59,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The prompt appears only when standard input is a terminal — a script, cron job
   or CI step proceeds as before, because there is nobody to ask and declining on
   its own would be a silent no-op rather than a safeguard.
+- **The interactive menu is grouped by consequence.** Ten flat entries put
+  *Reconcile* one keystroke from *Expiry status* with nothing to say which of
+  them wrote to disk; they are now under *Inspect*, *Change `~/.ssh`* and
+  *Recover*. Each entry shows the CLI verb that does the same thing, and that
+  verb is an accepted answer — `5`, `reconcile` and the full label all work.
+  An unrecognised answer re-prompts instead of ending the session, and `q`
+  quits.
 - **A bare `sshmgr` opens the interactive menu** when standard input is a
   terminal, instead of printing help. With any argument it is a plain CLI, and
   without a terminal it still prints help — a menu reading from a pipe would

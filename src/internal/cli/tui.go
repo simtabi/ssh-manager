@@ -37,6 +37,11 @@ const (
 type prompter interface {
 	Select(message string, choices []string) (string, bool) // ok=false on cancel/EOF
 	Confirm(message string) bool
+	// Line reads one raw answer to a prompt the caller has already rendered.
+	// The root menu is grouped and annotated, so the TUI draws it and only the
+	// answer travels back through this seam; Select still renders the flat
+	// sub-menus, where a bare numbered list is the right shape.
+	Line(prompt string) (string, bool)
 }
 
 // stdinPrompter is a dependency-free numbered-menu prompter over stdin.
@@ -71,6 +76,15 @@ func (s *stdinPrompter) Select(message string, choices []string) (string, bool) 
 	return choices[n-1], true
 }
 
+func (s *stdinPrompter) Line(prompt string) (string, bool) {
+	_, _ = fmt.Fprint(s.out, prompt)
+	line, err := s.in.ReadString('\n')
+	if err != nil && line == "" {
+		return "", false // EOF: a closed input ends the session
+	}
+	return strings.TrimSpace(line), true
+}
+
 func (s *stdinPrompter) Confirm(message string) bool {
 	_, _ = fmt.Fprintf(s.out, "%s [y/N] ", message)
 	line, _ := s.in.ReadString('\n')
@@ -82,21 +96,113 @@ func (s *stdinPrompter) Confirm(message string) bool {
 	}
 }
 
+// Menu groups, in the order they are drawn. They are ordered by consequence
+// rather than by frequency: everything above "Change ~/.ssh" is safe to pick by
+// accident, and everything below it rewrites the tree. A flat list of ten
+// entries put "Reconcile" one keystroke away from "Expiry status" and gave no
+// indication which of the two would touch anything.
+const (
+	groupInspect = "Inspect"
+	groupChange  = "Change ~/.ssh"
+	groupRecover = "Recover"
+)
+
+var menuGroups = []string{groupInspect, groupChange, groupRecover}
+
 type menuItem struct {
-	label, handler string
+	group   string
+	label   string
+	verb    string // the CLI that does the same thing - and an accepted answer
+	handler string
+	mutates bool
 }
 
 var tuiMenu = []menuItem{
-	{"Browse profiles & hosts", "browse"},
-	{"Show rendered config", "show_config"},
-	{"Expiry status", "expiry"},
-	{"Audit (deployments + expiry)", "audit"},
-	{"Reconcile (apply manifest)", "reconcile"},
-	{"Pin host keys (known_hosts)", "knownhosts"},
-	{"Deploy a key", "deploy"},
-	{"Rotate a key", "rotate"},
-	{"Snapshots (list / restore)", "snapshots"},
-	{"Quit", "quit"},
+	{groupInspect, "Browse profiles & hosts", "list", "browse", false},
+	{groupInspect, "Show the rendered config", "config show", "show_config", false},
+	{groupInspect, "Expiry status", "expiry", "expiry", false},
+	{groupInspect, "Audit deployments & expiry", "audit", "audit", false},
+
+	{groupChange, "Reconcile - apply the manifest", "reconcile", "reconcile", true},
+	{groupChange, "Pin host keys into known_hosts", "knownhosts pin", "knownhosts", true},
+	{groupChange, "Deploy a key to its target", "deploy", "deploy", true},
+	{groupChange, "Rotate a key", "rotate", "rotate", true},
+
+	{groupRecover, "Snapshots - list and restore", "snapshots", "snapshots", true},
+}
+
+// menuWidth is the label column, sized to the longest label so the verb column
+// lines up. Computed rather than hard-coded: a hand-counted constant is wrong
+// the first time someone renames an entry, and silently so.
+func menuWidth() int {
+	w := 0
+	for _, m := range tuiMenu {
+		if len(m.label) > w {
+			w = len(m.label)
+		}
+	}
+	return w
+}
+
+// writeMenu draws the grouped menu.
+func (t *tui) writeMenu() {
+	width := menuWidth()
+	for _, group := range menuGroups {
+		header := "  " + group
+		if group == groupChange {
+			header += "   (each one asks before it writes)"
+		}
+		t.print(header)
+		for i, m := range tuiMenu {
+			if m.group != group {
+				continue
+			}
+			// %2d so 10+ entries stay aligned with single digits.
+			_, _ = fmt.Fprintf(t.out, "  %2d  %-*s  %s\n", i+1, width, m.label, m.verb)
+		}
+		t.print("")
+	}
+	// No padding on the last column here: %-*s would pad "Quit" out to the label
+	// width and leave trailing spaces on the line, which show up as soon as
+	// anyone pipes the screen into a file or a diff.
+	_, _ = fmt.Fprintf(t.out, "  %2s  %s\n\n", "q", "Quit")
+	t.print("  Type a number, or the command name beside it.")
+}
+
+// lookupMenu resolves an answer to an entry. A number or the verb both work -
+// the verb because it is already on screen in the right-hand column, and typing
+// what you see should not be a dead end.
+//
+// It reports found=false for anything else, and the caller re-prompts rather
+// than acting: an answer that is not a listed choice must never select one, and
+// a typo should not end the session.
+func lookupMenu(answer string) (menuItem, bool) {
+	a := strings.ToLower(strings.TrimSpace(answer))
+	if a == "" {
+		return menuItem{}, false
+	}
+	if n, err := strconv.Atoi(a); err == nil {
+		if n >= 1 && n <= len(tuiMenu) {
+			return tuiMenu[n-1], true
+		}
+		return menuItem{}, false
+	}
+	for _, m := range tuiMenu {
+		if a == m.verb || a == strings.ToLower(m.label) {
+			return m, true
+		}
+	}
+	return menuItem{}, false
+}
+
+// isQuit recognises the ways someone ends a session. "q" is the documented one;
+// the rest are what people type anyway.
+func isQuit(answer string) bool {
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "q", "quit", "exit":
+		return true
+	}
+	return false
 }
 
 // tui drives the interactive menu over the native services. No business logic
@@ -127,25 +233,31 @@ func runTUI(c *cobra.Command) error {
 
 func (t *tui) run() {
 	t.banner()
-	labels := make([]string, len(tuiMenu))
-	for i, m := range tuiMenu {
-		labels[i] = m.label
-	}
 	for {
-		choice, ok := t.pr.Select("ssh-manager", labels)
-		if !ok {
-			return
+		t.writeMenu()
+		answer, ok := t.pr.Line("> ")
+		if !ok || isQuit(answer) {
+			return // EOF, or asked to leave
 		}
-		handler := ""
-		for _, m := range tuiMenu {
-			if m.label == choice {
-				handler = m.handler
-			}
+		if strings.TrimSpace(answer) == "" {
+			continue // a bare Enter redraws the menu, and says nothing about it
 		}
-		if handler == "" || handler == "quit" {
-			return
+		item, found := lookupMenu(answer)
+		if !found {
+			// Re-prompt instead of acting or exiting. Selecting on an
+			// unrecognised answer would run whichever entry happened to be
+			// first; exiting on one turns a typo into a lost session.
+			t.print("  not a choice: " + answer + "   (a number, a command name, or q)\n")
+			continue
 		}
-		t.dispatch(handler)
+		t.dispatch(item.handler)
+		t.print("")
+		// A mutating action changes what the banner reports - drift, pin
+		// coverage, key counts - so redraw it. Seeing "drifted" become "in
+		// sync" is the confirmation that the action landed.
+		if item.mutates {
+			t.banner()
+		}
 	}
 }
 
@@ -406,13 +518,9 @@ func (t *tui) snapshots() {
 	t.print("restored from " + filepath.Base(chosen))
 }
 
-func (t *tui) banner() {
-	if m := t.manifest(); m != nil {
-		if text := notifier.New(t.p, m).Banner(time.Now()); text != "" {
-			t.print(text)
-		}
-	}
-}
+// banner draws the header: what this binary is, where it will operate, and the
+// state of that tree. See tuibanner.go.
+func (t *tui) banner() { writeBanner(t.out, t.p, t.manifest(), time.Now()) }
 
 func (t *tui) print(text string) { _, _ = fmt.Fprintln(t.out, text) }
 

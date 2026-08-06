@@ -323,7 +323,10 @@ func agentStatus() string {
 		if t := strings.TrimSpace(string(out)); t != "" {
 			n = len(strings.Split(t, "\n"))
 		}
-		return fmt.Sprintf("running, %d key(s) loaded", n)
+		if n == 1 {
+			return "running, 1 key loaded"
+		}
+		return fmt.Sprintf("running, %d keys loaded", n)
 	case 1:
 		return "running, no identities loaded"
 	default:

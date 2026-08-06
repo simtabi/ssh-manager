@@ -21,27 +21,69 @@ third-party dependency (`cobra`) and no presentation library, which is what make
 every command's output pipe-safe by default. See *Why is the TUI a plain menu?*
 in [Architecture](../architecture.md).
 
-It opens with the expiry banner, then the menu:
+## The banner
 
-| Entry | Equivalent verb |
-|---|---|
-| Browse profiles & hosts | `list`, then `view <alias>` |
-| Show rendered config | `config show` |
-| Expiry status | `expiry` |
-| Audit (deployments + expiry) | `audit` |
-| Reconcile (apply manifest) | `reconcile` — dry-run preview first, then asks |
-| Pin host keys (known_hosts) | `knownhosts pin` |
-| Deploy a key | `deploy <key>` |
-| Rotate a key | `rotate <key>` — confirms; destructive |
-| Snapshots (list / restore) | `snapshots list`, `snapshots restore` |
-| Quit | — |
+It opens with a header describing the session:
+
+```
+  sshmgr v3.0.1   darwin/arm64   built 2026-08-06 from d7ea28f
+
+  home      ~/.config/ssh-manager   (providers: shipped default)
+  ssh       ~/.ssh
+  manifest  5 profiles, 7 hosts, 7 keys
+  agent     running, 2 keys loaded
+! rendered  drifted from the manifest          sshmgr reconcile
+! pins      6 of 7 pinned                      sshmgr knownhosts pin
+! perms     1 path with the wrong mode         sshmgr doctor --fix
+```
+
+The two paths are the point of it. Both the config home and `~/.ssh` are
+environment-overridable, so without them a session pointed at a sandbox and one
+pointed at your real tree look identical — and every entry under *Change
+`~/.ssh`* rewrites whichever one it is.
+
+A row marked `!` is a problem, and carries the command that resolves it in the
+last column, so the report and the remedy are never in two different places. A
+first run has no manifest and says so, naming `sshmgr init`.
+
+The banner is redrawn after any action that changes `~/.ssh`, so watching
+`drifted` become `in sync` is the confirmation that the action landed.
+
+## The menu
+
+Entries are grouped by consequence, not by frequency — everything above *Change
+`~/.ssh`* is safe to pick by accident:
+
+```
+  Inspect
+   1  Browse profiles & hosts         list
+   2  Show the rendered config        config show
+   3  Expiry status                   expiry
+   4  Audit deployments & expiry      audit
+
+  Change ~/.ssh   (each one asks before it writes)
+   5  Reconcile - apply the manifest  reconcile
+   6  Pin host keys into known_hosts  knownhosts pin
+   7  Deploy a key to its target      deploy
+   8  Rotate a key                    rotate
+
+  Recover
+   9  Snapshots - list and restore    snapshots
+
+   q  Quit
+```
+
+The right-hand column is the CLI verb that does the same thing, and it is also
+an accepted answer — typing what is on screen is never a dead end. So `5`,
+`reconcile`, and the full label all select the same entry.
 
 ## Answering it
 
-Anything that is not a listed number cancels rather than selecting: an
-out-of-range number, a blank line, a stray keystroke, or a closed input. A menu
-that treated an accidental key as a choice would run whichever action happened to
-be first.
+A number, a command name, or `q`. Anything else re-prompts rather than selecting:
+an out-of-range number, a misspelled verb, a stray keystroke. A menu that treated
+an accidental key as a choice would run whichever action happened to be first,
+and one that exited on a typo would cost you the session for a slip. A bare Enter
+redraws the menu without comment; a closed input ends the session.
 
 Destructive actions — rotate, snapshot restore — confirm before proceeding, and
 `~/.ssh` is snapshotted before any mutation regardless, by the same guard every
