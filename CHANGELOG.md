@@ -13,7 +13,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   versions stale, from v3 sources, on the install path the README documents.
   Go already records the real version inside the binary; it is now read from
   there, along with the commit, build time and a `-dirty` marker for an
-  uncommitted tree.
+  uncommitted tree. Such a build also has no VCS stamp, so the commit and time
+  are recovered from the pseudo-version, which already ends in both — it no
+  longer calls itself a "dev build" while holding a published version.
 - **`go install` works again.** The module declared
   `github.com/simtabi/ssh-manager` while being tagged `v2.0.0` and `v3.0.0`, and
   Go requires a major-version suffix from v2 onward — so it rejected both tags

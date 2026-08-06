@@ -59,7 +59,11 @@ func buildLine() string {
 		parts = append(parts, "built "+shortDate(version.Date)+" from "+version.Commit)
 	case version.Commit != "":
 		parts = append(parts, "built from "+version.Commit)
-	default:
+	case version.IsDev():
+		// Only say "dev build" when the version really is a placeholder. This
+		// used to be the fallback for any build without a commit, which meant a
+		// `go install` binary - a real, identifiable, published version -
+		// introduced itself as a dev build.
 		parts = append(parts, "dev build")
 	}
 	return strings.Join(parts, "   ")

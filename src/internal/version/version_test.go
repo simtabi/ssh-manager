@@ -121,3 +121,65 @@ func TestMissingBuildInfoIsSurvivable(t *testing.T) {
 		t.Errorf("absent build info changed the vars: %s %s %s", Version, Commit, Date)
 	}
 }
+
+// A `go install module@version` build has no VCS stamp - it is built from the
+// proxy's zip, not a checkout - so the commit and time have to come out of the
+// pseudo-version, which already ends in both.
+func TestAPseudoVersionSuppliesCommitAndDate(t *testing.T) {
+	restore(t)
+	Version, Commit, Date = devDefault, "", ""
+
+	recoverFromBuildInfo(info("v3.0.0-20260806194517-4f11416c835a", nil))
+
+	if Commit != "4f11416" {
+		t.Errorf("Commit = %q, want the hash from the pseudo-version", Commit)
+	}
+	if Date != "2026-08-06T19:45:17Z" {
+		t.Errorf("Date = %q, want the timestamp as RFC 3339", Date)
+	}
+	if IsDev() {
+		t.Error("a published pseudo-version is not a dev build")
+	}
+}
+
+// All three pseudo-version shapes end the same way, and nothing else may be
+// mistaken for one - a release version has dashes in it too.
+func TestOnlyRealPseudoVersionsAreParsed(t *testing.T) {
+	for _, tc := range []struct {
+		in         string
+		wantOK     bool
+		date, hash string
+	}{
+		{"v3.0.0-20260806194517-4f11416c835a", true, "2026-08-06T19:45:17Z", "4f11416c835a"},
+		{"v3.0.1-0.20260806194517-4f11416c835a", true, "2026-08-06T19:45:17Z", "4f11416c835a"},
+		{"v3.0.1-rc.1.0.20260806194517-4f11416c835a", true, "2026-08-06T19:45:17Z", "4f11416c835a"},
+		{"v3.0.1", false, "", ""},
+		{"v3.0.1-rc.1", false, "", ""},
+		{"v3.0.0-12-g60ce5f9", false, "", ""},                 // git describe, not a pseudo-version
+		{"v3.0.0-2026080619451-4f11416c835a", false, "", ""},  // 13-digit stamp
+		{"v3.0.0-20260806194517-zzzzzzzzzzzz", false, "", ""}, // not hex
+	} {
+		date, hash, ok := splitPseudoVersion(tc.in)
+		if ok != tc.wantOK {
+			t.Errorf("%s: ok = %v, want %v", tc.in, ok, tc.wantOK)
+			continue
+		}
+		if ok && (date != tc.date || hash != tc.hash) {
+			t.Errorf("%s: got (%s, %s), want (%s, %s)", tc.in, date, hash, tc.date, tc.hash)
+		}
+	}
+}
+
+// IsDev must be true only when nothing supplied a version at all.
+func TestIsDevOnlyForAnUnstampedBuild(t *testing.T) {
+	restore(t)
+	for v, want := range map[string]bool{
+		"dev": true, "dev-dirty": true,
+		"v3.0.1": false, "v3.0.0-20260806194517-4f11416c835a": false, "v3.0.1-dirty": false,
+	} {
+		Version = v
+		if got := IsDev(); got != want {
+			t.Errorf("IsDev(%q) = %v, want %v", v, got, want)
+		}
+	}
+}

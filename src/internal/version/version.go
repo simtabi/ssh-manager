@@ -72,6 +72,22 @@ func recoverFromBuildInfo(read func() (*debug.BuildInfo, bool)) {
 			dirty = s.Value == "true"
 		}
 	}
+	// A `go install module@version` build has no VCS stamp at all - it is built
+	// from the proxy's zip, not a checkout - but the pseudo-version it carries
+	// already ends in the commit timestamp and hash. Reading them back is what
+	// keeps such a build from describing itself as a "dev build" while holding a
+	// perfectly good identifier.
+	if Commit == "" || Date == "" {
+		if d, c, ok := splitPseudoVersion(Version); ok {
+			if Date == "" {
+				Date = d
+			}
+			if Commit == "" {
+				Commit = shortHash(c)
+			}
+		}
+	}
+
 	// An uncommitted tree must never look like a clean build of the commit it
 	// sits on - that is the difference between a bug report you can reproduce
 	// and one you cannot.
@@ -85,4 +101,57 @@ func shortHash(h string) string {
 		return h[:7]
 	}
 	return h
+}
+
+// IsDev reports whether nothing ever supplied a version - neither a stamp nor
+// the module system. Callers use it to decide whether to say so out loud rather
+// than inferring it from an absent commit, which a `go install` build also has.
+func IsDev() bool { return Version == devDefault || strings.HasPrefix(Version, devDefault+"-") }
+
+// splitPseudoVersion pulls the commit time and hash out of a Go pseudo-version.
+//
+// All three shapes end the same way, in "-<14 digits>-<12 hex>":
+//
+//	v3.0.0-20260806194517-4f11416c835a       no base tag
+//	v3.0.1-0.20260806194517-4f11416c835a     base tag
+//	v3.0.1-rc.1.0.20260806194517-4f11416c835a
+//
+// so only the last two dash-separated fields matter, and both are checked by
+// shape - a version that merely contains dashes must not be mistaken for one.
+func splitPseudoVersion(v string) (date, commit string, ok bool) {
+	parts := strings.Split(strings.TrimSuffix(v, "+incompatible"), "-")
+	if len(parts) < 3 {
+		return "", "", false
+	}
+	stamp, hash := parts[len(parts)-2], parts[len(parts)-1]
+	// When the pseudo-version has a base tag, the timestamp field carries the
+	// pre-release chain in front of it - "0.20260806194517", or
+	// "rc.1.0.20260806194517". The stamp is what follows the final dot.
+	if i := strings.LastIndex(stamp, "."); i >= 0 {
+		stamp = stamp[i+1:]
+	}
+	if len(stamp) != 14 || !allDigits(stamp) || len(hash) != 12 || !allHex(hash) {
+		return "", "", false
+	}
+	// 20260806194517 -> 2026-08-06T19:45:17Z, the RFC 3339 the ldflags path uses.
+	return stamp[0:4] + "-" + stamp[4:6] + "-" + stamp[6:8] + "T" +
+		stamp[8:10] + ":" + stamp[10:12] + ":" + stamp[12:14] + "Z", hash, true
+}
+
+func allDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+func allHex(s string) bool {
+	for _, r := range s {
+		if (r < '0' || r > '9') && (r < 'a' || r > 'f') {
+			return false
+		}
+	}
+	return true
 }
