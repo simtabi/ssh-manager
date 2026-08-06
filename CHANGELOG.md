@@ -6,6 +6,21 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- `make clean` now removes the release artifacts. It ran `rm -rf bin dist`,
+  targeting a top-level `dist/` that GoReleaser stopped writing to when the
+  build moved under `build/` — so it deleted the development binary, reported
+  success, and left every packaged artifact in place.
+- `scripts/build-all.sh` no longer deletes `build/targets.txt`, which is tracked,
+  as a side effect of a release build.
+
+### Changed
+
+- Build output is consolidated under `build/`: `make build` writes
+  `build/sshmgr` instead of `bin/sshmgr`, and `build/dist/` holds the release
+  artifacts as before. There is no `bin/` any more.
+
 ## [3.0.0] - 2026-08-06
 
 The Python implementation is gone from the tree, the verification matrix is

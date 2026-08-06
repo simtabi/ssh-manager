@@ -74,10 +74,10 @@ Everything generated goes to `build/`, and nothing goes anywhere else:
 | `build/sshmgr` | `make build` output | no |
 | `build/dist/` | GoReleaser and `build-all.sh` artifacts | no |
 
-`make clean` empties it, keeping `targets.txt`. There was a `bin/` as well until
-3.0.1 — two directories for one idea, and `make clean` removed a top-level
-`dist/` that GoReleaser had stopped writing to, so it left every release artifact
-in place while reporting success.
+`make clean` empties it, keeping `targets.txt`. There was a `bin/` alongside it
+until this layout was settled — two directories for one idea — and `make clean`
+removed a top-level `dist/` that GoReleaser had stopped writing to, so it left
+every release artifact in place while reporting success.
 
 ## Where things live
 
