@@ -1,6 +1,10 @@
 // Package cli is the cobra command surface for ssh-manager. The command name
-// stays "sshmgr" (the v1 console script); the verb set mirrors v1's cli.py and is
-// now entirely native Go - there is no longer a Python engine behind any verb.
+// stays "sshmgr", the one v1 installed as its console script, because a rename
+// would have broken every script and ssh config that invokes it.
+//
+// The verb set is pinned against the implementation it replaced by
+// TestTheCommandSurfaceMatchesThePythonItReplaced, which is what makes "no verb
+// was lost" a checked claim rather than a recollection.
 package cli
 
 import (

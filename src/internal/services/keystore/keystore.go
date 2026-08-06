@@ -1,5 +1,5 @@
 // Package keystore generates and fingerprints SSH keys by shelling out to
-// ssh-keygen, ported from services/keystore.py. Generation is non-destructive by
+// ssh-keygen. Generation is non-destructive by
 // default (an existing private key is never clobbered) and perms are set on create.
 package keystore
 

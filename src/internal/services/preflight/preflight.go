@@ -1,6 +1,6 @@
-// Package preflight detects the OS and verifies the SSH tooling doctor needs,
-// ported from services/preflight.py. The Python version also gates on a minimum
-// CPython; the Go binary is self-contained, so that check becomes a runtime note
+// Package preflight detects the OS and verifies the SSH tooling doctor needs.
+// The implementation this replaced also gated on a minimum CPython; the Go binary
+// is self-contained, so that check becomes a runtime note
 // and the actionable part - the hard/optional binary scan - is unchanged.
 package preflight
 

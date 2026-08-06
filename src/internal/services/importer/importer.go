@@ -1,5 +1,5 @@
-// Package importer onboards an existing ~/.ssh into the manifest + inventory,
-// ported from services/importer.py. It parses an ssh config (following relative
+// Package importer onboards an existing ~/.ssh into the manifest + inventory.
+// It parses an ssh config (following relative
 // Include directives) into profiles + hosts, fingerprints any private keys it can
 // find into the inventory, and adopts non-canonical keys into the profiles/ layout.
 // Profile assignment derives from an IdentityFile under profiles/<profile>/, else

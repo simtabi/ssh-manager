@@ -6,6 +6,25 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Removed
+
+- **The last Python in the repository.** `pre-commit` is itself a Python program
+  and needed a `setup-python` step and a CI job of its own to run four rules
+  about whitespace. Its checks are kept, not dropped: `gitleaks` already ran as a
+  separate job over the full history (which the hook could not do), `gofmt` and
+  `go vet` are already in `make ci`, and the file-hygiene rules — trailing
+  whitespace, final newline, LF endings, merge markers, oversized files, JSON
+  validity — are now Go tests, so they run in `make check` too rather than only
+  for people who had installed pre-commit. The Python entries in `.gitignore`,
+  `.editorconfig` and `dependabot.yml` went with it.
+
+### Changed
+
+- Comments that pointed at Python files (`ported from services/rotator.py`) are
+  gone: they named paths that exist nowhere. The citations that remain name the
+  `python-final` tag, so `git show` resolves them — they are what makes the
+  parity tests evidence rather than assertion, and CONTRIBUTING now says so.
+
 ## [3.1.1] - 2026-08-06
 
 ### Security

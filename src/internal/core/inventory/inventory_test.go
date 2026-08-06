@@ -10,7 +10,7 @@ import (
 )
 
 // TestRecordSerializationMatchesPydantic locks in the byte-for-byte serialization
-// parity with pydantic's model_dump(mode="json"): unset pointer fields emit null
+// parity with the serializer v1 and v2 used: unset pointer fields emit null
 // (not omitted), and an empty deployments list emits [] (not null/omitted).
 func TestRecordSerializationMatchesPydantic(t *testing.T) {
 	b, err := json.Marshal(KeyRecord{Profile: "p", Path: "~/.ssh/profiles/p/k", Type: "ed25519", RotateAfterDays: 365})
@@ -25,7 +25,7 @@ func TestRecordSerializationMatchesPydantic(t *testing.T) {
 			t.Errorf("record JSON missing %s\n got: %s", want, got)
 		}
 	}
-	// Field order matches the pydantic model declaration order.
+	// Field order matches the model declaration order those versions used.
 	wantOrder := []string{"profile", "path", "type", "comment", "created", "rotate_after_days", "expires_on", "deployments"}
 	last := -1
 	for _, f := range wantOrder {

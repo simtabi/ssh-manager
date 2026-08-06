@@ -1,5 +1,5 @@
 // Package httpjson is a minimal JSON-over-HTTP client for the REST provider
-// adapters, ported from util/http.py. Dependency-free (net/http), with bearer/
+// adapters. Dependency-free (net/http), with bearer/
 // custom-header auth, retry-with-backoff on 429/5xx for idempotent methods, and a
 // safe redirect policy (refuse https->http; drop credential headers cross-origin).
 package httpjson

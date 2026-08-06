@@ -1,4 +1,4 @@
-// Package secrets resolves provider tokens, ported from util/secrets.py. A token
+// Package secrets resolves provider tokens. A token
 // value of cmd:<command> runs the command at use-time and uses its trimmed stdout
 // as the secret (so it integrates with any secret manager); anything else is
 // returned as-is. Results are memoized per process.

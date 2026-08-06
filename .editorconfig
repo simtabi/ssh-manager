@@ -7,11 +7,14 @@ insert_final_newline = true
 trim_trailing_whitespace = true
 indent_style = space
 
-[*.py]
-indent_size = 4
-
 [*.{js,ts,json,yml,yaml}]
 indent_size = 2
+
+# gofmt writes tabs; without this an editor indents Go with spaces and gofmt
+# undoes it on every save. The rule was implicit while a [*.py] section was the
+# only per-language override here.
+[*.go]
+indent_style = tab
 
 [Makefile]
 indent_style = tab

@@ -18,8 +18,8 @@ security-load-bearing - please flag any regression in these:
   (the OS-standard config dir, e.g. `~/.config/ssh-manager`) holds `.env`,
   `age-identity.txt`, `*.age` bundles, `log/audit.log`, and `snapshots/`. Both live
   outside any repository; in the project checkout the equivalent paths are also
-  gitignored, and a `gitleaks` / `detect-private-key` pre-commit hook (plus a
-  gitleaks CI job) is the safety net.
+  gitignored, and a `gitleaks` CI job scanning the full history is the safety
+  net.
 - **Key passphrases.** When you generate passphrase-protected keys, the
   passphrase is passed to `ssh-keygen` on its command line (it has no stdin
   channel for generation), so it is briefly visible to other local users via

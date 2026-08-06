@@ -1,5 +1,5 @@
-// Package rotator does zero-downtime, staged, single-old-archive key rotation,
-// ported from services/rotator.py. rotate stages a replacement, deploys it to
+// Package rotator does zero-downtime, staged, single-old-archive key rotation.
+// rotate stages a replacement, deploys it to
 // every target (the current key stays active), verifies, and only then commits
 // (archive current under /old/, promote staged, revoke old). On any pre-commit
 // failure the staged key is discarded and the active key is untouched. rollback is

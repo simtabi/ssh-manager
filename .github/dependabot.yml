@@ -25,19 +25,3 @@ updates:
     groups:
       actions:
         patterns: ["*"]
-
-  # Keeps .pre-commit-config.yaml hook revisions current (gitleaks and
-  # pre-commit-hooks; the ruff hook went with the Python). Dependabot gained
-  # pre-commit support on 2026-03-10.
-  - package-ecosystem: "pre-commit"
-    directory: "/"
-    schedule:
-      interval: "weekly"
-      day: "monday"
-      time: "06:00"
-      timezone: "America/New_York"
-    open-pull-requests-limit: 5
-    labels: ["dependencies", "pre-commit"]
-    groups:
-      pre-commit:
-        patterns: ["*"]

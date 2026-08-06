@@ -44,7 +44,7 @@ func (d *Deployment) UnmarshalJSON(b []byte) error {
 
 // KeyRecord is one managed key and where it is deployed. All fields serialize
 // unconditionally (null for an unset pointer, [] for no deployments) to match
-// pydantic's model_dump(mode="json") byte-for-byte.
+// the serializer v1 and v2 used, byte-for-byte.
 type KeyRecord struct {
 	Profile         string       `json:"profile"`
 	Path            string       `json:"path"`
@@ -66,7 +66,7 @@ func (r *KeyRecord) UnmarshalJSON(b []byte) error {
 	return nil
 }
 
-// MarshalJSON emits a nil Deployments slice as [] (not null), matching pydantic's
+// MarshalJSON emits a nil Deployments slice as [] (not null), matching the
 // default_factory=list. The pointer fields already emit null when unset.
 func (r KeyRecord) MarshalJSON() ([]byte, error) {
 	type alias KeyRecord

@@ -1,5 +1,5 @@
 // Package reconciler rebuilds the ~/.ssh tree from the manifest. Idempotent and
-// non-destructive (ported from services/reconciler.py): it mints only missing keys
+// non-destructive: it mints only missing keys
 // - flagged needs-redeploy, never pretending a regenerated key is the lost
 // original - re-renders config through the one renderer, fixes perms, and reports
 // ssh -G validation. The snapshot/temp-residue sweep is the Facade's mutation

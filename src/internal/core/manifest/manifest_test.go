@@ -360,7 +360,7 @@ func TestSharedAndPerServiceResolution(t *testing.T) {
 }
 
 // TestSerializationEmitsAllFieldsInFileOrder locks the byte-parity contract with
-// pydantic model_dump: unset pointers -> null, no tags -> [], raw_options -> {},
+// The v1/v2 file format: unset pointers -> null, no tags -> [], raw_options -> {},
 // and profiles in manifest (file) order, not sorted.
 func TestSerializationEmitsAllFieldsInFileOrder(t *testing.T) {
 	// "work" before "alpha" - a Go map would sort these the other way.
@@ -510,7 +510,7 @@ func TestDangerousOptionsRejectedInGlobalOptionsToo(t *testing.T) {
 	}
 }
 
-// Option values are stringified the way pydantic did, because they are written
+// Option values are stringified the way v1 and v2 did, because they are written
 // into the config verbatim. python-final:...::_stringify_raw.
 func TestOptionValuesAreStringifiedLikePydantic(t *testing.T) {
 	m, err := loadJSON(t, `{"defaults":{"global_options":{

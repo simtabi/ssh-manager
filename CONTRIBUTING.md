@@ -127,7 +127,28 @@ mistake, and `.gitignore` refuses to track one.
   updating the renderer goldens in the same commit.
 - **Idempotency tests** for every converging command (run twice → no diff, no
   clobbered keys). **Security tests** for perms and secret exclusion.
-- Pre-commit (`gitleaks` + `detect-private-key`) must pass - never commit a secret.
+- `gitleaks` runs in CI over the full history — never commit a secret. A finding
+  on a published commit cannot be fixed by editing the working tree; retire it by
+  fingerprint in `.gitleaksignore`, with a note saying what the string is and why
+  it is not a secret.
+
+## Why some tests cite `python-final`
+
+This was a Python program until v3. No Python remains in the tree, but a number
+of tests cite `python-final:src/ssh_manager/...` — a tag, so `git show` resolves
+every one of them.
+
+Those citations are evidence, not nostalgia. `TestTheCommandSurfaceMatchesThePythonItReplaced`
+compares the whole cobra tree against the verb and flag list it replaced, in both
+directions, which is what makes "no command was lost in the rewrite" a checked
+claim rather than a recollection; the parity tests name the file each case was
+derived from so a reader can confirm the behaviour was ported rather than
+invented. Deleting the citations would leave the assertions without a source.
+
+A bare `foo.py` reference is different — it points at a path that exists nowhere
+and should be removed or rewritten. If a comment names Python, it should either
+cite the tag or explain a decision (why a type has a method ceiling, why the JSON
+has the shape it does).
 
 ## Commits & PRs
 

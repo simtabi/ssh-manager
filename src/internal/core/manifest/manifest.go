@@ -170,7 +170,7 @@ func (h *Host) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON emits every field in declaration order (null for unset pointers, []
-// for no tags), matching pydantic model_dump(mode="json"). raw_options serializes
+// for no tags), matching the files v1 and v2 wrote. raw_options serializes
 // {} when empty via OrderedOptions.
 func (h Host) MarshalJSON() ([]byte, error) {
 	type wire struct {
@@ -246,8 +246,8 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON emits key_scope, key_name (null when unset), and hosts ([] when
-// none) in declaration order, matching pydantic. keys is the one field emitted
-// only when non-empty: it is a v2 addition with no pydantic counterpart, and
+// none) in declaration order, matching those files. keys is the one field
+// emitted only when non-empty: it is a v2 addition with no counterpart there, and
 // omitting it keeps a manifest that declares no keys - i.e. every manifest
 // written before this field existed - byte-identical across a load/save cycle.
 func (p Profile) MarshalJSON() ([]byte, error) {
@@ -372,7 +372,7 @@ func (m *Manifest) UnmarshalJSON(b []byte) error {
 
 // MarshalJSON emits {version, defaults, profiles} with profiles in manifest (file)
 // order - a Go map would otherwise marshal its keys sorted. Compact output;
-// Save re-indents it to match pydantic's json.dump(indent=2).
+// Save re-indents it to two spaces, the indentation those files used.
 func (m Manifest) MarshalJSON() ([]byte, error) {
 	var b bytes.Buffer
 	b.WriteString(`{"version":`)
@@ -466,14 +466,15 @@ func (m *Manifest) DeleteProfile(name string) {
 // Validate re-runs the manifest validators (so a bad edit can't be persisted).
 func (m *Manifest) Validate() error { return m.validate() }
 
-// decodeStrict decodes with DisallowUnknownFields (pydantic extra="forbid").
+// decodeStrict decodes with DisallowUnknownFields: an unknown key is a typo or
+// a newer file, and silently dropping it loses configuration the user wrote.
 func decodeStrict(b []byte, v any) error {
 	dec := json.NewDecoder(bytes.NewReader(b))
 	dec.DisallowUnknownFields()
 	return dec.Decode(v)
 }
 
-// --- validation (mirrors the pydantic validators) --------------------------
+// --- validation --------------------------------------------------------------
 
 func rejectControl(field, value string) error {
 	if controlChars.MatchString(value) {

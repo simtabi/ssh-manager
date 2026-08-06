@@ -206,7 +206,7 @@ func isQuit(answer string) bool {
 }
 
 // tui drives the interactive menu over the native services. No business logic
-// lives here - every action calls a service (mirrors tui.py).
+// lives here - every action calls a service.
 type tui struct {
 	p   paths.Paths
 	pr  prompter

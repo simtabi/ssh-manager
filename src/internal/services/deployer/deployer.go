@@ -1,5 +1,5 @@
 // Package deployer installs a key's public half on its target(s) and records the
-// deployment, ported from services/deployer.py. A key name maps to the host(s)
+// deployment. A key name maps to the host(s)
 // that reference it (one per_service, many shared); each host's provider does the
 // install (named adapter -> generic ssh -> manual) and the result is recorded in
 // the inventory keyed by fingerprint.
@@ -162,7 +162,7 @@ func (d *Deployer) targets(selector, targetAlias string) ([]manifest.Host, manif
 	return chosen, ref, nil
 }
 
-// ensureRecord makes sure an inventory record exists for fp, with pydantic
+// ensureRecord makes sure an inventory record exists for fp, with the
 // defaults (type ed25519, rotate 365), and returns the fingerprint key.
 func (d *Deployer) ensureRecord(fp, profile, keyName string) string {
 	if _, ok := d.inv.Keys[fp]; !ok {

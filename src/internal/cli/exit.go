@@ -13,8 +13,8 @@ import (
 // The exit-code contract, and the one place it is applied.
 //
 // Parity with the Python implementation is a plain binary: 0 on success, 1 on
-// anything else. `_fail` mapped every SshManagerError to `typer.Exit(code=1)`,
-// a declined confirmation raised `typer.Exit(code=1)`, and `doctor` exited
+// anything else. The implementation this replaced mapped every error to exit 1,
+// a declined confirmation exited 1, and `doctor` exited
 // `0 if report.ok else 1` (python-final:src/ssh_manager/cli.py:59-62, :147,
 // :343-344). No other code was ever produced, so none is invented here.
 //
