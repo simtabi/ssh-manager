@@ -207,3 +207,7 @@ chokepoint - no shell, no injection. A failed/empty/timed-out command yields no
 token (the provider falls back to the manual paste path). Note: a literal token
 that itself begins with `cmd:` would be treated as a command - real OAuth/PAT
 tokens never do, but if needed, fetch such a value via `cmd:` instead.
+
+---
+
+[← Docs index](../README.md#documentation)

@@ -39,3 +39,7 @@ sshmgr audit --notify         # report + cadence-gated desktop alert (what the j
 sshmgr notify install         # set up the scheduled notifier
 sshmgr notify test            # confirm desktop notifications work
 ```
+
+---
+
+[← Docs index](../../README.md#documentation)

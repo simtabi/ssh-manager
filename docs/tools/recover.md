@@ -38,3 +38,7 @@ Every change is backed up first and written atomically.
 
 Related: the `generic-ssh` provider applies the same backup/atomic/lockout-guard
 rules when ssh-manager edits `authorized_keys` over SSH (see [vps.md](vps.md)).
+
+---
+
+[← Docs index](../../README.md#documentation)

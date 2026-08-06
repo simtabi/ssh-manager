@@ -48,3 +48,7 @@ sshmgr providers
 Use it to confirm which provider integrations are ready before a `deploy` or
 `rotate`. See [providers.md](providers.md) and [vps.md](vps.md) for how to add
 and configure providers.
+
+---
+
+[← Docs index](../../README.md#documentation)

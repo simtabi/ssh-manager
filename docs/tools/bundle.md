@@ -60,3 +60,7 @@ sshmgr bundle -o ~/Backups            # writes ~/Backups/ssh-manager-<stamp>.age
 # ... new machine ...
 sshmgr restore ~/Backups/ssh-manager-<stamp>.age -i age-identity.txt
 ```
+
+---
+
+[← Docs index](../../README.md#documentation)

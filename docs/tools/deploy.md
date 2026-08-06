@@ -48,3 +48,7 @@ sshmgr deploy personal_github-ed25519     # gh ssh-key add (or manual if no toke
 sshmgr deploy shareddemo_all-ed25519      # fans out to every host in the profile
 sshmgr audit                              # see what's deployed where
 ```
+
+---
+
+[← Docs index](../../README.md#documentation)

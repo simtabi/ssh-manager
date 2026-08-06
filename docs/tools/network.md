@@ -56,3 +56,7 @@ seconds with *"cannot rotate - ... requires a VPN (Campus VPN); connect it and r
 rather than wedging your terminal.
 
 See also [deploy](deploy.md), [rotate](rotate.md), [vps](vps.md).
+
+---
+
+[← Docs index](../../README.md#documentation)

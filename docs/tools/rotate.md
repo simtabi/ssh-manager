@@ -47,3 +47,7 @@ back to the canonical name, re-deploys it, and revokes the rotated-in key -
 available until the next rotation supersedes it.
 
 `doctor` asserts the ≤1-old invariant (counted per key name).
+
+---
+
+[← Docs index](../../README.md#documentation)

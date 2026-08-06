@@ -112,3 +112,7 @@ no code via `kind: rest`. Details in [tools/providers.md](tools/providers.md) an
   moment they appear.
 - **Snapshot before mutate** - every mutating command backs up `~/.ssh` first.
 - The `.env` is gitignored, 0600, and excluded from the encrypted bundle.
+
+---
+
+[← Docs index](../README.md#documentation)

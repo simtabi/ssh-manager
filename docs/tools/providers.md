@@ -35,10 +35,10 @@ which source is active. Delete your file to track the shipped default again.
 
 | Provider name | kind | category | automated? | notes |
 |---|---|---|---|---|
-| `github` | github | vcs | ✅ `gh` | github.com |
-| `github-enterprise` | github | vcs | ✅ `gh` (`GH_HOST`) | set `host` + `GHE_TOKEN` |
-| `gitlab` | gitlab | vcs | ✅ `glab` | gitlab.com |
-| `gitlab-self-hosted` | gitlab | vcs | ✅ `glab` (`GITLAB_HOST`) | set `host` + `GLAB_TOKEN` |
+| `github` | github | vcs | `gh` | github.com |
+| `github-enterprise` | github | vcs | `gh` (`GH_HOST`) | set `host` + `GHE_TOKEN` |
+| `gitlab` | gitlab | vcs | `glab` | gitlab.com |
+| `gitlab-self-hosted` | gitlab | vcs | `glab` (`GITLAB_HOST`) | set `host` + `GLAB_TOKEN` |
 | `bitbucket` | bitbucket | vcs | web-panel | bitbucket.org |
 | `bitbucket-server` | bitbucket-server | vcs | web-panel | Data Center / Server |
 | `gitea` / `gitea-self-hosted` | gitea | vcs | web-panel | |
@@ -48,14 +48,14 @@ which source is active. Delete your file to track the shipped default again.
 | `sourcehut` | sourcehut | vcs | web-panel | meta.sr.ht |
 | `azure-devops` | azure-devops | vcs | web-panel | |
 | `aws-codecommit` | aws-codecommit | vcs | web-panel | IAM SSH key |
-| `digitalocean` | digitalocean | **vps** | ✅ REST API | `DIGITALOCEAN_TOKEN` (account keys) |
-| `vultr` | vultr | **vps** | ✅ REST API | `VULTR_API_KEY` |
-| `hetzner` | hetzner | **vps** | ✅ REST API | `HCLOUD_TOKEN` |
-| `linode` | linode | **vps** | ✅ REST API | `LINODE_TOKEN` |
-| `scaleway` | scaleway | **vps** | ✅ REST API | `SCW_SECRET_KEY` + `SCW_PROJECT_ID` |
-| _your own_ | **rest** | **vps** | ✅ REST API | config-driven - define any REST provider in `providers.json` |
+| `digitalocean` | digitalocean | **vps** | REST API | `DIGITALOCEAN_TOKEN` (account keys) |
+| `vultr` | vultr | **vps** | REST API | `VULTR_API_KEY` |
+| `hetzner` | hetzner | **vps** | REST API | `HCLOUD_TOKEN` |
+| `linode` | linode | **vps** | REST API | `LINODE_TOKEN` |
+| `scaleway` | scaleway | **vps** | REST API | `SCW_SECRET_KEY` + `SCW_PROJECT_ID` |
+| _your own_ | **rest** | **vps** | REST API | config-driven - define any REST provider in `providers.json` |
 | `ploi` / `forge` / `cpanel` | web-panel | panel | web-panel | hosting panels |
-| `generic-ssh` | ssh | server | ✅ `ssh-copy-id` | any reachable server |
+| `generic-ssh` | ssh | server | `ssh-copy-id` | any reachable server |
 | `manual` | web-panel | generic | manual | anything else |
 
 The **vps** adapters manage *account* keys (the ones in your provider dashboard,
@@ -115,3 +115,7 @@ If the API paginates, set `next_field` to the dotted path of the next-page URL i
 the response (e.g. `"next_field": "links.next"`); ssh-manager then follows it. Without
 `next_field` the list is assumed to be a single page - set a large page size in
 `list_path` if your API needs one, or the listing may be truncated.
+
+---
+
+[← Docs index](../../README.md#documentation)

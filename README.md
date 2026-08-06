@@ -37,6 +37,7 @@ per-user state lives, is in [docs/installation.md](docs/installation.md).
 ### Reference
 
 - [Feature catalog](docs/features.md) — every command, what it does, and how it is tested.
+- [`doctor`](docs/tools/doctor.md) — what it checks, `--fix`, `--json`, `--strict`.
 - [`deploy`](docs/tools/deploy.md) — installing a public key on its target.
 - [`providers`](docs/tools/providers.md) — the adapter catalog and how to extend it.
 - [VPS keys](docs/tools/vps.md) — cloud account keys and server keys.
@@ -48,6 +49,15 @@ per-user state lives, is in [docs/installation.md](docs/installation.md).
 - [`bundle`](docs/tools/bundle.md) — encrypted backup and restore.
 - [`recover`](docs/tools/recover.md) — break-glass when you are locked out.
 - [`tui`](docs/tools/tui.md) — the interactive menu.
+
+### Recipes
+
+- [Two GitHub accounts on one machine](docs/recipes/two-github-accounts.md) — one hostname, two identities, neither able to act as the other.
+- [Onboard an existing `~/.ssh`](docs/recipes/onboard-an-existing-ssh-dir.md) — bring a hand-built setup under management without regenerating anything.
+- [Rotate a key with no downtime](docs/recipes/rotate-a-key.md) — stage, verify, commit; and how to step back.
+- [Back up, and restore onto a new machine](docs/recipes/back-up-and-restore.md) — the only path that recovers the same keys.
+- [Recover from a locked-out server](docs/recipes/recover-from-lockout.md) — break-glass with no working SSH.
+- [Run it in CI](docs/recipes/run-in-ci.md) — non-interactive, sandboxed, failing loudly.
 
 ## Community
 
