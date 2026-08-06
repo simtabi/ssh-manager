@@ -124,7 +124,13 @@ sboms:
 homebrew_casks:
   - name: sshmgr
     ids: [archive]
-    skip_upload: '{{ if .Env.TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
+    # envOrDefault, not .Env.X: .Env only holds variables that are actually set,
+    # so referencing a missing one is a template error that fails the whole
+    # release. It survives in CI only because `env:` assigns the secret
+    # unconditionally, making it present-but-empty - which means `make dist` was
+    # broken for anyone whose shell had never exported it, and the release
+    # config depended on a property of the workflow rather than of itself.
+    skip_upload: '{{ if envOrDefault "TAP_GITHUB_TOKEN" "" }}false{{ else }}true{{ end }}'
     repository:
       owner: simtabi
       name: homebrew-tap
@@ -171,7 +177,7 @@ winget:
       owner: simtabi
       name: winget-pkgs
       branch: "sshmgr-{{ .Version }}"
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"\" }}"
       pull_request:
         enabled: true
         draft: false
