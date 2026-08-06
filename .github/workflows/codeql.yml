@@ -43,6 +43,13 @@ jobs:
         if: matrix.language == 'go'
         with:
           go-version-file: src/go.mod
+          # No build cache here, deliberately. CodeQL learns what the code is by
+          # observing the compiler run; a restored cache makes `go build` a no-op
+          # and it observes nothing, which is what "detected code written in Go
+          # but this run didn't build any of it" means. The scan then fails - or,
+          # worse on a different day, reports a clean result for a codebase it
+          # never read.
+          cache: false
       - uses: github/codeql-action/init@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
         with:
           languages: ${{ matrix.language }}
@@ -51,7 +58,9 @@ jobs:
           # finds nothing to compile still reports success - which would show up
           # as a clean security scan of an empty codebase.
           build-mode: ${{ matrix.language == 'go' && 'manual' || 'none' }}
+      # -a so every package is compiled even if something did populate a cache.
+      # The build is the input to the scan, so it has to actually happen.
       - name: Build for analysis
         if: matrix.language == 'go'
-        run: make build-all
+        run: go -C src build -a ./...
       - uses: github/codeql-action/analyze@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
