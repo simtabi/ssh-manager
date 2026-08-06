@@ -278,6 +278,7 @@ func extractTarGz(tarball, destParent string) error {
 	// Read all members first (fail early if corrupt) before destroying the target.
 	type member struct {
 		hdr  *tar.Header
+		name string // validated, slash-separated, relative
 		data []byte
 	}
 	var members []member
@@ -289,6 +290,14 @@ func extractTarGz(tarball, destParent string) error {
 		if err != nil {
 			return err
 		}
+		// Validate the name before it is joined to anything. Checking where the
+		// path landed afterwards is equivalent when written correctly, but this
+		// bounds the untrusted value at its source, which is both easier to read
+		// and what a static analyser can follow.
+		name := path.Clean(filepath.ToSlash(hdr.Name))
+		if path.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") {
+			return fmt.Errorf("refusing path traversal in archive: %s", hdr.Name)
+		}
 		var data []byte
 		if hdr.Typeflag == tar.TypeReg {
 			data, err = io.ReadAll(tr)
@@ -296,13 +305,15 @@ func extractTarGz(tarball, destParent string) error {
 				return err
 			}
 		}
-		members = append(members, member{hdr, data})
+		members = append(members, member{hdr, name, data})
 	}
 	if err := os.MkdirAll(destParent, 0o700); err != nil {
 		return err
 	}
 	for _, m := range members {
-		dest := filepath.Join(destParent, filepath.FromSlash(m.hdr.Name))
+		dest := filepath.Join(destParent, filepath.FromSlash(m.name))
+		// Belt and braces: the name was validated above, and this confirms the
+		// path it produced actually landed inside the destination.
 		if !fs.Within(destParent, dest) {
 			return fmt.Errorf("refusing path traversal in archive: %s", m.hdr.Name)
 		}
