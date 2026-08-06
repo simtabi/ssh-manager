@@ -15,36 +15,57 @@ flowchart TD
 There is no facade. `internal/cli` is where composition happens, and it is a
 leaf: nothing under `internal/` imports it. `internal/core` is the domain and
 depends on nothing above it. Both directions are asserted by
-`cmd/sshmgr/layering_test.go`, along with a ceiling on methods-per-type - the
+`src/cmd/sshmgr/layering_test.go`, along with a ceiling on methods-per-type - the
 Python facade carried 54 and every verb hung off it.
 
+The repository has two roots. Everything the Go toolchain reads lives under
+`src/`, which is the module; everything the repository presents - README,
+LICENSE, CHANGELOG, `docs/`, `.github/` - stays at the top. Build output is a
+property of the repository rather than of the module, so there is one `build/`
+at the root and not one per module.
+
 ```
-cmd/sshmgr/         # thin entrypoint; calls internal/cli and nothing else
-internal/
-  cli/              # the cobra tree, one file per verb. The ONLY package that
+src/                # THE GO MODULE. go.mod is here, so every `go` command runs
+                    #   here - the Makefile uses `go -C src` for exactly this.
+  cmd/sshmgr/       # thin entrypoint; calls internal/cli and nothing else
+  internal/
+    cli/            # the cobra tree, one file per verb. The ONLY package that
                     #   imports cobra, and the only place services are composed.
                     #   exit.go owns the exit-code contract; mutate.go the guard.
-  core/             # pure domain: manifest, renderer, inventory, key, expiry,
+    core/           # pure domain: manifest, renderer, inventory, key, expiry,
                     #   authkeys, providers (adapters + the embedded catalog)
-  services/         # use-cases, one concern each: reconciler, configsvc, importer,
+    services/       # use-cases, one concern each: reconciler, configsvc, importer,
                     #   deployer, rotator, notifier, bundler, editor, knownhosts,
                     #   query, keystore, agent, preflight, doctor, snapshots,
                     #   validate, recover, initsvc, migratesvc, netstat, keyaudit,
                     #   keysvc, lifecycle
-  platform/         # build-tagged OS predicates and terminal handling
+    platform/       # build-tagged OS predicates and terminal handling
                     #   (*_darwin.go, *_linux.go, *_windows.go, *_other.go)
-  util/             # fs, perms, lock, log, paths, secrets, netcheck, scheduler,
+    util/           # fs, perms, lock, log, paths, secrets, netcheck, scheduler,
                     #   homeperms, askpass, httpjson, desktop
-config/             # the shipped example manifest/inventory, the providers
+  config/           # the shipped example manifest/inventory, the providers
                     #   catalog, and the JSON schemas. providers.json here is
                     #   byte-identical to the copy embedded in the binary.
+  scripts/          # install.sh, install.ps1, build-all.sh, extract-changelog.sh
+                    #   - the four artifacts that must stay shell
+  .goreleaser.yaml  # release config; runs from the repo root (see below)
+  .golangci.yml
 build/              # everything build-related, and the only place anything is
                     #   generated. targets.txt (the release matrix) is the one
                     #   tracked file; build/sshmgr is `make build` output and
                     #   build/dist/ is GoReleaser's. `make clean` empties it.
-scripts/            # install.sh, install.ps1, build-all.sh, extract-changelog.sh
-                    #   - the four artifacts that must stay shell
+docs/  README.md  CHANGELOG.md  LICENSE  Makefile  .github/
 ```
+
+Package paths below are written relative to the module, so `internal/cli` is
+`src/internal/cli` on disk; the Go import path is
+`github.com/simtabi/ssh-manager/src/v3/internal/cli`.
+
+Two paths deliberately cross that boundary, and both are commented where they
+occur. GoReleaser runs from the repo root with `builds[].dir: src`, because its
+archive globbing will not climb out of its own working directory to reach
+LICENSE and README. And `build-all.sh` runs from the module - `go build` needs
+that - while writing into the repo-root `build/`.
 
 One third-party dependency: `github.com/spf13/cobra`. That is asserted, not
 aspirational - there is nowhere for a presentation or HTTP library to hide.

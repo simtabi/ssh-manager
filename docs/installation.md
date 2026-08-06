@@ -33,7 +33,17 @@ irm https://opensource.simtabi.com/install/ssh-manager.ps1 | iex
 With the Go toolchain:
 
 ```sh
-go install github.com/simtabi/ssh-manager/cmd/sshmgr@latest
+go install github.com/simtabi/ssh-manager/src/v3/cmd/sshmgr@latest
+```
+
+Both segments after the repository name are load-bearing. `src` is the
+subdirectory the Go module lives in, and `v3` is the major version - Go requires
+that suffix from v2 onward. Dropping either gives a module path that does not
+exist, and the error names a version rather than a path, so it reads as a
+missing release:
+
+```
+go: ...found (v0.1.0), but does not contain package .../cmd/sshmgr
 ```
 
 Or download the binary for your platform from
@@ -91,7 +101,7 @@ lives.
 The **manifest** is always the source of truth and is read from your home
 (`init` seeds an empty one). For the **provider catalog**, your
 `<home>/providers.json` is used **if present**; otherwise the full default catalog
-**shipped with the package** (kept byte-identical to the repo's `config/providers.json`)
+**shipped with the package** (kept byte-identical to the repo's `src/config/providers.json`)
 is used - so providers work out of the box, and you only create your own file to
 customize them.
 

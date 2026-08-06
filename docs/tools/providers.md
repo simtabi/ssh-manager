@@ -30,7 +30,7 @@ sshmgr providers               # shows the active catalog + which credentials ar
 ```
 
 Resolution: `<home>/providers.json` if you created one, else the shipped default
-(kept byte-identical to the repo's `config/providers.json`). `sshmgr doctor` prints
+(kept byte-identical to the repo's `src/config/providers.json`). `sshmgr doctor` prints
 which source is active. Delete your file to track the shipped default again.
 
 | Provider name | kind | category | automated? | notes |

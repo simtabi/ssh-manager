@@ -138,7 +138,7 @@ instances, or their own tooling for project/account-level keys:
 
 A brand-new provider with a REST API can be added either with **no code**
 (`kind: rest`, see [providers.md](providers.md#add-a-rest-provider-with-no-code-kind-rest))
-or as a first-class adapter in `internal/core/providers/cloud.go`.
+or as a first-class adapter in `src/internal/core/providers/cloud.go`.
 
 ---
 
@@ -173,13 +173,13 @@ Every feature of the original standalone VPS key tool has a home in ssh-manager:
 
 | Original tool (`providers.py` / `serverkeys.py` / `vpskeys.py` / `fixkeys.sh`) | ssh-manager |
 |---|---|
-| `Provider` REST base (token, session, retry/backoff) | `internal/core/providers/cloud.go` + `internal/util/httpjson` (stdlib net/http + bounded retry) |
-| `DigitalOcean` / `Vultr` / `Hetzner` / `Linode` / `Scaleway` | same-named adapters in `internal/core/providers/cloud.go` |
+| `Provider` REST base (token, session, retry/backoff) | `src/internal/core/providers/cloud.go` + `src/internal/util/httpjson` (stdlib net/http + bounded retry) |
+| `DigitalOcean` / `Vultr` / `Hetzner` / `Linode` / `Scaleway` | same-named adapters in `src/internal/core/providers/cloud.go` |
 | `list_keys` | `verify` / `list_deployed` |
 | `add_key` | `deploy` (idempotent; renames a stale ssh-manager title) |
 | `rename_key` | `rename` (+ auto on re-deploy) |
 | `delete_key` | `remove` (matched by key body) |
-| `GenericSpec` + `config.json` `extra_providers` (no-code provider) | `kind: "rest"` + `rest` block in `providers.json` (`internal/core/providers/cloud.go`, `GenericRest`) |
+| `GenericSpec` + `config.json` `extra_providers` (no-code provider) | `kind: "rest"` + `rest` block in `providers.json` (`src/internal/core/providers/cloud.go`, `GenericRest`) |
 | `available_providers` (which tokens are set) | `sshmgr providers` |
 | `KEY_TYPES`, `_split_key_line`, `_looks_like_base64`, `key_body`, `same_key`, `is_valid_public_key`, `count_keys`, `add/remove_key_from_text` | `internal/core/authkeys` (stricter: validates the base64 wire type, and bounds the length prefix in 64-bit arithmetic so a crafted line cannot wrap it) |
 | `Server` read/write `authorized_keys` (backup, atomic, lockout guard) | `internal/core/providers/ssh_generic.go` (`generic-ssh`) |

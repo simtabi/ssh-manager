@@ -3,7 +3,7 @@
 Everything lives in the **manifest** (`~/.config/ssh-manager/manifest.json`) - the single
 source of truth. You never hand-edit ssh-manager's part of `~/.ssh/config`; you edit the
 manifest (or use the `host`/`profile` verbs) and re-render. A JSON Schema for the
-manifest and inventory lives in `config/schema/` (and matches the Go models in `internal/core`,
+manifest and inventory lives in `src/config/schema/` (and matches the Go models in `src/internal/core`,
 which reject unknown keys). See [installation.md](installation.md) for how the home
 is resolved.
 

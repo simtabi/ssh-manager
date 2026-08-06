@@ -2,7 +2,24 @@
 
 Tag-driven. A `v*` tag builds a static binary per OS/arch and attaches them,
 with checksums, to a GitHub Release. Install the binary, or build from source
-with `go install github.com/simtabi/ssh-manager/cmd/sshmgr@latest`.
+with `go install github.com/simtabi/ssh-manager/src/v3/cmd/sshmgr@latest`.
+
+## Two tags per release
+
+Each release is tagged twice on the same commit, and they are not
+interchangeable:
+
+| Tag | Read by | Why |
+|---|---|---|
+| `vX.Y.Z` | GoReleaser, the installers, `git describe` | the release proper, and the only one a human writes |
+| `src/vX.Y.Z` | the Go module proxy, and nothing else | Go resolves a subdirectory module through a tag prefixed with that subdirectory, so `go install .../src/v3@vX.Y.Z` finds nothing without it |
+
+They cannot be collapsed into one. OSS GoReleaser rejects `src/vX.Y.Z` outright
+("current tag is not semver"), and `monorepo.tag_prefix`, which exists for this,
+is a Pro feature. So the release runs off `vX.Y.Z` and the workflow mirrors
+`src/vX.Y.Z` onto the same commit before publishing anything - you tag once.
+`src/...` does not match the workflow's own `v[0-9]*` trigger, so pushing the
+alias starts no second run.
 
 ## How a release is built
 
@@ -17,7 +34,7 @@ matching native one per OS. The binary version comes from the tag via ldflags
 1. Update `CHANGELOG.md` (move Unreleased into a dated, semver-tagged section).
 2. Tag and push: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
    A tag with a pre-release suffix (`-rc.1`, `-beta`) is published as a GitHub
-   pre-release.
+   pre-release. The workflow adds the second tag itself - see below.
 3. The `Release` workflow builds every target and publishes the per-OS/arch
    binaries and archives, the deb/rpm/apk packages, per-archive SBOMs,
    `checksums.txt`, and a signed build-provenance attestation. Verify any

@@ -64,28 +64,60 @@ These are enforced by tests, not by convention. Breaking one turns a test red.
   every external command is an argv slice, never a shell string. The tool's whole
   external-binary surface is pinned by a test.
 
+## Two roots
+
+The Go module is `src/`, not the repository root. `go.mod` is there, so every
+`go` command has to run there — the Makefile does this for you with `go -C src`,
+and `make` is the supported way to build. Running `go test ./...` from the
+repository root finds no packages and passes without testing anything.
+
+Everything the repository *presents* stays at the top: `README.md`, `LICENSE`,
+`CHANGELOG.md`, `docs/`, `.github/`, `Makefile`, and `build/`.
+
+| Where | What |
+|---|---|
+| `src/` | `go.mod`, `cmd/`, `internal/`, `config/`, `scripts/`, `.goreleaser.yaml`, `.golangci.yml` |
+| repo root | the README and friends, `docs/`, `.github/`, `Makefile`, `build/` |
+
+Import paths carry both segments: `github.com/simtabi/ssh-manager/src/v3/internal/cli`.
+The `v3` is Go's required major-version suffix, not a directory. Package names in
+this document are written relative to the module, so `internal/cli` means
+`src/internal/cli` on disk.
+
+Two things deliberately cross the boundary, and both say so where they occur:
+GoReleaser runs from the repository root with `builds[].dir: src`, because its
+archive globbing cannot climb out of its working directory to reach `LICENSE`;
+and `scripts/build-all.sh` runs in the module — `go build` needs that — while
+writing into the root `build/`.
+
 ## Build output
 
-Everything generated goes to `build/`, and nothing goes anywhere else:
+Everything generated goes to `build/` at the repository root — one directory,
+not one per module — and nothing goes anywhere else:
 
 | Path | What | Tracked |
 |---|---|---|
 | `build/targets.txt` | the release target matrix | yes |
 | `build/sshmgr` | `make build` output | no |
-| `build/dist/` | GoReleaser and `build-all.sh` artifacts | no |
+| `build/dist/` | GoReleaser and `src/scripts/build-all.sh` artifacts | no |
 
 `make clean` empties it, keeping `targets.txt`. There was a `bin/` alongside it
 until this layout was settled — two directories for one idea — and `make clean`
 removed a top-level `dist/` that GoReleaser had stopped writing to, so it left
-every release artifact in place while reporting success.
+every release artifact in place while reporting success. A `build/` appearing
+anywhere else (`src/build/`, say, from a tool run in the wrong directory) is a
+mistake, and `.gitignore` refuses to track one.
 
 ## Where things live
 
 - `internal/services/lifecycle` owns all three guarded deletions (profile, host,
   key); `internal/services/editor` owns the manifest edits underneath them.
+- Releases carry two tags on one commit: `vX.Y.Z` drives the release, and
+  `src/vX.Y.Z` is how Go resolves a module that lives in a subdirectory. The
+  workflow creates the second one; see [docs/release.md](docs/release.md).
 - `internal/services/keyaudit` owns every dangling-key state and the text that
   explains it.
-- `config/manifest.json` is the shipped example *and* the renderer's golden
+- `src/config/manifest.json` is the shipped example *and* the renderer's golden
   fixture *and* the fixture the e2e test copies in. Changing its shape means
   updating the renderer goldens in the same commit.
 - **Idempotency tests** for every converging command (run twice → no diff, no
@@ -94,7 +126,8 @@ every release artifact in place while reporting success.
 
 ## Commits & PRs
 
-- Set `git config user.email "19682005+imanimanyara@users.noreply.github.com"`.
+- Set `git config user.email "imanimanyara@users.noreply.github.com"` — the
+  address every commit in this repo has been authored under.
 - Subject ≤ 72 chars, imperative mood; body explains *why*. No emoji.
 - Keep PRs small, green, and scoped to one concern. Update `CHANGELOG.md` and
   `README.md` as verbs land.

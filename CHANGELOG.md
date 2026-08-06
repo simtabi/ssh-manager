@@ -8,6 +8,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **`go install` works again.** The module declared
+  `github.com/simtabi/ssh-manager` while being tagged `v2.0.0` and `v3.0.0`, and
+  Go requires a major-version suffix from v2 onward — so it rejected both tags
+  and fell back to the newest one it would accept, `v0.1.0` from the Python era,
+  which contains no `cmd/sshmgr`. The documented install command has been
+  failing since v2.0.0. The module path is now
+  `github.com/simtabi/ssh-manager/src/v3`.
+- `scripts/build-all.sh` no longer rewrites the tracked release matrix when
+  given a `TARGETS=` override — building one target while iterating would have
+  shrunk the next release to that single target. Its build loop also read
+  `targets.txt` rather than the matrix it had just selected, so the override was
+  ignored in any case where the two differed.
+- The pre-commit `gofmt` hook can now fail. It ran `gofmt -l`, which lists
+  unformatted files and exits 0, so it reported problems and passed.
 - `make clean` now removes the release artifacts. It ran `rm -rf bin dist`,
   targeting a top-level `dist/` that GoReleaser stopped writing to when the
   build moved under `build/` — so it deleted the development binary, reported
@@ -17,6 +31,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **The Go module moved to `src/`.** The repository now keeps its Go code under
+  `src/` and its own files — README, LICENSE, CHANGELOG, `docs/`, `.github/` — at
+  the root, with build output in a single root `build/`. Import paths become
+  `github.com/simtabi/ssh-manager/src/v3/...`; `make` is unchanged and remains
+  the supported way to build.
+- **Each release is now tagged twice on the same commit.** `vX.Y.Z` drives the
+  release as before; `src/vX.Y.Z` is how Go resolves a module that lives in a
+  subdirectory, and the release workflow creates it, so you still tag once.
 - **Every verb that changes `~/.ssh` now confirms first.** `reconcile`, `keygen`,
   `import`, `deploy`, `clean`, `config render`, `knownhosts init`, `migrate` and
   `notify install` ask before acting; the deletes and `rotate` already did.

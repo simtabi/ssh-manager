@@ -20,7 +20,7 @@ sshmgr doctor
 ```
 
 Windows: `irm https://opensource.simtabi.com/install/ssh-manager.ps1 | iex`. Also
-`go install github.com/simtabi/ssh-manager/cmd/sshmgr@latest`, or a binary from
+`go install github.com/simtabi/ssh-manager/src/v3/cmd/sshmgr@latest`, or a binary from
 [Releases](https://github.com/simtabi/ssh-manager/releases). Every path, and where
 per-user state lives, is in [docs/installation.md](docs/installation.md).
 
