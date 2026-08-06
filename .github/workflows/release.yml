@@ -8,7 +8,11 @@ name: Release
 # then signed for every artifact via the checksums file.
 on:
   push:
-    tags: ["v*"]
+    # v[0-9]* rather than v*: an annotation tag that happens to start with "v" -
+    # v2-migration-record did - otherwise triggers a full release build, which
+    # then fails in GoReleaser because the name is not semver. Nothing is
+    # published either way, but the run is noise and the failure looks real.
+    tags: ["v[0-9]*"]
 
 # Releases must never be cancelled mid-publish by a newer tag.
 concurrency:

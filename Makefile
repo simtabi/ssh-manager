@@ -5,8 +5,10 @@
 # needed to compile it.
 BIN     := bin/sshmgr
 PKG     := ./cmd/sshmgr
-# --match 'v*' so a non-release tag (e.g. python-final) never becomes the version.
-VERSION := $(shell git describe --tags --match 'v*' --always --dirty 2>/dev/null || echo dev)
+# --match 'v[0-9]*' so no non-release tag can become the version. 'v*' was not
+# enough: it excludes python-final but admits anything else beginning with v,
+# and a tag like v2-migration-record would then be stamped into the binary.
+VERSION := $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/internal/version.Version=$(VERSION)
 
 .PHONY: help build build-all test vet fmt fmt-check lint lint-all ci check e2e feature-check \
