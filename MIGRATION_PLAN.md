@@ -194,38 +194,38 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Command | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
-| C1 | `version` | `cli.py:101-105` | `internal/cli/root.go` | PU | `root_test.go::TestVersionCommand` |
+| C1 | `version` | `cli.py:101-105` | `internal/cli/root.go` | **VERIFIED** | `root_test.go::TestVersionCommand`, `TestRootHasVersionFlag` + `surface_test.go::TestTheRootAnswersVersionAndRejectsAnUnknownVerb` + `cmd/sshmgr/smoke_test.go` (through the real binary). |
 | C2 | `tui` | `cli.py:107-117` | `internal/cli/tui.go` | **VERIFIED** | `tui_test.go` (7 tests). The real stdin prompter was unreachable through Execute until it was given the command's input; the four pre-existing tests all inject a fake, so the production path had never run. |
-| C3 | `recover` | `cli.py:119-129` | `internal/cli/recover.go` | PU | `internal/services/recover/recover_test.go` |
+| C3 | `recover` | `cli.py:119-129` | `internal/cli/recover.go` | **VERIFIED** | `internal/services/recover` (VERIFIED) + `e2e_test.go` (the emitted snippet names authorized_keys). |
 | C4 | `doctor [--fix] [--json] [--strict]` | `cli.py:130-149` | `internal/cli/doctor.go` | **VERIFIED** | `cmd/sshmgr/smoke_test.go::TestDoctorJSONIsMachineReadable` (field-level, replacing the python3 parse check) + `TestInitReconcileDoctorRunEndToEnd` + `e2e_test.go` (clean tree, then 1 over a missing key) |
 | C5 | `init [--force] [--backup]` | `cli.py:150-168` | `internal/cli/init.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC05Init` (4 subtests: seeds, idempotent, --force --backup keeps the old manifest, --force alone writes none) |
 | C6 | `migrate` (config home) | `cli.py:169-184` | `internal/cli/migrate.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC06Migrate` |
 | C7 | `import` | `cli.py:185-199` | `internal/cli/import.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC07Import` (onboards a real config; a missing path errors) |
-| C8 | `reconcile [--dry-run] [--no-pin] [--passphrase]` | `cli.py:200-220` | `internal/cli/reconcile.go` | PU | `internal/services/reconciler/reconciler_test.go` |
+| C8 | `reconcile [--dry-run] [--no-pin] [--passphrase]` | `cli.py:200-220` | `internal/cli/reconcile.go` | **VERIFIED** | `mutate_test.go` (render-on-edit, dangling warnings) + `e2e_test.go` (dry-run, mint, idempotence, drift) + `streams_test.go::TestReadPassphraseReadsThePipedLineFromTheCommand`. |
 | C9 | `diff` | `cli.py:221-229` | `internal/cli/diff.go` | **VERIFIED** | `mutate_test.go::TestDiffReportsDriftWithoutTouchingAnything`, `::TestDiffCountsAKeyOnceNotOncePerHost` |
 | C10 | `keygen [--force] [--yes] [--passphrase] [--no-pin]` | `cli.py:230-274` | `internal/cli/keygen.go` | PU | `reconciler_test.go::TestOverwriteIsScopedToOneProfile`; `cli/mutate_test.go::TestKeygenAcceptsAKeySelector` |
 | C11 | `deploy <key> [target]` | `cli.py:275-293` | `internal/cli/deploy.go` | **VERIFIED** | `mutate_test.go::TestDeployRefusesAnUnmintedKey`, `::TestVerbsRejectUnknownSelectors`; service layer at row S4 |
-| C12 | `list [--profile] [--provider] [--type] [--tag]` | `cli.py:294-309` | `internal/cli/list.go` | PU | `internal/services/query/query_test.go` |
-| C13 | `view <selector>` | `cli.py:310-322` | `internal/cli/view.go` | PU | `query_test.go` |
+| C12 | `list [--profile] [--provider] [--type] [--tag]` | `cli.py:294-309` | `internal/cli/list.go` | **VERIFIED** | `mutate_test.go`, `e2e_test.go` (--type and --tag filters) + the surface table. |
+| C13 | `view <selector>` | `cli.py:310-322` | `internal/cli/view.go` | **VERIFIED** | `e2e_test.go` (view reports the fingerprint) + `query` (VERIFIED) + the surface table. |
 | C14 | `load <profile>` | `cli.py:323-332` | `internal/cli/load.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC14Load` |
 | C15 | `rotate <key> [--allow-unverified] [--yes]` | `cli.py:333-353` | `internal/cli/rotate.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC15RotateC16Rollback` |
 | C16 | `rollback <key> [--yes]` | `cli.py:354-365` | `internal/cli/rotate.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC15RotateC16Rollback` |
-| C17 | `expiry` | `cli.py:366-375` | `internal/cli/expiry.go` | PU | `internal/core/expiry/expiry_test.go` |
-| C18 | `providers [--export]` | `cli.py:376-400` | `internal/cli/providers.go` | PU | `internal/core/providers/providers_test.go` |
+| C17 | `expiry` | `cli.py:366-375` | `internal/cli/expiry.go` | **VERIFIED** | `mutate_test.go::TestExpiryTableNamesKeysByProfile` + `e2e_test.go` + `TestVerbsRejectExtraArguments`. |
+| C18 | `providers [--export]` | `cli.py:376-400` | `internal/cli/providers.go` | **VERIFIED** | `e2e_test.go` (providers listing) + `providers_test.go` (VERIFIED) + the surface table. |
 | C19 | `net [selector]` | `cli.py:401-413` | `internal/cli/net.go` | **VERIFIED** | `mutate_test.go::TestNetReportsEveryHost`, `::TestNetFailsOnlyWhenAGatedHostIsDown`; service layer at row S21 |
-| C20 | `validate [selector]` | `cli.py:414-428` | `internal/cli/validate.go` | PU | `internal/services/validate/validate_test.go` |
-| C21 | `audit [--notify]` | `cli.py:429-437` | `internal/cli/audit.go` | PU | `internal/services/notifier/notifier_test.go` |
-| C22 | `bundle` | `cli.py:438-453` | `internal/cli/bundle.go` | PU | `internal/services/bundler/bundler_test.go` |
-| C23 | `restore <bundle>` | `cli.py:454+` | `internal/cli/bundle.go` | PU | `bundler_test.go` |
-| C24 | `config check\|render\|show` | `cli.py` `@config_app` | `internal/cli/config.go` | PU | `internal/services/configsvc/configsvc_test.go` |
-| C25 | `profile add\|edit\|delete` | `cli.py` `@profile_app` | `internal/cli/profile.go` | PU | `internal/services/editor/editor_test.go`, `lifecycle_test.go` |
-| C26 | `host add\|edit\|delete` | `cli.py` `@host_app` | `internal/cli/host.go` | PU | `editor_test.go`, `lifecycle_test.go` |
+| C20 | `validate [selector]` | `cli.py:414-428` | `internal/cli/validate.go` | **VERIFIED** | `e2e_test.go` (passes, catches a broken pair, passes again) + `validate` (VERIFIED). |
+| C21 | `audit [--notify]` | `cli.py:429-437` | `internal/cli/audit.go` | **VERIFIED** | `e2e_test.go` (audit runs over a real tree) + `keyaudit`/`notifier` (VERIFIED). |
+| C22 | `bundle` | `cli.py:438-453` | `internal/cli/bundle.go` | **VERIFIED** | `e2e_test.go` (a real age bundle is encrypted and excludes .env) + `bundler` (VERIFIED). |
+| C23 | `restore <bundle>` | `cli.py:454+` | `internal/cli/bundle.go` | **VERIFIED** | `e2e_test.go` (round-trips the same key byte for byte) + `bundler` (VERIFIED). |
+| C24 | `config check\|render\|show` | `cli.py` `@config_app` | `internal/cli/config.go` | **VERIFIED** | `config_test.go`, `e2e_test.go` (check/render/show; drift inside the managed block is caught, foreign content below it is not). |
+| C25 | `profile add\|edit\|delete` | `cli.py` `@profile_app` | `internal/cli/profile.go` | **VERIFIED** | `mutate_test.go`, `confirm_test.go` (--yes and the prompt) + `editor`/`lifecycle` (VERIFIED). |
+| C26 | `host add\|edit\|delete` | `cli.py` `@host_app` | `internal/cli/host.go` | **VERIFIED** | `mutate_test.go`, `confirm_test.go` + `editor`/`lifecycle` (VERIFIED). The surface table caught every flag on `host edit` having no help text. |
 | C27 | `notify install\|test` | `cli.py` `@notify_app` | `internal/cli/notify.go` | **VERIFIED** | `streams_test.go::TestNotifyTestReportsAMissingBackendOnStderr` (mutation-checked) |
-| C28 | `snapshots list\|restore\|prune` | `cli.py` `@snapshots_app` | `internal/cli/snapshots.go` | PU | `internal/services/snapshots/snapshots_test.go` |
+| C28 | `snapshots list\|restore\|prune` | `cli.py` `@snapshots_app` | `internal/cli/snapshots.go` | **VERIFIED** | `e2e_test.go` (a mutating command leaves a snapshot; restore returns the config and cannot resurrect a private key) + `snapshots` (VERIFIED). |
 | C29 | `knownhosts init\|pin` | `cli.py` `@knownhosts_app` | `internal/cli/knownhosts.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC29KnownHosts` (one hashed store, 0600, no per-profile store, refuses with no target) |
-| C30 | `key add\|list\|delete` | **none** — no Python equivalent | `internal/cli/key.go` | PU | `keysvc_test.go`, `cli/key_test.go`. **Go-only addition** (deviation D1) |
+| C30 | `key add\|list\|delete` | **none** — no Python equivalent | `internal/cli/key.go` | **VERIFIED** | `key_test.go` + `keysvc`/`lifecycle` (VERIFIED) + the surface table (D1). |
 | C31 | `show <selector>` | **none** | `internal/cli/show.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC31Show` + `show_test.go` |
-| C32 | `clean [--dry-run] [--adopt]` | **none** | `internal/cli/clean.go` | PU | `knownhosts/prune_test.go`, `cli/mutate_test.go`. **Go-only addition** (D1) |
+| C32 | `clean [--dry-run] [--adopt]` | **none** | `internal/cli/clean.go` | **VERIFIED** | `mutate_test.go::TestCleanDropsStaleRecordsAndNamesWhatItLeaves` + the surface table (D1). |
 
 ### Core domain
 
@@ -242,7 +242,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
-| S1 | **Facade** (1356 lines — God object) | `services/facade.py` | *dissolved* — see Redesign R1 | PU | Split across `internal/services/*` + `internal/cli` |
+| S1 | **Facade** (1356 lines — God object) | `services/facade.py` | *dissolved* — see Redesign R1 | **VERIFIED** | Verified as a **structural invariant**, not as behaviour - a grep for "facade" would prove nothing. `cmd/sshmgr/layering_test.go::TestNoTypeHasBecomeTheFacadeAgain` (the Python facade was one class with 54 methods; the largest type here is `manifest.Manifest` at 20, ceiling 24) + `TestTheLayersPointOneWay` (nothing under `internal/` imports `internal/cli`; `core` never imports `services`). Services composing services is ordinary layering and is deliberately allowed. |
 | S2 | Reconciler | `services/reconciler.py` (200) | `internal/services/reconciler` | **VERIFIED** | `reconciler_test.go`: 4 pre-existing (mint/render/idempotence, declared-key overrides, dry-run, per-profile overwrite) + `TestMintRefNeverRegeneratesAKeyThatExists`, `TestSelectorAcceptsProfileKeyAndHostForms`, `TestOverwritingAKeyLeavesOneInventoryRecordPerPath`, `TestReconcileTightensTheConfigHomeToo`. Both guards mutation-checked. |
 | S3 | Rotator + rollback | `services/rotator.py` (322) | `internal/services/rotator` | **VERIFIED** | `rotator_test.go`: `TestRotateThenRollback`, `TestRotateMissingKey` (pre-existing) + `TestCommitNeverLeavesTheCanonicalPathWithoutAKey`, `TestCommitLeavesTheKeyAloneWhenItCannotArchive`, `TestRollbackKeepsAKeyInPlaceThroughout`, `TestFailedVerificationDiscardsTheStagedKey` |
 | S4 | Deployer | `services/deployer.py` (141); tests `tests/test_deploy.py` | `internal/services/deployer` | **VERIFIED** | `deployer_test.go`: `TestDeployRecordsEveryHostUsingTheKey`, `TestDeployTwiceLeavesOneEntryPerTarget`, `TestManualDeployStillNeedsRedeploy`, `TestTargetAliasNarrowsToOneHost`, `TestUnreachableServerIsRecordedAsAnError`, `TestDeployRejectsUnknownAndUnmintedKeys`, `TestReportFormatNamesTargetsAndOutcome` |
@@ -283,8 +283,8 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
 | L1 | Platform protocol | `platforms/base.py` (50) | `internal/platform` | **VERIFIED** | `platform_test.go`: `TestReadLineStopsAtTheNewlineAndLeavesTheRest`, `TestReadLinePreservesContentButStripsCR`, `TestReadLineOnClosedInput`, `TestOSPredicatesAgreeWithGOOS`, `TestEmitUseKeychainOnlyOnMacOS`, `TestOSNameCarriesBothForms`, `TestReadSecretRefusesWithoutATerminal` |
-| L2 | macOS (keychain, launchd, notify) | `platforms/macos.py` (73) | `internal/platform`, `internal/util/scheduler`, `internal/util/desktop` | PU | `scheduler_test.go`, `platform_test.go`; `desktop` still untested |
-| L3 | Linux (systemd timer, notify-send) | `platforms/linux.py` (107) | same | PU | `scheduler_test.go`; Python had `tests/test_linux.py` |
+| L2 | macOS (keychain, launchd, notify) | `platforms/macos.py` (73) | `internal/platform`, `internal/util/scheduler`, `internal/util/desktop` | **VERIFIED** | `scheduler_test.go::TestBuildPlist`, `platform_test.go` + `internal/util/desktop/desktop_test.go` (3 tests - the package had none; backend stubbed on PATH, and the AppleScript/PowerShell quoting is checked against characters that would close the literal). |
+| L3 | Linux (systemd timer, notify-send) | `platforms/linux.py` (107) | same | **VERIFIED** | `scheduler_test.go::TestBuildService`, `TestNotifyHourMatchesTheOtherPlatforms` + `internal/util/desktop/desktop_test.go`. |
 | L4 | Windows (icacls, schtasks, toast) | `platforms/windows.py` (92); tests `tests/test_windows.py` | `internal/util/perms/{windows_acl,perms_windows}.go`, `scheduler/{windows_task,scheduler_windows}.go` | **VERIFIED** | `windows_acl_test.go` (5), `windows_task_test.go` (3) cover the argv and ownership logic on every platform. The exec wiring is verified by a **green `windows-latest` leg**: https://github.com/simtabi/ssh-manager/actions/runs/31045991249 (commit `77a52bb`), per Q9. That run also found four real Windows-only defects nothing else could: the test home was never isolated there (`USERPROFILE`), the advisory lock leaked its descriptor across tests, and two mode assertions had no ACL guard. |
 
 ### Utilities
@@ -298,11 +298,11 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | U5 | Audit log | `util/log.py` (47) | `internal/util/log` | **VERIFIED** | `rotate_test.go`: 3 pre-existing (rotation at cap, one generation, append below cap) + `TestAValueThatWouldBreakTheLineIsEscaped`, `TestTheRecordKeepsTsAndEventFirstThenTheCallersOrder`, `TestAFreshLogAndItsDirectoryAreOwnerOnly`, `TestAnUnwritableLogDoesNotFailTheCaller` |
 | U6 | Network probe | `util/net.py` (124) | `internal/util/netcheck` | **VERIFIED** | `netcheck_test.go`: 3 pre-existing (message/icon, VPN filter, TCP probe) + `TestSSHReachableTreatsOnlyKnownFailuresAsUnreachable` (12 subtests, stub `ssh` on PATH), `TestSSHReachableFallsBackToTCPWithNoSSHClient` |
 | U7 | Secrets (.env loading) | `util/secrets.py` (50) | `internal/util/secrets` | **VERIFIED** | `secrets_test.go`: 3 pre-existing (plain/empty, cmd:, shlex) + `TestACmdSecretIsExecutedAsArgvNotThroughAShell`, `TestAFailedLookupYieldsNothingRatherThanTheRawValue`, `TestOnlySuccessfulLookupsAreMemoized` (caught a live bug: failures were memoized, so an unlocked store stayed unusable for the life of the process; mutation-checked) |
-| U8 | Subprocess helper | `util/proc.py` (77) | *dissolved* into `os/exec` at call sites | PU | Redesign R2 |
+| U8 | Subprocess helper | `util/proc.py` (77) | *dissolved* into `os/exec` at call sites | **VERIFIED** | Structural. `layering_test.go::TestTheToolRunsOnlyTheBinariesItDeclares` collects every literal `exec.Command`/`LookPath` target and pins the whole external-binary surface, which is the policy `util/proc.py` existed to hold: argv lists, never a shell. Mutation-checked (adding an `exec.LookPath("curl")` fails it). |
 | U9 | HTTP+JSON client | `util/http.py` (123) | `internal/util/httpjson` | **VERIFIED** | `httpjson_test.go`: `TestRequestJSONSendsHeadersAndParsesTheBody`, `TestEmptyResponsesBecomeAnEmptyMap`, `TestRetriesIdempotentRequests`, `TestDoesNotRetryNonIdempotentRequests`, `TestClientErrorsFailImmediatelyAndReportTheBody`, `TestErrorBodyIsTruncated`, `TestRetryAfterIsHonouredAndCapped`, `TestNonJSONResponseIsAnError`, `TestRedirectPolicyRefusesDowngradeAndStripsCredentials` (4 subtests) |
 | U10 | JSON store | `util/jsonstore.py` (32) | *dissolved* into `manifest`/`inventory` Save/Load | **VERIFIED** | Redesign R3. `inventory_test.go`: `TestSaveIsAtomicAndReassertsMode`, `TestSaveLoadRoundTripIsStable`; `manifest_test.go`: `TestManifestSaveIsAtomicAndReassertsMode` (mutation-checked). Both files claimed atomicity and used `os.WriteFile`; both are now pinned. |
-| U11 | Error taxonomy | `util/errors.py` (27) | Go `error` values | PU | Redesign R4 |
-| U12 | Presentation layer (rich) | `render.py` (208) | *dissolved* into per-command `Format()`/`write*Table` | PU | Redesign R5 |
+| U11 | Error taxonomy | `util/errors.py` (27) | Go `error` values | **VERIFIED** | Structural. `layering_test.go::TestControlFlowDoesNotTravelByPanic` + the pre-existing `exit_test.go` (`TestErrorClassification`, `TestNoCommandCallsOsExit`) and `confirm_test.go`. |
+| U12 | Presentation layer (rich) | `render.py` (208) | *dissolved* into per-command `Format()`/`write*Table` | **VERIFIED** | Structural. `layering_test.go::TestTheBinaryHasExactlyOneDirectDependency` (there is nowhere for a presentation library to hide) + `TestNoSourceEmitsTerminalEscapes` (the user-visible half of D2: output is plain text a pipe can read). |
 | U13 | Config-home perms enumeration | `facade.py` | `internal/util/homeperms` | **VERIFIED** | `homeperms_test.go`: 2 pre-existing (state models, sidecars + rotated logs) + `TestDirectoriesAndTheAgeIdentityAreCovered`, `TestIdentitiesAndBundlesAreCoveredWhereverTheyLandInTheHome` |
 | U14 | askpass helper | **none** — replaces `services/keystore.py:47-56` (`-N <passphrase>` in argv) | `internal/util/askpass` | **VERIFIED** | `askpass_test.go`: `TestServingGatesOnTheExactMarker`, `TestServeWritesTheSecretAndOneNewline`, `TestEnvironCarriesTheHandshake`, `TestEnvironDropsInheritedValuesRatherThanShadowingThem`, `TestSecretTravelsOnlyInTheEnvironment`. Security deviation — see D9 |
 
@@ -310,10 +310,10 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
-| X1 | Env vars: `SSH_MANAGER_HOME`, `_CONFIG_DIR`, `_AGE_RECIPIENT`, `_AGE_IDENTITY_FILE`, `_AUTO_PIN`, `_SNAPSHOT_RETAIN` | `util/paths.py`, `services/bundler.py`, `services/knownhosts.py` | `internal/util/paths`, `internal/cli` | PU | `paths_test.go`, `retention_test.go`. Go adds `SSH_MANAGER_OLD_KEY_MAX_AGE_DAYS` (D5) |
+| X1 | Env vars: `SSH_MANAGER_HOME`, `_CONFIG_DIR`, `_AGE_RECIPIENT`, `_AGE_IDENTITY_FILE`, `_AUTO_PIN`, `_SNAPSHOT_RETAIN` | `util/paths.py`, `services/bundler.py`, `services/knownhosts.py` | `internal/util/paths`, `internal/cli` | **VERIFIED** | `paths_test.go::TestThePublicEnvironmentVariablesResolveAsDocumented` + `TestTheEnvironmentVariableNamesAreTheDocumentedOnes`, which checks the seven names against the source that reads them **in both directions** - a rename in one place only fails it. |
 | X2 | Manifest/inventory JSON serialization (pydantic `model_dump`) | `core/manifest.py`, `core/inventory.py` | hand-written `MarshalJSON` | **VERIFIED** | `manifest_test.go::TestSerializationEmitsAllFieldsInFileOrder`, `::TestKeysOmittedWhenEmpty`, `::TestOptionValuesAreStringifiedLikePydantic`; `inventory_test.go::TestRecordSerializationMatchesPydantic`, `::TestSaveLoadRoundTripIsStable`. **Qualified**: parity is asserted on field order, null/`[]`/`{}` conventions and value stringification, and on save being byte-stable across a round trip — not by diffing against output from a running Python, which is no longer part of the build |
-| X3 | Packaging | `pyproject.toml` (hatchling) | `.goreleaser.yaml` | PU | Python had `tests/test_packaging.py` |
-| X4 | CI | `.github/workflows/ci.yml` | same, Go-only | PU | Lint gate added in Phase 2 (`golangci-lint`, per-GOOS) |
+| X3 | Packaging | `pyproject.toml` (hatchling) | `.goreleaser.yaml` | **VERIFIED** | `cmd/sshmgr/targets_test.go::TestEveryDeclaredReleaseTargetCompiles` - all ten targets in `build/targets.txt` build from this tree, one subtest each. Closes the drift risk between targets.txt, build-all.sh, .goreleaser.yaml and the installers, which all reconstruct `sshmgr_{os}_{arch}` independently. |
+| X4 | CI | `.github/workflows/ci.yml` | same, Go-only | **VERIFIED** | Verified by reading `ci.yml` against the `Makefile`, not by "CI is green" - Q9 made CI a verification instrument, so citing it here would be circular. `ci.yml` calls `make ci`, which is the single definition of the gate; lint stays a pinned action deliberately (comment in place). |
 | X5 | Python test suite (37 files) | `tests/*.py` | Go `*_test.go` (across packages) | **VERIFIED** | Per-file mapping in Coverage check; every file now maps to a counterpart or a written DROPPED justification |
 
 ---
