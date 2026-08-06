@@ -6,42 +6,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
-### Fixed
-
-- **A `go install` build no longer reports the wrong version.** It applies no
-  ldflags, so the binary fell back to the hardcoded `2.0.0-dev` — two major
-  versions stale, from v3 sources, on the install path the README documents.
-  Go already records the real version inside the binary; it is now read from
-  there, along with the commit, build time and a `-dirty` marker for an
-  uncommitted tree. Such a build also has no VCS stamp, so the commit and time
-  are recovered from the pseudo-version, which already ends in both — it no
-  longer calls itself a "dev build" while holding a published version.
-- **`go install` works again.** The module declared
-  `github.com/simtabi/ssh-manager` while being tagged `v2.0.0` and `v3.0.0`, and
-  Go requires a major-version suffix from v2 onward — so it rejected both tags
-  and fell back to the newest one it would accept, `v0.1.0` from the Python era,
-  which contains no `cmd/sshmgr`. The documented install command has been
-  failing since v2.0.0. The module path is now
-  `github.com/simtabi/ssh-manager/src/v3`.
-- `scripts/build-all.sh` no longer rewrites the tracked release matrix when
-  given a `TARGETS=` override — building one target while iterating would have
-  shrunk the next release to that single target. Its build loop also read
-  `targets.txt` rather than the matrix it had just selected, so the override was
-  ignored in any case where the two differed.
-- `make feature-check` ran 9 tests, not the 80 in the package, because its
-  `-run 'TestCommandSurface|TestVerbs'` regex did not match
-  `TestTheCommandSurfaceMatchesThePythonItReplaced` — the one test that pins the
-  command surface against the Python implementation it replaced. A target
-  documented as "exercise every command with assertions" was excluding the
-  assertion that matters most. It now runs the package.
-- The pre-commit `gofmt` hook can now fail. It ran `gofmt -l`, which lists
-  unformatted files and exits 0, so it reported problems and passed.
-- `make clean` now removes the release artifacts. It ran `rm -rf bin dist`,
-  targeting a top-level `dist/` that GoReleaser stopped writing to when the
-  build moved under `build/` — so it deleted the development binary, reported
-  success, and left every packaged artifact in place.
-- `scripts/build-all.sh` no longer deletes `build/targets.txt`, which is tracked,
-  as a side effect of a release build.
+## [3.1.0] - 2026-08-06
 
 ### Added
 
@@ -106,6 +71,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - Build output is consolidated under `build/`: `make build` writes
   `build/sshmgr` instead of `bin/sshmgr`, and `build/dist/` holds the release
   artifacts as before. There is no `bin/` any more.
+
+### Fixed
+
+- **A `go install` build no longer reports the wrong version.** It applies no
+  ldflags, so the binary fell back to the hardcoded `2.0.0-dev` — two major
+  versions stale, from v3 sources, on the install path the README documents.
+  Go already records the real version inside the binary; it is now read from
+  there, along with the commit, build time and a `-dirty` marker for an
+  uncommitted tree. Such a build also has no VCS stamp, so the commit and time
+  are recovered from the pseudo-version, which already ends in both — it no
+  longer calls itself a "dev build" while holding a published version.
+- **`go install` works again.** The module declared
+  `github.com/simtabi/ssh-manager` while being tagged `v2.0.0` and `v3.0.0`, and
+  Go requires a major-version suffix from v2 onward — so it rejected both tags
+  and fell back to the newest one it would accept, `v0.1.0` from the Python era,
+  which contains no `cmd/sshmgr`. The documented install command has been
+  failing since v2.0.0. The module path is now
+  `github.com/simtabi/ssh-manager/src/v3`.
+- `scripts/build-all.sh` no longer rewrites the tracked release matrix when
+  given a `TARGETS=` override — building one target while iterating would have
+  shrunk the next release to that single target. Its build loop also read
+  `targets.txt` rather than the matrix it had just selected, so the override was
+  ignored in any case where the two differed.
+- `make feature-check` ran 9 tests, not the 80 in the package, because its
+  `-run 'TestCommandSurface|TestVerbs'` regex did not match
+  `TestTheCommandSurfaceMatchesThePythonItReplaced` — the one test that pins the
+  command surface against the Python implementation it replaced. A target
+  documented as "exercise every command with assertions" was excluding the
+  assertion that matters most. It now runs the package.
+- The pre-commit `gofmt` hook can now fail. It ran `gofmt -l`, which lists
+  unformatted files and exits 0, so it reported problems and passed.
+- `make clean` now removes the release artifacts. It ran `rm -rf bin dist`,
+  targeting a top-level `dist/` that GoReleaser stopped writing to when the
+  build moved under `build/` — so it deleted the development binary, reported
+  success, and left every packaged artifact in place.
+- `scripts/build-all.sh` no longer deletes `build/targets.txt`, which is tracked,
+  as a side effect of a release build.
+
 
 ## [3.0.0] - 2026-08-06
 
@@ -476,7 +479,8 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
   build and attach artifacts to a GitHub Release on a `v*` tag.
 
-[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.0.0...HEAD
+[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.1.0...HEAD
+[3.1.0]: https://github.com/simtabi/ssh-manager/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/simtabi/ssh-manager/compare/v2.0.0...v3.0.0
 [2.0.0]: https://github.com/simtabi/ssh-manager/compare/v0.1.0...v2.0.0
 [0.1.0]: https://github.com/simtabi/ssh-manager/releases/tag/v0.1.0
