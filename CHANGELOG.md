@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A `go install` build no longer reports the wrong version.** It applies no
+  ldflags, so the binary fell back to the hardcoded `2.0.0-dev` — two major
+  versions stale, from v3 sources, on the install path the README documents.
+  Go already records the real version inside the binary; it is now read from
+  there, along with the commit, build time and a `-dirty` marker for an
+  uncommitted tree.
 - **`go install` works again.** The module declared
   `github.com/simtabi/ssh-manager` while being tagged `v2.0.0` and `v3.0.0`, and
   Go requires a major-version suffix from v2 onward — so it rejected both tags
@@ -45,11 +51,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   a session pointed at a sandbox and one pointed at a real tree were
   indistinguishable. Rows marked `!` carry the command that fixes them, and the
   banner is redrawn after any action that changes `~/.ssh`.
+- `make ci-linux` runs the CI gate inside a Linux container on the Go version
+  `go.mod` asks for. `make check` only tests the machine you are on and
+  `lint-all` cross-compiles without running anything, so a Linux-only failure was
+  invisible until CI reported it — and unreachable when CI could not.
 - A project icon at `docs/assets/sshmgr.svg` — a single scalable mark for the
   docs site, the repository's social preview and a favicon.
 
 ### Changed
 
+- **`make build` empties `build/` first, every time.** A stale binary is not
+  hypothetical: a bug was reported against this tool from a binary built one
+  minute before the fix landed, and it was indistinguishable from the fix not
+  working. `make clean` now removes everything in `build/` except the files git
+  tracks there, rather than the two paths it happened to know about.
 - **The Go module moved to `src/`.** The repository now keeps its Go code under
   `src/` and its own files — README, LICENSE, CHANGELOG, `docs/`, `.github/` — at
   the root, with build output in a single root `build/`. Import paths become

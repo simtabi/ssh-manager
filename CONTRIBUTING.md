@@ -21,7 +21,7 @@ around it.
 
 ```sh
 git clone https://github.com/simtabi/ssh-manager && cd ssh-manager
-make build               # -> build/sshmgr
+make build               # -> build/sshmgr (empties build/ first, every time)
 make doctor              # verify the environment, using the binary you just built
 ```
 
@@ -33,13 +33,18 @@ is the OS config dir (`~/.config/ssh-manager`); set
 
 ```sh
 make check               # the CI gate plus lint: gofmt, build, vet, tests, golangci-lint
+make ci-linux            # the same gate inside a linux container (needs docker)
 make lint-all            # lint every GOOS - one run only ever sees one
 make e2e                 # end-to-end smoke against a real binary (build-tagged)
 make feature-check       # the per-command assertions
 ```
 
 `make ci` is the gate CI itself runs, and `check` is a strict superset of it, so
-the two cannot drift. Run `lint-all` when touching `internal/platform` or any
+the two cannot drift. `make ci-linux` runs that gate on Linux, on the Go version
+`go.mod` asks for — `check` only ever tests the machine you are on, and
+`lint-all` cross-compiles for other systems without running anything on them, so
+a Linux-only failure is otherwise invisible until CI reports it. That matters
+when CI cannot: a runner outage, a fork without Actions, or no network. Run `lint-all` when touching `internal/platform` or any
 build-tagged file: a single golangci-lint run analyses one GOOS and reports
 everything the others reference as dead code.
 

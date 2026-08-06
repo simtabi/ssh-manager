@@ -31,16 +31,28 @@ VERSION := $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev
 LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/src/v3/internal/version.Version=$(VERSION)
 GO      := go -C $(MODULE)
 
-.PHONY: help build build-all test vet fmt fmt-check lint lint-all ci check e2e feature-check \
+.PHONY: help build build-all test vet fmt fmt-check lint lint-all ci check ci-linux e2e feature-check \
         cross dist clean doctor reconcile render rotate bundle
 
 help:  ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | sort
 
+# Always from an empty build/. A stale binary is not a hypothetical here: a bug
+# was reported against this tool from a binary built one minute before the fix
+# landed, and it looked exactly like the fix not working. Wiping the output first
+# means the file on disk is always one this invocation wrote.
+#
+# What it does NOT do is discard Go's build cache. That cache is keyed by a hash
+# of the actual inputs, so a cached object is only reused when recompiling would
+# produce the same bytes - "rebuild everything" buys no correctness there, it
+# just adds minutes. FORCE=1 passes -a for the rare case of suspecting the
+# toolchain itself.
+#
 # -o is resolved relative to $(MODULE) because of `go -C`, hence the ../.
-build: ## compile the binary into build/
+build: clean ## compile the binary into a freshly emptied build/ (FORCE=1 to rebuild deps too)
 	@mkdir -p build
-	$(GO) build -trimpath -ldflags '$(LDFLAGS)' -o ../$(BIN) $(PKG)
+	$(GO) build $(if $(FORCE),-a,) -trimpath -ldflags '$(LDFLAGS)' -o ../$(BIN) $(PKG)
+	@echo "built $(BIN)  ->  $$(./$(BIN) version)"
 
 build-all: ## compile every package (what CI gated on before `ci` existed)
 	$(GO) build ./...
@@ -78,6 +90,22 @@ ci: fmt-check build-all vet test ## the gate CI runs (lint runs there as its own
 
 check: ci lint ## everything: the CI gate plus lint, for humans
 
+# The ubuntu-latest leg, runnable without GitHub. `make ci` only ever tests the
+# machine you are on, and `lint-all` cross-compiles for other systems without
+# running anything on them - so a Linux-only failure is invisible here until CI
+# says so. When CI cannot say so (a runner outage, a fork without Actions, a
+# flight), this is the same gate on the same Go version the module asks for.
+#
+# It reads the version from go.mod rather than pinning one, so it cannot drift
+# from what setup-go installs in the workflow.
+GOVERSION = $(shell awk '/^go /{print $$2}' $(MODULE)/go.mod)
+
+ci-linux: ## run the CI gate inside a linux container (needs docker)
+	@command -v docker >/dev/null 2>&1 || { echo "docker is not installed"; exit 1; }
+	docker run --rm -v "$(CURDIR)":/w -w /w golang:$(GOVERSION) \
+		sh -c 'apt-get -qq update >/dev/null && apt-get -qq install -y openssh-client >/dev/null && \
+		       go -C $(MODULE) build ./... && go -C $(MODULE) vet ./... && go -C $(MODULE) test ./...'
+
 # Tagged out of the ordinary suite: it mints six real keypairs and does an age
 # round trip. It builds its own binary, so it does not depend on `build`.
 e2e: ## end-to-end smoke in a throwaway sandbox
@@ -109,12 +137,21 @@ cross: ## build every release target into build/dist/ (needs goreleaser)
 dist: ## full release artifacts into build/dist/ (needs goreleaser)
 	$(GORELEASER) release --clean --snapshot
 
-# Everything generated lives under build/, so this is the whole of it. It used
-# to remove `bin dist`, and GoReleaser has written to build/dist since the
-# single-folder layout was adopted - so `make clean` left every release artifact
-# behind while reporting success.
-clean: ## remove build output (keeps build/targets.txt, which is tracked)
-	rm -rf $(BIN) build/dist
+# Everything generated lives under build/, so this empties it. It used to remove
+# `bin dist`, and GoReleaser has written to build/dist since the single-folder
+# layout was adopted - so `make clean` left every release artifact behind while
+# reporting success. Then it named $(BIN) and build/dist explicitly, which left
+# anything else that had found its way in - a renamed artifact, a file from an
+# older layout, output from a tool run by hand.
+#
+# So it removes everything except what git tracks. KEEP is that list, and
+# TestBuildDirKeepListMatchesGit fails if the two ever disagree.
+KEEP := targets.txt
+
+clean: ## empty build/, keeping only the files git tracks there
+	@if [ -d build ]; then \
+		find build -mindepth 1 -maxdepth 1 $(foreach k,$(KEEP),! -name '$(k)') -exec rm -rf {} + ; \
+	fi
 
 # --- running the tool against your own config -------------------------------
 # These build first and run the binary you just built, never an installed one,

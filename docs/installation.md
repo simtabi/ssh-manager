@@ -46,6 +46,17 @@ missing release:
 go: ...found (v0.1.0), but does not contain package .../cmd/sshmgr
 ```
 
+To build the current `main` instead of the last release — useful for a fix that
+has landed but not shipped — name the branch:
+
+```sh
+go install github.com/simtabi/ssh-manager/src/v3/cmd/sshmgr@main
+```
+
+Go turns that into a pseudo-version (`v3.0.0-20260806193200-60ce5f9c4ee6`) and
+the binary reports it, so a build from a branch is still identifiable. It needs
+no tag and no release, which also makes it the way in when a release is pending.
+
 Or download the binary for your platform from
 [Releases](https://github.com/simtabi/ssh-manager/releases) and put it on `PATH`.
 Every artifact is checksummed and carries a build-provenance attestation
