@@ -82,7 +82,7 @@ nfpms:
     ids: [sshmgr]
     package_name: sshmgr
     vendor: Simtabi LLC
-    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     maintainer: "Imani Manyara <imani@simtabi.com>"
     description: "Profile-based SSH key and config lifecycle manager."
     license: MIT
@@ -107,15 +107,20 @@ sboms:
   - id: archive
     artifacts: archive
 
+# Gated on the tap token the same way scoop and winget are. Without it
+# GoReleaser falls back to GITHUB_TOKEN, which cannot write to another repo, and
+# the whole release fails at the last step - after every artifact is uploaded but
+# before provenance is attested, leaving a published release that is unsigned.
 homebrew_casks:
   - name: sshmgr
     ids: [archive]
+    skip_upload: '{{ if .Env.TAP_GITHUB_TOKEN }}false{{ else }}true{{ end }}'
     repository:
       owner: simtabi
       name: homebrew-tap
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"\" }}"
     directory: Casks
-    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     description: "Profile-based SSH key and config lifecycle manager."
     hooks:
       post:
@@ -132,9 +137,9 @@ scoops:
     repository:
       owner: simtabi
       name: scoop-bucket
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"\" }}"
     directory: bucket
-    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     description: "Profile-based SSH key and config lifecycle manager."
     license: MIT
     skip_upload: '{{ envOrDefault "SKIP_WINDOWS_PKGS" "true" }}'
@@ -147,7 +152,7 @@ winget:
     publisher: Simtabi
     ids: [archive]
     license: MIT
-    homepage: "https://opensource.simtabi.com/products/ssh-manager"
+    homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     short_description: "Profile-based SSH key and config lifecycle manager."
     description: "Profile-based SSH key and config lifecycle manager."
     publisher_url: "https://simtabi.com"
