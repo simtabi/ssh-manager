@@ -53,17 +53,19 @@ jobs:
       - uses: github/codeql-action/init@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
         with:
           languages: ${{ matrix.language }}
-          # Go is extracted from source rather than by watching a compiler run.
+          # Go must be built for CodeQL to read it - the extractor works from a
+          # compiler run, and the toolchain rejects the alternative outright:
+          # "Go does not support the none build mode."
           #
-          # build-mode: manual was tried first and failed twice with "detected
-          # code written in Go but this run didn't build any of it": the build
-          # step ran and succeeded, but CodeQL's tracer observed nothing from it.
-          # That failure mode is the dangerous one - the same configuration on a
-          # more forgiving day reports a clean scan of a codebase it never read,
-          # which looks exactly like coverage.
+          # autobuild rather than manual. A manual step was tried twice, as
+          # `make build-all` and then as `go build -a` with the cache disabled;
+          # both succeeded and CodeQL still reported "detected code written in Go
+          # but this run didn't build any of it". autobuild locates go.mod under
+          # src/ by itself and builds inside its own tracing context, which is
+          # the part a separate run step was not participating in.
           #
-          # "none" removes the tracing step from the equation: CodeQL reads the
-          # source directly, so it does not matter which directory the module
-          # lives in or whether a build cache made the compiler a no-op.
-          build-mode: none
+          # There is no silent-success risk in leaving it to autobuild: a build
+          # that finds nothing produces exactly that error and fails the job,
+          # which is the vacuity check.
+          build-mode: autobuild
       - uses: github/codeql-action/analyze@d1ba80a13dd99fba24a470575428917156a28b43 # v4.37.5
