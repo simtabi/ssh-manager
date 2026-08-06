@@ -160,8 +160,8 @@ not before.**
 
 Status legend: `PU` = PORTED_UNVERIFIED, `VERIFIED`, `D` = DROPPED, `T` = TODO.
 
-**Counts as of the latest Phase 3 batch: VERIFIED 66 · PORTED_UNVERIFIED 29 ·
-TODO 0 · DROPPED 0, over 95 rows.** The core domain (K1–K6) is fully closed, as
+**Counts: VERIFIED 95 · PORTED_UNVERIFIED 0 · TODO 0 · DROPPED 0, over 95 rows.
+Phase 3 is complete.** The core domain (K1–K6) is fully closed, as
 are all three rows Q3 said must be judged against the v2 contract rather than
 Python output (K3 renderer, S6 knownhosts, S13 configsvc).
 
@@ -203,7 +203,7 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 | C7 | `import` | `cli.py:185-199` | `internal/cli/import.go` | **VERIFIED** | `commands_test.go::TestCommandSurfaceC07Import` (onboards a real config; a missing path errors) |
 | C8 | `reconcile [--dry-run] [--no-pin] [--passphrase]` | `cli.py:200-220` | `internal/cli/reconcile.go` | **VERIFIED** | `mutate_test.go` (render-on-edit, dangling warnings) + `e2e_test.go` (dry-run, mint, idempotence, drift) + `streams_test.go::TestReadPassphraseReadsThePipedLineFromTheCommand`. |
 | C9 | `diff` | `cli.py:221-229` | `internal/cli/diff.go` | **VERIFIED** | `mutate_test.go::TestDiffReportsDriftWithoutTouchingAnything`, `::TestDiffCountsAKeyOnceNotOncePerHost` |
-| C10 | `keygen [--force] [--yes] [--passphrase] [--no-pin]` | `cli.py:230-274` | `internal/cli/keygen.go` | PU | `reconciler_test.go::TestOverwriteIsScopedToOneProfile`; `cli/mutate_test.go::TestKeygenAcceptsAKeySelector` |
+| C10 | `keygen [--force] [--yes] [--passphrase] [--no-pin]` | `cli.py:230-274` | `internal/cli/keygen.go` | **VERIFIED** | `mutate_test.go::TestKeygenAcceptsAKeySelector` + `reconciler` (VERIFIED: per-profile overwrite, selector forms) + `e2e_test.go` (warns on existing, refuses --force without a backup path, replaces with --no-key-backup) + the surface table. |
 | C11 | `deploy <key> [target]` | `cli.py:275-293` | `internal/cli/deploy.go` | **VERIFIED** | `mutate_test.go::TestDeployRefusesAnUnmintedKey`, `::TestVerbsRejectUnknownSelectors`; service layer at row S4 |
 | C12 | `list [--profile] [--provider] [--type] [--tag]` | `cli.py:294-309` | `internal/cli/list.go` | **VERIFIED** | `mutate_test.go`, `e2e_test.go` (--type and --tag filters) + the surface table. |
 | C13 | `view <selector>` | `cli.py:310-322` | `internal/cli/view.go` | **VERIFIED** | `e2e_test.go` (view reports the fingerprint) + `query` (VERIFIED) + the surface table. |
@@ -271,8 +271,8 @@ at baseline; it is *not* parity evidence and does not confer `VERIFIED`.
 
 | # | Feature | Python source | Go target | Status | Evidence |
 |---|---|---|---|---|---|
-| P1 | Provider protocol + base | `providers/base.py` (135) | `internal/core/providers/adapter.go` | PU | `adapter_test.go` |
-| P2 | Registry + catalog | `providers/registry.py` (157) | `internal/core/providers/providers.go` + `default_providers.json` | PU | `providers_test.go` |
+| P1 | Provider protocol + base | `providers/base.py` (135) | `internal/core/providers/adapter.go` | **VERIFIED** | `adapter_test.go`: 4 pre-existing (routing, manual deploy, key title, remove-by-body) + `TestEveryAdapterAnswersTheWholeInterface` - every adapter built through `Resolve`, the way the tool builds them, and required to answer the whole interface. |
+| P2 | Registry + catalog | `providers/registry.py` (157) | `internal/core/providers/providers.go` + `default_providers.json` | **VERIFIED** | `providers_test.go`: 6 pre-existing (embedded catalog matches repo, categories, keys URL, credential presence, user-file override) + `TestACatalogEntryAlwaysResolvesToAnAdapterThatAnswers` (mutation-checked). Category and kind are deliberately **not** checked against fixed vocabularies - neither has one; `adapterFor`'s default branch sends a provider with no API adapter to the manual path on purpose. |
 | P3 | GitHub (`gh`) | `providers/github.py` (125) | `internal/core/providers/vcs.go` | **VERIFIED** | `vcs_test.go`: `TestGitHubDeployAddsAndIsIdempotent` (2 subtests), `TestRemoveMatchesBodyNeverTitle`, `TestGitHubEnterpriseUsesTheEnterpriseToken` (2 subtests), `TestVCSFallsBackToManual` (2 subtests), `TestListFailureIsNotAnEmptyAccount`, `TestManageURLFollowsTheHost` |
 | P4 | GitLab (`glab`) | `providers/gitlab.py` (109) | `internal/core/providers/vcs.go` | **VERIFIED** | `vcs_test.go::TestGitLabMirrorsGitHub` (2 subtests), plus the shared helpers covered by `TestRemoveMatchesBodyNeverTitle` and `TestManageURLFollowsTheHost` |
 | P5 | Cloud REST VPS (DigitalOcean, Vultr, Hetzner, Linode, Scaleway, generic) | `providers/cloud.py` (436); tests `tests/test_cloud_providers.py` | `internal/core/providers/cloud.go` | **VERIFIED** | `cloud_test.go`: `TestDeployAddsAKeyThatIsNotThere`, `TestDeployIsIdempotent`, `TestDeployRenamesOurStaleTitleButNeverAUserLabel` (2 subtests), `TestVerifyAndRemoveMatchOnBodyNotLabel`, `TestNoTokenFallsBackToManual`, `TestAPIFailuresSurface`, `TestPerProviderResponseShapes` (4 subtests), `TestNumericIDsDoNotBecomeScientificNotation`, `TestDigitalOceanOverHTTP`, `TestPaginationIsBounded`. **Coverage limit below.** |
