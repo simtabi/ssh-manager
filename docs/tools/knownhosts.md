@@ -1,21 +1,29 @@
-# knownhosts - pin host keys per profile
+# `knownhosts` — pin host keys into the trust store
 
-ssh-manager keeps a **per-profile** `known_hosts` (`~/.ssh/profiles/<profile>/known_hosts`,
-referenced by each host's `UserKnownHostsFile`), so trust is scoped to the
-identity that uses it - no shared, ever-growing global trust store, and no
-cross-profile bleed.
+One hashed `~/.ssh/known_hosts`, owner-only, with every line this tool wrote
+tagged so it only ever prunes its own.
+
+v1 kept a `known_hosts` per profile. v2 does not: identity isolation comes from
+`IdentityFile` plus a per-host `IdentitiesOnly yes`, which is a stronger
+guarantee than where the trust store sits, and one store means a host key is
+verified once instead of once per profile that uses it. See *Why one inline
+config and one `known_hosts`?* in [Architecture](../architecture.md).
+
+The names in the store are **hashed** (`HashKnownHosts`), so the file is not a
+readable list of every host you connect to, and it is mode 0600 rather than the
+conventional 0644 for the same reason.
 
 ## Host keys must be trusted before the first connection
 
-Until a host's key is in its per-profile `known_hosts`, a **non-interactive**
+Until a host's key is in `known_hosts`, a **non-interactive**
 client - notably `git push`/`git fetch` - fails with `Host key verification
 failed` (OpenSSH defaults to `StrictHostKeyChecking ask`). ssh-manager handles this two
 ways:
 
 ### Auto-pin on reconcile / keygen (default)
 
-After minting keys, `reconcile` and `keygen` **create/update each profile's
-`known_hosts`** for the hosts they can reach (trust-on-first-use, like ssh's
+After minting keys, `reconcile` and `keygen` **create or update the trust store**
+for the hosts they can reach (trust-on-first-use, like ssh's
 `accept-new`). This is best-effort and safe:
 
 - it only **adds** a host that has no pin yet - it never overrides an existing
@@ -30,29 +38,27 @@ To set up known_hosts (create the file + pin its reachable hosts) in one go -
 handy after `import`, or to repair a store - use `init`. Scopes are combinable:
 
 ```sh
-sshmgr knownhosts init personal       # one profile's store
-sshmgr knownhosts init --all          # every profile's store
-sshmgr knownhosts init --user         # the per-user ~/.ssh/known_hosts (all hosts)
-sshmgr knownhosts init --all --user   # both: per-profile stores + the user store
+sshmgr knownhosts init personal       # pin the hosts in one profile
+sshmgr knownhosts init --all          # pin every host in the manifest
 sshmgr knownhosts init --all --force  # re-scan already-trusted hosts, add any new keys
 ```
+
+It takes a profile or `--all`; a bare `knownhosts init` says what it needs rather
+than guessing at a scope.
 
 `--force` re-scans hosts that are already trusted and adds any **new** key types
 it finds; it does **not** remove a superseded key (ssh-manager never silently accepts a
 changed host key - if a host's key genuinely rotated, remove the stale line by
 hand or re-pin with `knownhosts pin`).
 
-- **Per profile** (`PROFILE` / `--all`) writes `~/.ssh/profiles/<p>/known_hosts` -
-  the store each managed alias actually uses (`UserKnownHostsFile`). Trust stays
-  per-profile: one identity never trusts another's host keys.
-- **Per user** (`--user`) writes the conventional top-level `~/.ssh/known_hosts`,
-  which OpenSSH consults for any **ad-hoc** ssh/git connection that doesn't match a
-  managed profile alias. Every manifest host is aggregated there once (a host used
-  by two profiles is pinned a single time).
+A `PROFILE` argument scopes the pass to that profile's hosts; `--all` covers every
+host in the manifest. Either way the destination is the same single store, so a
+host used by two profiles is pinned once — which is also what OpenSSH consults for
+any ad-hoc `ssh` or `git` connection that does not match a managed alias.
 
-It ensures each target file exists (correct perms, so the path the config
+It ensures the store exists (correct perms, so the path the config
 references is never missing), pins each **reachable** host (trust-on-first-use),
-prints the fingerprints it pinned for you to review, and reports per store:
+prints the fingerprints it pinned for you to review, and reports:
 `pinned` / `already-trusted` / `unreachable` / `no-keys`. For a host you want to
 verify *before* trusting, use `knownhosts pin` below.
 
@@ -90,3 +96,7 @@ trusts all scanned keys without prompting (for automation).
 Because each profile pins independently, the same hostname reached under two
 identities (e.g. two GitHub accounts via host aliases) is trusted separately and
 can't leak between them.
+
+---
+
+[← Docs index](../../README.md#documentation)

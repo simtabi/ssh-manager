@@ -7,12 +7,12 @@ Closes #
 ## Invariant checklist
 
 - [ ] Manifest stays the source of truth; no hand-edited `~/.ssh/config`.
-- [ ] Config changes go through the single renderer (`core/renderer.py`).
+- [ ] Config changes go through the single renderer (`internal/core/renderer`).
 - [ ] State I/O is atomic and under the advisory lock; no secrets added to git.
 - [ ] Perms (700/600/644) preserved; converging commands stay idempotent.
 
 ## Checks
 
-- [ ] `make lint` (ruff + `mypy --strict`) is green.
+- [ ] `make check` (gofmt, build, vet, tests, golangci-lint) is green — plus `make lint-all` if this touches `internal/platform` or a build-tagged file.
 - [ ] `make test` is green; added/updated tests where relevant.
 - [ ] `CHANGELOG.md` / `README.md` updated as needed.

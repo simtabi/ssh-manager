@@ -18,8 +18,26 @@ matching native one per OS. The binary version comes from the tag via ldflags
 2. Tag and push: `git tag -a vX.Y.Z -m vX.Y.Z && git push origin vX.Y.Z`.
    A tag with a pre-release suffix (`-rc.1`, `-beta`) is published as a GitHub
    pre-release.
-3. The `Release` workflow builds all targets and publishes the binaries,
-   `SHA256SUMS`, and the cosign signature/cert.
+3. The `Release` workflow builds every target and publishes the per-OS/arch
+   binaries and archives, the deb/rpm/apk packages, per-archive SBOMs,
+   `checksums.txt`, and a signed build-provenance attestation. Verify any
+   downloaded artifact with
+   `gh attestation verify <file> --repo simtabi/ssh-manager`.
+
+> There is no cosign signature. Provenance attestation is the org default and is
+> what `release.yml` produces; a `signs:` block would be added against a named
+> downstream need, not speculatively.
+
+## First release (one-time setup)
+
+1. Make the repo public and enable Issues.
+2. Set the metadata:
+   `gh repo edit simtabi/ssh-manager --homepage "https://opensource.simtabi.com/products/simtabi/ssh-manager"`,
+   topics `oss ssh ssh-keys ssh-config key-rotation cli go`.
+3. Create the `release` GitHub Environment (`release.yml` runs in it).
+4. Green on macOS, Linux and Windows: `make check`, `make e2e`, `make feature-check`.
+5. After the tag lands, confirm the published artifact installs:
+   `curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash -s vX.Y.Z && sshmgr version`.
 
 ## Channels still to wire (need external setup)
 
@@ -34,3 +52,7 @@ dependency PR.
 
 For the org-wide OIDC reference across channels, see
 `/opensource/package-publishing-guide.md`.
+
+---
+
+[← Docs index](../README.md#documentation)
