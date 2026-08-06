@@ -24,8 +24,6 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
-
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 )
 
 const ageHint = "install age: brew install age  (Linux: apt install age / get from FiloSottile/age)"
@@ -336,22 +334,43 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 	res := RestoreResult{}
 	sorted := append([]member(nil), members...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].name < sorted[j].name })
+	// One root per destination, opened once. Every write below goes through one
+	// of them, so a member can only ever land inside the directory it is routed
+	// to - enforced by the kernel on the resolved path, not by us on the
+	// spelling of it. The difference is not academic: the string checks this
+	// replaces passed a member whose name was an ordinary relative path, and the
+	// write still escaped by following a symlink that was already in the tree.
+	// Both must exist before they can be opened as roots; the previous code
+	// created them lazily, on the first write into each.
+	if err := os.MkdirAll(b.sshDir, 0o700); err != nil {
+		return res, err
+	}
+	if err := os.MkdirAll(b.configDir, 0o700); err != nil {
+		return res, err
+	}
+	sshRoot, err := os.OpenRoot(b.sshDir)
+	if err != nil {
+		return res, err
+	}
+	defer func() { _ = sshRoot.Close() }()
+	configRoot, err := os.OpenRoot(b.configDir)
+	if err != nil {
+		return res, err
+	}
+	defer func() { _ = configRoot.Close() }()
+
 	for _, m := range sorted {
-		var dest, label string
+		var root *os.Root
+		var rel, label string
 		switch {
 		case strings.HasPrefix(m.name, sshPrefix):
-			rel := strings.TrimPrefix(m.name, sshPrefix)
-			dest = filepath.Join(b.sshDir, filepath.FromSlash(rel))
-			if !fs.Within(b.sshDir, dest) {
-				return res, fmt.Errorf("refusing path traversal in bundle: %s", m.name)
-			}
+			root, rel = sshRoot, strings.TrimPrefix(m.name, sshPrefix)
 			label = rel
 		case strings.HasPrefix(m.name, configPrefix):
 			// Flat by construction, and pinning the base name keeps a crafted
 			// member from escaping the config dir.
-			name := path.Base(m.name)
-			dest = filepath.Join(b.configDir, name)
-			label = configPrefix + name
+			root, rel = configRoot, path.Base(m.name)
+			label = configPrefix + rel
 		default:
 			// A bundle only ever holds those two roots. Anything else means the
 			// archive was tampered with - including a traversal like
@@ -359,13 +378,13 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 			// from. Refusing beats silently skipping part of a restore.
 			return res, fmt.Errorf("refusing unexpected member in bundle: %s", m.name)
 		}
-		if err := writeBytesAtomic(dest, m.data); err != nil {
+		if err := writeBytesAtomicIn(root, rel, m.data); err != nil {
 			return res, err
 		}
 		res.Restored = append(res.Restored, label)
-		if strings.HasSuffix(dest, ".pub") {
-			if fp, err := fingerprintOf(dest); err == nil {
-				res.Fingerprints = append(res.Fingerprints, FP{Name: stem(filepath.Base(dest)), Fingerprint: fp})
+		if strings.HasSuffix(rel, ".pub") {
+			if fp, err := fingerprintOf(filepath.Join(root.Name(), filepath.FromSlash(rel))); err == nil {
+				res.Fingerprints = append(res.Fingerprints, FP{Name: stem(path.Base(rel)), Fingerprint: fp})
 			}
 		}
 	}
@@ -434,29 +453,32 @@ func readTarGz(r io.Reader) ([]member, error) {
 // within reports whether dest stays inside root, so a crafted member name cannot
 // write outside the tree it claims to belong to.
 
-func writeBytesAtomic(path string, data []byte) error {
-	dir := filepath.Dir(path)
-	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return err
+// writeBytesAtomicIn writes name (a slash-separated path relative to root)
+// through a temp file and a rename, without any operation escaping root.
+func writeBytesAtomicIn(root *os.Root, name string, data []byte) error {
+	if dir := path.Dir(name); dir != "." {
+		if err := root.MkdirAll(dir, 0o700); err != nil {
+			return err
+		}
 	}
-	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+".*.tmp")
+	tmp := path.Join(path.Dir(name), "."+path.Base(name)+".tmp")
+	f, err := root.OpenFile(tmp, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
 	if err != nil {
 		return err
 	}
-	tmpName := tmp.Name()
-	defer func() { _ = os.Remove(tmpName) }()
-	if _, err := tmp.Write(data); err != nil {
-		_ = tmp.Close()
+	defer func() { _ = root.Remove(tmp) }() // a no-op once the rename succeeds
+	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
 		return err
 	}
-	if err := tmp.Sync(); err != nil {
-		_ = tmp.Close()
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	if err := f.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmpName, path)
+	return root.Rename(tmp, name)
 }
 
 func sha256File(path string) (string, error) {

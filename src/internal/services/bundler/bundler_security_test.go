@@ -288,3 +288,50 @@ func TestOrdinaryArchiveStillReads(t *testing.T) {
 		t.Fatalf("got %d members, want 1", len(members))
 	}
 }
+
+// The same containment property the snapshot restorer has: a symlink already in
+// the destination must not be a way out of it. Every member name here is an
+// ordinary relative path, so name checks pass it and the joined path is
+// textually inside ~/.ssh - the escape happens when the OS resolves the link.
+func TestRestoreWillNotWriteThroughASymlinkOutOfTheDestination(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privilege on Windows")
+	}
+	ssh, cfg := writeSrc(t)
+	dest := filepath.Join(t.TempDir(), "out")
+	res, err := New(ssh, cfg, fakeCipher{}).Bundle("age1fake", dest, "20260101")
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	base := t.TempDir()
+	destSSH := filepath.Join(base, ".ssh")
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(filepath.Join(destSSH, "profiles"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(outside, "work_a-ed25519")
+	const original = "# a key outside the destination\n"
+	if err := os.WriteFile(victim, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	// The bundle carries profiles/work/*, so link that directory out of the tree.
+	if err := os.Symlink(outside, filepath.Join(destSSH, "profiles", "work")); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+
+	_, restoreErr := New(destSSH, filepath.Join(base, "cfg"), fakeCipher{}).
+		Restore(res.AgePath, "", func(string) (string, error) { return "SHA256:fake", nil })
+
+	got, readErr := os.ReadFile(victim)
+	if readErr != nil {
+		t.Fatalf("the file outside the destination is gone: %v", readErr)
+	}
+	if string(got) != original {
+		t.Errorf("the bundle wrote through a symlink and out of the destination.\n"+
+			"%s = %q\nRestore returned: %v", victim, got, restoreErr)
+	}
+}

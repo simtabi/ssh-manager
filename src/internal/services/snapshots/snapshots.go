@@ -23,7 +23,6 @@ import (
 	"strings"
 	"time"
 
-	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
 )
 
@@ -310,29 +309,44 @@ func extractTarGz(tarball, destParent string) error {
 	if err := os.MkdirAll(destParent, 0o700); err != nil {
 		return err
 	}
+
+	// Every write goes through os.Root, which confines it to destParent in the
+	// kernel: a name that resolves outside - including through a symlink planted
+	// by an earlier member of the same archive - fails in the OS rather than in
+	// a check we wrote. The name validation above still runs first, because it
+	// gives a better error than a refused syscall, but it is no longer the thing
+	// standing between a crafted archive and the filesystem.
+	//
+	// The string checks it replaces were correct as far as they went. What they
+	// could not do is survive being read: they were split across two packages,
+	// which is why CodeQL's zipslip rule reported the sink as unsanitized (alert
+	// #9) - and an alert nobody can discharge by reading the code is how real
+	// ones start getting waved through.
+	root, err := os.OpenRoot(destParent)
+	if err != nil {
+		return err
+	}
+	defer func() { _ = root.Close() }()
+
 	for _, m := range members {
-		dest := filepath.Join(destParent, filepath.FromSlash(m.name))
-		// Belt and braces: the name was validated above, and this confirms the
-		// path it produced actually landed inside the destination.
-		if !fs.Within(destParent, dest) {
-			return fmt.Errorf("refusing path traversal in archive: %s", m.hdr.Name)
-		}
 		mode := os.FileMode(m.hdr.Mode).Perm()
 		switch m.hdr.Typeflag {
 		case tar.TypeDir:
-			if err := os.MkdirAll(dest, mode); err != nil {
+			if err := root.MkdirAll(m.name, mode); err != nil {
 				return err
 			}
 		case tar.TypeReg:
-			if err := os.MkdirAll(filepath.Dir(dest), 0o700); err != nil {
-				return err
+			if dir := path.Dir(m.name); dir != "." {
+				if err := root.MkdirAll(dir, 0o700); err != nil {
+					return err
+				}
 			}
 			// Unlink first: the destination may already exist, possibly as a
 			// symlink or read-only, and writing through either is wrong.
-			if err := os.Remove(dest); err != nil && !os.IsNotExist(err) {
+			if err := root.Remove(m.name); err != nil && !os.IsNotExist(err) {
 				return err
 			}
-			if err := os.WriteFile(dest, m.data, mode); err != nil {
+			if err := root.WriteFile(m.name, m.data, mode); err != nil {
 				return err
 			}
 		}

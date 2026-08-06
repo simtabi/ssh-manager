@@ -233,9 +233,13 @@ func checkDevRoot(root string, real Paths) error {
 	return nil
 }
 
-// within reports whether dest is at or below root. It is the same rule as
-// util/fs.Within, repeated here because util/fs imports nothing from paths and
-// this package must not start a cycle by importing it.
+// within reports whether dest is at or below root.
+//
+// This is a check on two paths the tool computed itself - a sandbox root against
+// the real home - so comparing the spellings is the whole question. It is not
+// the right tool for a path that came out of an archive: see the extractors in
+// services/snapshots and services/bundler, which confine writes with os.Root
+// because a textually-inside path can still resolve outside through a symlink.
 func within(root, dest string) bool {
 	rel, err := filepath.Rel(filepath.Clean(root), filepath.Clean(dest))
 	if err != nil {

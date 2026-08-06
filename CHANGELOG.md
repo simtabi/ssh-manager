@@ -6,6 +6,20 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Security
+
+- **Restoring a snapshot or a bundle can no longer write outside its
+  destination.** Both extractors validated member names and then checked that
+  the joined path was textually inside the target — which a symlink already
+  present in that target defeats, because the escape happens when the OS
+  resolves the path rather than in how it is spelled. An archive with nothing
+  but ordinary relative names could overwrite a file anywhere the user could
+  write. Both now confine every write with `os.Root`, so containment is enforced
+  by the kernel on the resolved path; the name validation stays, for a better
+  error than a refused syscall. Reported by CodeQL as `go/zipslip` once the Go
+  code was being scanned, and confirmed by a test that fails against the
+  previous implementation.
+
 ## [3.1.0] - 2026-08-06
 
 ### Added

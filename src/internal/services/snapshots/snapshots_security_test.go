@@ -6,6 +6,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -303,5 +304,50 @@ func TestRestoreRefusesATargetItCannotVouchFor(t *testing.T) {
 	// would read as a successful restore of nothing.
 	if err := Restore(filepath.Join(base, "no-such.tar.gz"), ssh); err == nil {
 		t.Error("restoring a missing snapshot should error")
+	}
+}
+
+// A symlink already sitting in the destination is the case string checks cannot
+// cover. Every name in the archive below is an ordinary relative path, so the
+// name validation passes it and the joined path is textually inside the
+// destination - and the write still lands outside, because the OS follows the
+// link. os.Root is what refuses it, in the kernel, on the resolved path rather
+// than on the spelling of it.
+func TestRestoreWillNotWriteThroughASymlinkOutOfTheDestination(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("symlink creation needs privilege on Windows")
+	}
+	base := t.TempDir()
+	ssh := filepath.Join(base, ".ssh")
+	writeTree(t, ssh)
+
+	// Somewhere the archive must not be able to reach.
+	outside := filepath.Join(base, "outside")
+	if err := os.MkdirAll(outside, 0o700); err != nil {
+		t.Fatal(err)
+	}
+	victim := filepath.Join(outside, "authorized_keys")
+	const original = "# the real file, must not be rewritten\n"
+	if err := os.WriteFile(victim, []byte(original), 0o600); err != nil {
+		t.Fatal(err)
+	}
+
+	// ...and a link into it, planted in the tree being restored over.
+	if err := os.Symlink(outside, filepath.Join(ssh, "linked")); err != nil {
+		t.Skipf("cannot create symlinks here: %v", err)
+	}
+
+	tarball := filepath.Join(base, "crafted.tar.gz")
+	craftArchive(t, tarball, map[string]string{".ssh/linked/authorized_keys": "OWNED\n"})
+
+	err := Restore(tarball, ssh)
+
+	got, readErr := os.ReadFile(victim)
+	if readErr != nil {
+		t.Fatalf("the file outside the destination is gone: %v", readErr)
+	}
+	if string(got) != original {
+		t.Errorf("the archive wrote through a symlink and out of the destination.\n"+
+			"%s = %q\nRestore returned: %v", victim, got, err)
 	}
 }
