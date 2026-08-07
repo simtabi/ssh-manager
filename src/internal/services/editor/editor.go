@@ -1,5 +1,5 @@
-// Package editor does manifest editing - profile/host add·edit·delete - ported
-// from services/editor.py. Edits go through the manifest (never a hand-edited
+// Package editor does manifest editing - profile/host add·edit·delete. Edits
+// go through the manifest (never a hand-edited
 // config), are validated, and written atomically. Delete prunes the inventory
 // deployment record so no dangling tracking is left behind.
 //

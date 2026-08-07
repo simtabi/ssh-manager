@@ -72,7 +72,7 @@ func (r Report) OK() bool {
 }
 
 // Format renders the human-readable report (mirrors DoctorReport.format; the
-// preflight block carries the Go runtime line in place of the Python version).
+// preflight block carries the Go runtime line in place of an interpreter version).
 func (r Report) Format() string {
 	lines := []string{preflight.Format(r.Preflight), ""}
 	if r.Home != "" {
@@ -450,7 +450,7 @@ func duplicateKeys(ssh string) []string {
 	}
 	ks := keystore.New()
 	byFP := map[string][]string{}
-	var order []string // first-encounter fp order (pubs sorted), to match Python dict order
+	var order []string // first-encounter fp order (pubs sorted), matching v1
 	pubs, _ := filepath.Glob(filepath.Join(profDir, "*", "*.pub"))
 	sort.Strings(pubs)
 	for _, pub := range pubs {

@@ -12,7 +12,7 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:tests/test_cloud_providers.py. That file pinned
+// Parity reference: v1's cloud_providers tests. That file pinned
 // the orchestration rules these adapters share - idempotent deploy, rename our
 // own stale title but never a user's label, find-by-body for verify and remove -
 // by faking the HTTP layer. The Go design makes that cleaner: restProvider holds

@@ -5,8 +5,8 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:src/ssh_manager/platforms/windows.py, covered
-// by Python's tests/test_windows.py. Runs everywhere: the argv is what matters,
+// Parity reference: v1's windows layer, covered
+// by v1's Windows tests. Runs everywhere: the argv is what matters,
 // and it is decidable without Windows.
 
 func TestSchtasksRegistersADailyTask(t *testing.T) {

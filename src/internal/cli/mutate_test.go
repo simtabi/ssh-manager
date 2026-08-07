@@ -320,7 +320,7 @@ func TestExpiryTableNamesKeysByProfile(t *testing.T) {
 
 // --- the remaining verbs, driven through Execute -------------------------
 //
-// Parity reference: python-final:src/ssh_manager/cli.py:221-229 (diff),
+// Parity reference: v1's CLI (221-229 )(diff),
 // :275-293 (deploy), :401-413 (net). These three had no test at any level; the
 // harness above is what makes them reachable, since a command that called
 // os.Exit would have taken the test binary with it.

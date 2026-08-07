@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:src/ssh_manager/util/fs.py::write_text_atomic
-// and ::ensure_dir. The Python wrote through tempfile.mkstemp in the target's
+// Parity reference: v1's atomic writer (write_text_atomic)
+// and its directory helper. v1 wrote through a temp file in the target's
 // own directory, fsynced, chmodded the temp, then os.replace'd it - so a reader
 // never saw a half file and a crash never left one. Same contract here.
 
@@ -39,7 +39,7 @@ func TestWriteTextAtomicWritesContentAndMode(t *testing.T) {
 	}
 }
 
-// Bytes go to disk as given. The Python passed newline="" for exactly this: an
+// Bytes go to disk as given. v1 passed newline="" for exactly this: an
 // ssh config and a private key must be LF, and a CRLF translation on Windows
 // would corrupt both.
 func TestWriteTextAtomicDoesNotTranslateNewlines(t *testing.T) {
@@ -116,7 +116,7 @@ func TestWriteTextAtomicReassertsModeOnAnExistingFile(t *testing.T) {
 	}
 }
 
-// The parent directory is created, matching the Python's
+// The parent directory is created, matching v1's
 // path.parent.mkdir(parents=True).
 func TestWriteTextAtomicCreatesTheParent(t *testing.T) {
 	path := filepath.Join(t.TempDir(), "a", "b", "config")

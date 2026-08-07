@@ -111,7 +111,7 @@ func auditReport(p paths.Paths, m *manifest.Manifest, now time.Time, notify bool
 }
 
 // sortedByPath returns inventory fingerprints ordered by (path, fingerprint) for
-// stable output (a Go map has no insertion order to mirror Python's).
+// stable output (a Go map has no insertion order to mirror v1's).
 func sortedByPath(inv *inventory.Inventory) []string {
 	fps := make([]string, 0, len(inv.Keys))
 	for fp := range inv.Keys {

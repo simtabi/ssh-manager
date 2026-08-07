@@ -11,7 +11,7 @@ import (
 
 // TestEmbeddedEnvMatchesShipped pins the embedded .env to the template in the
 // repo root - the copy a reader finds first, and the one the docs point at. The
-// two used to be kept in sync by a script that copied both into the Python
+// two used to be kept in sync by a script that copied both into v1
 // package; with that gone, this test is what keeps them from drifting.
 //
 // The path climbs out of the module: the Go code is under src/ but .env-example

@@ -115,7 +115,7 @@ func parseSSHConfig(text, baseDir string, seen map[string]bool) []*ParsedHost {
 }
 
 // splitKV splits a config line into a lowercased keyword and the trimmed rest,
-// mirroring Python's line.split(None, 1) (whitespace only; no "=" handling).
+// splitting on whitespace only, as v1 did (no "=" handling).
 func splitKV(line string) (string, string) {
 	i := strings.IndexFunc(line, unicode.IsSpace)
 	if i < 0 {

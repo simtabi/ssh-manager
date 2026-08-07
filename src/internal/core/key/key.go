@@ -1,5 +1,5 @@
-// Package key implements the ssh-manager key-naming convention, ported from
-// src/ssh_manager/core/key.py. Name grammar: <profile>_<service>-<algo> with
+// Package key implements the ssh-manager key-naming convention. Name grammar:
+// <profile>_<service>-<algo> with
 // exactly one underscore (the profile prefix); the rest is kebab-case.
 package key
 

@@ -118,7 +118,7 @@ func keyBody(line string) string {
 }
 
 // Hardware key types fall back to their software equivalent when no FIDO2
-// device answers. python-final:src/ssh_manager/services/keystore.py:51-56 did
+// device answers. v1's keystore (51-56) did
 // the same: `ed25519-sk` is attempted, and on failure `ed25519` is minted with
 // "(sk-fallback)" in the comment so the substitution is visible afterwards.
 //

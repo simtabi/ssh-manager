@@ -128,7 +128,7 @@ func TestTypeTokenMustMatchTheEncodedWireType(t *testing.T) {
 	}
 }
 
-// Add/remove normalise whitespace the way the Python did: an empty file gains no
+// Add/remove normalise whitespace the way v1 did: an empty file gains no
 // leading blank line, an unterminated file gains its newline, and a file emptied
 // of keys comes back empty rather than as a lone newline.
 func TestAddRemoveNormaliseFileEdges(t *testing.T) {

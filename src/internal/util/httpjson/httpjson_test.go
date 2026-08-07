@@ -11,7 +11,7 @@ import (
 	"time"
 )
 
-// Parity reference: python-final:src/ssh_manager/util/http.py. Same retry set
+// Parity reference: v1's HTTP client. Same retry set
 // (429/5xx), same idempotent-only retry rule, same redirect policy - refuse an
 // https->non-https downgrade, and drop credential headers when a redirect
 // crosses origin, because the stdlib would otherwise forward a bearer token to

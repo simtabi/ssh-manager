@@ -64,7 +64,7 @@ jobs:
   gitleaks:
     # The only secret scanner now, and the only one that ever mattered: it runs
     # against the full history, which the pre-commit hook of the same name could
-    # not do. That hook, and the Python runtime the pre-commit job needed to run
+    # not do. That hook, and the interpreter the pre-commit job needed to run
     # it, are gone; its file-hygiene rules are Go tests in cmd/sshmgr.
     #
     # Run the gitleaks binary directly: gitleaks-action@v2 requires a paid

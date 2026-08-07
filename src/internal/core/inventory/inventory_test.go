@@ -9,10 +9,10 @@ import (
 	"testing"
 )
 
-// TestRecordSerializationMatchesPydantic locks in the byte-for-byte serialization
+// TestRecordSerializationMatchesV1 locks in the byte-for-byte serialization
 // parity with the serializer v1 and v2 used: unset pointer fields emit null
 // (not omitted), and an empty deployments list emits [] (not null/omitted).
-func TestRecordSerializationMatchesPydantic(t *testing.T) {
+func TestRecordSerializationMatchesV1(t *testing.T) {
 	b, err := json.Marshal(KeyRecord{Profile: "p", Path: "~/.ssh/profiles/p/k", Type: "ed25519", RotateAfterDays: 365})
 	if err != nil {
 		t.Fatal(err)
@@ -252,7 +252,7 @@ func TestNeedsRedeployTurnsOnVerifiedOnly(t *testing.T) {
 
 // ComputeExpiry is plain date arithmetic, but it decides when a key is reported
 // overdue, so the leap-year and zero cases are worth pinning.
-// python-final:src/ssh_manager/core/inventory.py::compute_expiry.
+// v1's inventory (compute_expiry).
 func TestComputeExpiryArithmetic(t *testing.T) {
 	cases := []struct {
 		created string

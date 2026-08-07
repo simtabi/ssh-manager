@@ -11,14 +11,14 @@ import (
 	"testing"
 )
 
-// Ports the exit-code half of python-final:tests/test_smoke.py, and closes the
+// Ports the exit-code half of v1's smoke tests, and closes the
 // gap exit_test.go names in its own header: "Go cannot assert the code without
 // spawning a process". It can - it just has to build the binary and run it.
 //
 // Everything else in the suite tests packages. This tests the program: that
 // cmd/sshmgr links, that the cobra tree is reachable through it, and that the
 // exit codes a script or a cron job sees are the documented ones. The contract
-// is python-final:src/ssh_manager/cli.py - 0 on success (:147 doctor's
+// is v1's CLI - 0 on success (:147 doctor's
 // `0 if report.ok else 1`), 1 on everything else (:59-62 _fail), 1 and silent on
 // a declined confirmation (:343-344).
 
@@ -207,8 +207,8 @@ func TestADeclinedConfirmationExitsOneAndSaysNothingExtra(t *testing.T) {
 
 // `doctor --json` is the scripting surface, so what matters is that it parses
 // and carries the keys a script would index. This replaces the one assertion in
-// .build/feature-check.sh that shelled out to python3 to validate it - the last
-// executing Python anywhere in this repo's CI.
+// .build/feature-check.sh that shelled out to an interpreter to validate it - the last
+// an executing interpreter anywhere in this repo's CI.
 func TestDoctorJSONIsMachineReadable(t *testing.T) {
 	run, _ := sshmgr(t)
 	if _, errOut, code := run("", "init"); code != 0 {

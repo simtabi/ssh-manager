@@ -7,7 +7,7 @@ import (
 	"testing"
 )
 
-// Ports python-final:tests/test_cli_yes.py. --yes is the flag that makes
+// Ports v1's cli_yes tests. --yes is the flag that makes
 // deletion usable from a script or a cron job, and the property it has to carry
 // is that no prompt is reached at all - not that a prompt is answered for you.
 // The tests below give the command an empty reader, so any prompt it does reach

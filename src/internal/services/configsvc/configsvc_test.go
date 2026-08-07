@@ -52,8 +52,8 @@ func TestCheckMissingSingleFile(t *testing.T) {
 }
 
 // Write is the function that actually produces ~/.ssh/config, and it had no
-// test. Verified against the v2 contract, not Python's output: v2 renders one
-// inline file where Python rendered a root config plus one per profile and
+// test. Verified against the v2 contract, not v1's output: v2 renders one
+// inline file where v1 rendered a root config plus one per profile and
 // stitched them with Include (deviation D4, question Q3).
 
 func load(t *testing.T, raw string) *manifest.Manifest {

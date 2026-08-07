@@ -132,23 +132,17 @@ mistake, and `.gitignore` refuses to track one.
   fingerprint in `.gitleaksignore`, with a note saying what the string is and why
   it is not a secret.
 
-## Why some tests cite `python-final`
+## The frozen command surface
 
-This was a Python program until v3. No Python remains in the tree, but a number
-of tests cite `python-final:src/ssh_manager/...` — a tag, so `git show` resolves
-every one of them.
+`internal/cli/surface_test.go` holds `v1Surface`: the verb and flag list this
+tool shipped before the Go rewrite, transcribed into the test.
+`TestTheCommandSurfaceMatchesTheOneItReplaced` compares the whole cobra tree
+against it in both directions, so a verb cannot vanish and a flag cannot appear
+without an entry in `goOnly` saying why.
 
-Those citations are evidence, not nostalgia. `TestTheCommandSurfaceMatchesThePythonItReplaced`
-compares the whole cobra tree against the verb and flag list it replaced, in both
-directions, which is what makes "no command was lost in the rewrite" a checked
-claim rather than a recollection; the parity tests name the file each case was
-derived from so a reader can confirm the behaviour was ported rather than
-invented. Deleting the citations would leave the assertions without a source.
-
-A bare `foo.py` reference is different — it points at a path that exists nowhere
-and should be removed or rewritten. If a comment names Python, it should either
-cite the tag or explain a decision (why a type has a method ceiling, why the JSON
-has the shape it does).
+It is a frozen baseline, not a pointer at anything — the data is in the file, and
+the test needs nothing else to run. Adding a verb means adding a `goOnly` entry;
+removing one that the baseline lists means the test fails, which is the point.
 
 ## Commits & PRs
 

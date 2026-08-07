@@ -3,7 +3,7 @@
 // would have broken every script and ssh config that invokes it.
 //
 // The verb set is pinned against the implementation it replaced by
-// TestTheCommandSurfaceMatchesThePythonItReplaced, which is what makes "no verb
+// TestTheCommandSurfaceMatchesTheOneItReplaced, which is what makes "no verb
 // was lost" a checked claim rather than a recollection.
 package cli
 

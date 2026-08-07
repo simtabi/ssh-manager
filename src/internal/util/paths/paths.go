@@ -1,5 +1,5 @@
 // Package paths resolves the per-user home and the on-disk layout, ported from
-// src/ssh_manager/util/paths.py + the platform config_dir logic. Resolution:
+// the platform config_dir logic. Resolution:
 // $SSH_MANAGER_HOME (alias $SSH_MANAGER_CONFIG_DIR), else the OS-standard config
 // dir + the "ssh-manager" folder ($XDG_CONFIG_HOME or ~/.config on Unix/macOS,
 // %APPDATA% on Windows).

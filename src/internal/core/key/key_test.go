@@ -85,7 +85,7 @@ func TestAlgoOf(t *testing.T) {
 
 // DeriveKeyName is what turns a host alias into a key name, so the alias forms
 // that actually appear in a manifest are the ones worth pinning.
-// python-final:src/ssh_manager/core/key.py::derive_key_name.
+// v1's key (derive_key_name).
 func TestDeriveKeyNameFromRealAliases(t *testing.T) {
 	cases := []struct{ profile, alias, want string }{
 		{"work", "hpc.example.edu", "work_hpc-example-edu-ed25519"},

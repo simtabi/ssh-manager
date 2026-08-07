@@ -15,7 +15,7 @@ import (
 )
 
 // The four "dissolved" rows: S1 (the facade), U8 (the subprocess wrapper),
-// U11 (the error taxonomy) and U12 (the presentation layer). Each names a Python
+// U11 (the error taxonomy) and U12 (the presentation layer). Each names a v1
 // construct with no Go counterpart by design, so there is no behaviour to test -
 // what is verified here is structural.
 //
@@ -81,8 +81,8 @@ const mod = "github.com/simtabi/ssh-manager/src/v3/"
 
 // S1 - the facade is dissolved.
 //
-// R1's content is not "no file called facade.py". The Python facade was one
-// class carrying **54 methods**, and every verb hung off it. So the invariant is
+// R1's content is not "no type called a facade". v1 had a single class carrying
+// **54 methods**, and every verb hung off it. So the invariant is
 // that no single type has become the place everything goes, plus the dependency
 // directions that would let one form again.
 //
@@ -116,7 +116,7 @@ func TestNoTypeHasBecomeTheFacadeAgain(t *testing.T) {
 	}
 	for k, n := range methods {
 		if n > godObjectCeiling {
-			t.Errorf("%s.%s has %d methods (ceiling %d). The Python facade had 54 and "+
+			t.Errorf("%s.%s has %d methods (ceiling %d). v1 had a facade type with 54 and "+
 				"every verb hung off it; that is the shape this guards against.",
 				k.pkg, k.typ, n, godObjectCeiling)
 		}
@@ -233,7 +233,7 @@ func TestNoSourceEmitsTerminalEscapes(t *testing.T) {
 	}
 }
 
-// U8 - util/proc.py is dissolved into os/exec at call sites.
+// U8 - v1's subprocess wrapper is dissolved into os/exec at call sites.
 //
 // What the wrapper centralised was the policy, not the mechanism: argv lists,
 // never a shell. Collecting every literal command the tree can run pins the
@@ -308,7 +308,7 @@ func TestTheToolRunsOnlyTheBinariesItDeclares(t *testing.T) {
 		if !declared[name] {
 			t.Errorf("%s runs %q, which is not in the declared binary surface (%v)", where[0], name, where)
 		}
-		// The policy the Python wrapper existed to enforce: argv, never a shell.
+		// The policy v1 wrapper existed to enforce: argv, never a shell.
 		// The one place a shell is involved is the script sent to a REMOTE host,
 		// which runs there, not here.
 		if name == "sh" || name == "bash" || name == "cmd" {

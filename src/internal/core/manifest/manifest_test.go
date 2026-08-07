@@ -26,7 +26,7 @@ func TestLoadRealManifest(t *testing.T) {
 	if m.Version != 1 || m.Defaults.KeyType != "ed25519" {
 		t.Fatalf("defaults wrong: version=%d key_type=%q", m.Version, m.Defaults.KeyType)
 	}
-	// JSON number coerced to string, matching Python str(60).
+	// JSON number coerced to string, as v1 wrote it.
 	if got := m.Defaults.GlobalOptions.Get("ServerAliveInterval"); got != "60" {
 		t.Fatalf("ServerAliveInterval = %q, want \"60\"", got)
 	}
@@ -409,7 +409,7 @@ func index(s, sub string) int {
 }
 
 // Control characters are refused everywhere a value reaches the rendered config.
-// python-final:src/ssh_manager/core/manifest.py::_reject_control.
+// v1's manifest (_reject_control).
 //
 // This is config injection, not tidiness. Every one of these fields is written
 // into ~/.ssh/config as `Keyword value`, so a newline in a hostname would end
@@ -444,7 +444,7 @@ func TestControlCharactersAreRejectedEverywhere(t *testing.T) {
 
 // hostname and user must not start with a dash or contain whitespace: both are
 // passed to ssh, where a leading dash reads as a flag and whitespace splits the
-// argument. python-final:...::_safe_value.
+// argument. v1's _safe_value.
 func TestHostnameAndUserRejectFlagsAndWhitespace(t *testing.T) {
 	bad := map[string]string{
 		"leading dash": "-oProxyCommand=x",
@@ -511,8 +511,8 @@ func TestDangerousOptionsRejectedInGlobalOptionsToo(t *testing.T) {
 }
 
 // Option values are stringified the way v1 and v2 did, because they are written
-// into the config verbatim. python-final:...::_stringify_raw.
-func TestOptionValuesAreStringifiedLikePydantic(t *testing.T) {
+// into the config verbatim. v1's _stringify_raw.
+func TestOptionValuesAreStringifiedLikeV1(t *testing.T) {
 	m, err := loadJSON(t, `{"defaults":{"global_options":{
 		"ServerAliveInterval":60,"Compression":true,"BatchMode":false,"Nothing":null}},
 		"profiles":{}}`)
@@ -521,9 +521,9 @@ func TestOptionValuesAreStringifiedLikePydantic(t *testing.T) {
 	}
 	want := map[string]string{
 		"ServerAliveInterval": "60",
-		"Compression":         "True",  // Python str(True)
-		"BatchMode":           "False", // Python str(False)
-		"Nothing":             "None",  // Python str(None)
+		"Compression":         "True",  // v1 spelling
+		"BatchMode":           "False", // v1 spelling
+		"Nothing":             "None",  // v1 spelling
 	}
 	for k, v := range want {
 		if got := m.Defaults.GlobalOptions.Get(k); got != v {
@@ -534,7 +534,7 @@ func TestOptionValuesAreStringifiedLikePydantic(t *testing.T) {
 
 // The deliberate relaxation, and why it is safe.
 //
-// python-final:src/ssh_manager/core/manifest.py::_v_key_name_uniqueness
+// v1's manifest (_v_key_name_uniqueness)
 // *rejected* a key_name used by two profiles at load. Its stated reason:
 // "rotate/deploy/rollback resolve a key_name back to its host(s) and assume
 // they all share ONE profile dir; if two profiles reused a name, rotating one
@@ -544,7 +544,7 @@ func TestOptionValuesAreStringifiedLikePydantic(t *testing.T) {
 // v2 removes the ban because it removed the hazard: a key is identified by
 // KeyRef{profile,key}, and every lifecycle op resolves through it, so a name
 // shared by two profiles never selects the wrong directory. This is a widening
-// - a manifest Python refused now loads, and nothing that loaded before breaks.
+// - a manifest v1 refused now loads, and nothing that loaded before breaks.
 // Recorded as deviation D8.
 func TestSharedKeyNameLoadsAndStaysProfileScoped(t *testing.T) {
 	m, err := loadJSON(t, dupKeyManifest)
@@ -552,7 +552,7 @@ func TestSharedKeyNameLoadsAndStaysProfileScoped(t *testing.T) {
 		t.Fatalf("a name shared by two profiles must load in v2: %v", err)
 	}
 
-	// The hazard the Python named: resolving the shared name must never hand
+	// The hazard v1 named: resolving the shared name must never hand
 	// back one profile's hosts under the other profile's directory.
 	for _, profile := range []string{"personal", "adelsaiq"} {
 		ref := KeyRef{Profile: profile, KeyName: "imani_github-ed25519"}

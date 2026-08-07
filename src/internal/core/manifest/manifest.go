@@ -1,5 +1,5 @@
-// Package manifest is the ssh-manager manifest domain model, ported from
-// src/ssh_manager/core/manifest.py. The manifest is the single source of truth;
+// Package manifest is the ssh-manager manifest domain model. The manifest is
+// the single source of truth;
 // this package loads/validates it and exposes the per-host key resolution the
 // renderer and reconciler depend on (per_service default, shared opt-in).
 package manifest
@@ -47,7 +47,7 @@ var DefaultGlobalOptions = map[string]string{
 }
 
 // OrderedOptions is an SSH-option map that preserves JSON key order (the renderer
-// emits options in that order) and stringifies values like Python's str().
+// emits options in that order) and stringifies values the way v1 did.
 type OrderedOptions struct {
 	keys []string
 	vals map[string]string
@@ -134,7 +134,7 @@ func stringifyJSON(raw json.RawMessage) string {
 	}
 	switch s {
 	case "true":
-		return "True" // match Python str(True)
+		return "True" // the spelling v1 wrote for a true value
 	case "false":
 		return "False"
 	case "null":
@@ -441,7 +441,7 @@ func (m *Manifest) ProfileNames() []string {
 }
 
 // SetProfile adds or replaces a profile, preserving file order (a new profile is
-// appended, like Python's dict insertion).
+// appended, as v1 did).
 func (m *Manifest) SetProfile(name string, p Profile) {
 	if _, ok := m.Profiles[name]; !ok {
 		m.profileOrder = append(m.profileOrder, name)
@@ -842,7 +842,7 @@ func (m *Manifest) KnownHostsFile() string {
 }
 
 // IterResolved returns every host with its resolved key, in manifest (file)
-// order - matching Python's iter_resolved (which iterates profiles.items()). Order
+// order - the order v1 resolved them in. Order
 // is observable in order-preserving consumers like doctor's unpinned-host list;
 // the rendered config is order-independent (the root config uses Include).
 func (m *Manifest) IterResolved() ([]ResolvedKey, error) {
@@ -863,7 +863,7 @@ func (m *Manifest) IterResolved() ([]ResolvedKey, error) {
 }
 
 // NonEmptyProfiles lists profiles that have at least one host, in manifest (file)
-// order - matching Python's non_empty_profiles (profiles.items()).
+// order - the order v1 listed non-empty profiles in.
 func (m *Manifest) NonEmptyProfiles() []string {
 	var out []string
 	for _, n := range m.ProfileNames() {

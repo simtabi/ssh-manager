@@ -25,7 +25,7 @@ PKG     := ./cmd/sshmgr
 # release workflow creates the alias so it cannot be forgotten.
 #
 # --match 'v[0-9]*' so no non-release tag can become the version. 'v*' was not
-# enough: it excludes python-final but admits anything else beginning with v,
+# enough: it excludes v1-final but admits anything else beginning with v,
 # and a tag like v2-migration-record would then be stamped into the binary.
 VERSION := $(shell git describe --tags --match 'v[0-9]*' --always --dirty 2>/dev/null || echo dev)
 LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/src/v3/internal/version.Version=$(VERSION)
@@ -117,7 +117,7 @@ e2e: ## end-to-end smoke in a throwaway sandbox
 #
 # It runs the whole package rather than a -run regex. The regex was
 # 'TestCommandSurface|TestVerbs', which selected 9 tests and silently excluded
-# TestTheCommandSurfaceMatchesThePythonItReplaced - the one test that pins the
+# TestTheCommandSurfaceMatchesTheOneItReplaced - the one test that pins the
 # command surface against the implementation it replaced, and the thing a target
 # called "feature-check" most obviously promises. A pattern that has to be kept
 # in step with test names drifts the moment one is renamed, and says nothing when

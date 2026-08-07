@@ -10,11 +10,9 @@ import (
 	"github.com/spf13/cobra"
 )
 
-// Python's contract, from python-final:src/ssh_manager/cli.py: `_fail` mapped
-// every SshManagerError to typer.Exit(code=1) (:59-62), a declined confirmation
-// raised typer.Exit(code=1) (:343-344, :357-358, :462-463, :543-544, :606-607),
-// and doctor exited `0 if report.ok else 1` (:147). Success was 0. Nothing else
-// was ever produced.
+// v1's exit-code contract: every error became 1, a declined confirmation became
+// 1, and doctor exited 0 when its report was clean and 1 when it was not.
+// Success was 0. Nothing else was ever produced.
 //
 // Go cannot assert the code without spawning a process, so what is asserted here
 // is the classification that Execute turns into one - and, separately, that no

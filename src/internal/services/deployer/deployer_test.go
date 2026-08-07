@@ -16,13 +16,13 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
-// Parity reference: python-final:tests/test_deploy.py. The contracts it pinned:
+// Parity reference: v1's deploy tests. The contracts it pinned:
 // a deployment is recorded in the inventory keyed by fingerprint, deploying
 // twice leaves one entry per target (not two), and a provider with no
 // credentials degrades to manual with the account URL in the detail - still
 // needs-redeploy, because a manual paste is not confirmation.
 //
-// The Python stubbed ssh-copy-id to test the generic-ssh path offline. Here the
+// v1 stubbed ssh-copy-id to test the generic-ssh path offline. Here the
 // same contracts are checked through a web-panel provider, which deploys via the
 // manual route with no network at all, plus a closed loopback port for the
 // unreachable case.
@@ -107,7 +107,7 @@ func TestDeployRecordsEveryHostUsingTheKey(t *testing.T) {
 	}
 }
 
-// The idempotence contract from the Python: deploying twice leaves one entry per
+// The idempotence contract from v1: deploying twice leaves one entry per
 // target, not a growing list.
 func TestDeployTwiceLeavesOneEntryPerTarget(t *testing.T) {
 	f := newFixture(t, manifestJSON)

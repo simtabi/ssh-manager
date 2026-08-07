@@ -9,7 +9,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 )
 
-// Parity reference: python-final:src/ssh_manager/services/facade.py:1066-1078
+// Parity reference: v1's facade (1066-1078)
 // (network_status). One row per manifest host, filtered by selector, each
 // carrying the profile that owns it.
 //

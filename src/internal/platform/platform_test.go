@@ -8,9 +8,8 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:src/ssh_manager/platforms/{base,macos,linux,
-// windows}.py. The Python dispatched through a Platform class per OS; the Go
-// equivalent is build-tagged files plus these predicates (redesign R7).
+// Parity reference: v1's platform layer, which dispatched through a class per
+// OS. The Go equivalent is build-tagged files plus these predicates (redesign R7).
 
 // writeToPipe returns a read end preloaded with s, for exercising ReadLine
 // against a real *os.File the way stdin is one.

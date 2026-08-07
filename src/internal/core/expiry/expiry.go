@@ -1,5 +1,5 @@
-// Package expiry is the pure expiry-policy engine, ported from
-// src/ssh_manager/core/expiry.py. A keypair does not self-expire; this computes
+// Package expiry is the pure expiry-policy engine. A keypair does not
+// self-expire; this computes
 // the policy reminder (per key: expires_on, days_remaining, state).
 package expiry
 

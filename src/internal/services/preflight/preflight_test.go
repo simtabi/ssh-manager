@@ -8,12 +8,12 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:src/ssh_manager/services/preflight.py. Same
+// Parity reference: v1's preflight service. Same
 // two lists, same verdict rule (ok = runtime fine AND no missing hard dep),
 // same report shape.
 //
-// Two documented differences from the Python, both in MIGRATION_PLAN.md: the Go
-// binary carries its own runtime so `python_ok` becomes a constant true (the
+// Two documented differences from v1, both in MIGRATION_PLAN.md: the Go
+// binary carries its own runtime so `v1 preflight's interpreter check` becomes a constant true (the
 // actionable half - the binary scan - is unchanged), and ssh-copy-id is optional
 // rather than hard on Windows, where Microsoft's OpenSSH does not ship it (D6).
 

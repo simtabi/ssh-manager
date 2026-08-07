@@ -1,5 +1,5 @@
-// Package inventory is the deployment-tracking model, ported from
-// src/ssh_manager/core/inventory.py. Keyed by SHA256 fingerprint, it turns
+// Package inventory is the deployment-tracking model. Keyed by SHA256
+// fingerprint, it turns
 // rotation into a checklist and is persisted atomically.
 package inventory
 

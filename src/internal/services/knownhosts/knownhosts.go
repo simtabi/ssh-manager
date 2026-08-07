@@ -1,5 +1,4 @@
-// Package knownhosts pins host keys via ssh-keyscan, ported from
-// services/knownhosts.py + facade.{known_hosts_targets,init_known_hosts}. It scans
+// Package knownhosts pins host keys via ssh-keyscan. It scans
 // and fingerprints host keys (data; the surface confirms before trust) and appends
 // confirmed lines, deduped, with the right perms - into the single, user-wide
 // ~/.ssh/known_hosts trust store every rendered host block points at.
@@ -220,7 +219,7 @@ func fingerprint(line string) string {
 	return "?"
 }
 
-// splitNonEmptyTrailing splits text into lines like Python str.splitlines (no
+// splitNonEmptyTrailing splits text into lines the way v1 did (nos (no
 // trailing empty element from a final newline).
 func splitNonEmptyTrailing(text string) []string {
 	if text == "" {

@@ -239,8 +239,8 @@ func TestADeliveredNotificationMarksAndThenGatesTheCadence(t *testing.T) {
 	}
 }
 
-// The notify cache may have been written by the Python version, whose
-// datetime.isoformat() output carries no timezone. Failing to parse it reads as
+// The notify cache may have been written by v1 version, whose
+// timestamps carry no timezone. Failing to parse it reads as
 // "never notified", so the first Go run would re-alert about keys the user was
 // told about hours earlier - and every run after a fresh install would too.
 func TestTheCacheStampParsesEveryFormatItWasEverWrittenIn(t *testing.T) {
@@ -248,8 +248,8 @@ func TestTheCacheStampParsesEveryFormatItWasEverWrittenIn(t *testing.T) {
 	for _, s := range []string{
 		"2026-03-01T09:30:15Z",        // RFC3339, what Go writes
 		"2026-03-01T09:30:15.000000Z", // RFC3339 with microseconds
-		"2026-03-01T09:30:15",         // Python isoformat(), no zone
-		"2026-03-01T09:30:15.000000",  // Python isoformat() with microseconds
+		"2026-03-01T09:30:15",         // v1 format, no zone
+		"2026-03-01T09:30:15.000000",  // v1 format with microseconds
 	} {
 		got := parseT(s)
 		if got.IsZero() {

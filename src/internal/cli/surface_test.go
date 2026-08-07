@@ -9,22 +9,21 @@ import (
 	"github.com/spf13/pflag"
 )
 
-// The command surface, checked against the Python it was ported from.
+// The command surface, checked against the implementation it was ported from.
 //
-// Transcribed from `git show python-final:src/ssh_manager/cli.py`, where Typer
-// declares every flag inline. This is the "same flags" half of the parity
+// Transcribed from the v1 CLI, which declared every flag inline. This is the "same flags" half of the parity
 // definition the matrix header uses, and it is the thing most at risk in a CLI
 // port: a verb quietly renamed, a flag dropped in translation, a shorthand that
 // silently changed meaning. None of that shows up in a service-level test.
 //
-// The table is checked in BOTH directions. A Python flag that is missing fails;
-// a Go verb or flag with no Python counterpart fails too, unless it is listed in
+// The table is checked in BOTH directions. A v1 flag that is missing fails;
+// a Go verb or flag with no v1 counterpart fails too, unless it is listed in
 // `goOnly` with the deviation that authorises it. So the surface cannot widen
 // without someone writing down why.
 
-// pythonSurface is verb -> the long flags Python declared on it. Subcommands are
+// v1Surface is verb -> the long flags v1 declared on it. Subcommands are
 // spelled "parent child". Verbs with no flags map to an empty slice.
-var pythonSurface = map[string][]string{
+var v1Surface = map[string][]string{
 	"version":   {},
 	"tui":       {},
 	"recover":   {},
@@ -72,25 +71,25 @@ var pythonSurface = map[string][]string{
 	"knownhosts pin":  {"all", "port", "yes"},
 }
 
-// pythonDropped names every Python flag deliberately NOT carried into Go, with
+// v1Dropped names every v1 flag deliberately NOT carried into Go, with
 // the decision that removed it.
 //
-// It exists because omission is invisible. pythonSurface is a transcription, and
+// It exists because omission is invisible. v1Surface is a transcription, and
 // the check below can only compare what was transcribed - so a flag left out of
 // it is unverified in both directions at once: nothing notices it is gone, and
 // nothing notices if it comes back. --user was recorded that way, as a comment
 // next to a shortened list, which documents the decision for a reader and
 // asserts nothing. Listing it here makes the removal a checked fact.
-var pythonDropped = map[string]string{
+var v1Dropped = map[string]string{
 	"knownhosts init --user": "D4: there is one trust store now, not one per profile " +
 		"plus the user's, so there is nothing left for the flag to select",
 }
 
-// goOnly names every verb and flag with no Python counterpart, against the
+// goOnly names every verb and flag with no v1 counterpart, against the
 // deviation that authorises it. An entry here is a decision someone made; an
 // addition without one is a test failure.
 var goOnly = map[string]string{
-	"key":        "D1 - key add/list/delete, the dangling-key lifecycle Python had no verb for",
+	"key":        "D1 - key add/list/delete, the dangling-key lifecycle v1 had no verb for",
 	"key add":    "D1",
 	"key list":   "D1",
 	"key delete": "D1",
@@ -99,12 +98,12 @@ var goOnly = map[string]string{
 
 	"doctor --strict": "D7 - CI gate: escalates every dangling-key state to fatal",
 
-	// Confirmation and safety flags. Python prompted; the Go verbs take an
+	// Confirmation and safety flags. v1 prompted; the Go verbs take an
 	// explicit --yes so they are usable from a script, and refuse to destroy key
 	// material without a backup path.
 	// Every verb that changes ~/.ssh now confirms first when there is a terminal
 	// to ask at, and --yes is how a script says "go ahead" explicitly rather than
-	// relying on the absence of one. Python prompted only on the destructive
+	// relying on the absence of one. v1 prompted only on the destructive
 	// verbs and had no flag at all.
 	"reconcile --yes":                "confirm-before-changing; see confirmChange",
 	"keygen --yes":                   "confirm-before-changing; also answers the per-key overwrite prompts",
@@ -115,7 +114,7 @@ var goOnly = map[string]string{
 	"knownhosts init --yes":          "confirm-before-changing",
 	"migrate --yes":                  "confirm-before-changing",
 	"notify install --yes":           "confirm-before-changing",
-	"keygen --no-key-backup":         "refuses to destroy key material unless told; no Python counterpart",
+	"keygen --no-key-backup":         "refuses to destroy key material unless told; no v1 counterpart",
 	"rotate --yes":                   "confirmation flag",
 	"rollback --yes":                 "confirmation flag",
 	"restore --yes":                  "confirmation flag",
@@ -152,25 +151,25 @@ func walk(c *cobra.Command, prefix string, out map[string][]string) {
 	}
 }
 
-func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
+func TestTheCommandSurfaceMatchesTheOneItReplaced(t *testing.T) {
 	got := map[string][]string{}
 	walk(newRootCmd(), "", got)
 
-	// Groups exist only to hold subcommands; Python had them as Typer sub-apps
+	// Groups exist only to hold subcommands; v1 had them as sub-apps
 	// with no flags of their own.
 	groups := map[string]bool{"config": true, "profile": true, "host": true,
 		"notify": true, "snapshots": true, "knownhosts": true, "key": true}
 
-	// 1. Everything Python had, Go still has - verb and flag.
-	for verb, want := range pythonSurface {
+	// 1. Everything v1 had, Go still has - verb and flag.
+	for verb, want := range v1Surface {
 		have, ok := got[verb]
 		if !ok {
-			t.Errorf("%q is in python-final:src/ssh_manager/cli.py and gone from the Go tree", verb)
+			t.Errorf("%q is in v1's CLI and gone from the Go tree", verb)
 			continue
 		}
 		for _, f := range want {
 			if !contains(have, f) {
-				t.Errorf("%s: --%s was declared in Python and is missing here (have: %v)", verb, f, have)
+				t.Errorf("%s: --%s was declared in v1 and is missing here (have: %v)", verb, f, have)
 			}
 		}
 	}
@@ -180,10 +179,10 @@ func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
 		if groups[verb] {
 			continue
 		}
-		known, inPython := pythonSurface[verb]
-		if !inPython {
+		known, inV1 := v1Surface[verb]
+		if !inV1 {
 			if _, allowed := goOnly[verb]; !allowed {
-				t.Errorf("%q has no Python counterpart and no entry in goOnly; "+
+				t.Errorf("%q has no v1 counterpart and no entry in goOnly; "+
 					"add the deviation that authorises it", verb)
 			}
 			continue
@@ -193,7 +192,7 @@ func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
 				continue
 			}
 			if _, allowed := goOnly[verb+" --"+f]; !allowed {
-				t.Errorf("%s: --%s is not in Python and has no entry in goOnly; "+
+				t.Errorf("%s: --%s is not in v1 and has no entry in goOnly; "+
 					"add the deviation that authorises it", verb, f)
 			}
 		}
@@ -222,14 +221,14 @@ func TestTheCommandSurfaceMatchesThePythonItReplaced(t *testing.T) {
 	//    Both halves matter: re-adding one silently would undo the design change
 	//    that removed it, and an entry here for a flag that is present would mean
 	//    the record and the tree disagree about what the tool does.
-	for entry, why := range pythonDropped {
+	for entry, why := range v1Dropped {
 		if present[entry] {
-			t.Errorf("%q is listed in pythonDropped (%s) but exists in the Go tree. "+
+			t.Errorf("%q is listed in v1Dropped (%s) but exists in the Go tree. "+
 				"Either the removal was reverted, or the record is stale.", entry, why)
 		}
 		verb := strings.TrimSpace(strings.Split(entry, " --")[0])
 		if _, ok := got[verb]; !ok {
-			t.Errorf("pythonDropped names %q, whose verb %q does not exist; "+
+			t.Errorf("v1Dropped names %q, whose verb %q does not exist; "+
 				"the entry can no longer be checked against anything", entry, verb)
 		}
 	}

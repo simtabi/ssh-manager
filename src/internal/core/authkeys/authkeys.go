@@ -1,5 +1,5 @@
-// Package authkeys has pure helpers for editing an authorized_keys file, ported
-// from src/ssh_manager/core/authorized_keys.py. Keys are matched by their base64
+// Package authkeys has pure helpers for editing an authorized_keys file. Keys
+// are matched by their base64
 // wire-format body (validated as a real key blob), so a key is deduped/removed
 // regardless of comments or options, and junk lines are ignored.
 package authkeys
@@ -103,7 +103,7 @@ func splitLines(text string) []string {
 	for i := range lines {
 		lines[i] = strings.TrimSuffix(lines[i], "\r")
 	}
-	// strings.Split leaves a trailing "" after a final newline; Python splitlines
+	// strings.Split leaves a trailing "" after a final newline; v1's line splitter
 	// does not. Drop a single trailing empty element to match.
 	if n := len(lines); n > 0 && lines[n-1] == "" {
 		lines = lines[:n-1]

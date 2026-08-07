@@ -7,8 +7,8 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:src/ssh_manager/platforms/windows.py, which
-// Python covered in tests/test_windows.py. These run on every platform: what is
+// Parity reference: v1's windows layer, which
+// v1 covered in its Windows tests. These run on every platform: what is
 // worth checking is which commands get built and who they name, and that is
 // decidable without Windows. The exec wiring itself is exercised by the Windows
 // leg of CI - see MIGRATION_PLAN.md's coverage limits.
@@ -55,7 +55,7 @@ func TestICACLSDropsInheritanceBeforeGranting(t *testing.T) {
 	}
 }
 
-// Every over-broad principal the Python listed is stripped, and each removal is
+// Every over-broad principal v1 listed is stripped, and each removal is
 // optional - an ACE that is not present is a no-op, so a missing one must not
 // fail the whole operation.
 func TestICACLSStripsEveryBroadPrincipal(t *testing.T) {

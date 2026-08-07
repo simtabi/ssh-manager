@@ -7,9 +7,9 @@ import (
 	"testing"
 )
 
-// This package has no Python counterpart to be in parity with - it exists
-// because of what the Python did. python-final:src/ssh_manager/services/
-// keystore.py:47-56 passed the passphrase to ssh-keygen as `-N <passphrase>`,
+// This package has no v1 counterpart to be in parity with - it exists
+// because of what v1 did. v1's keystore
+// (47-56) passed the passphrase to ssh-keygen as `-N <passphrase>`,
 // and argv is world-readable through ps and /proc/<pid>/cmdline for as long as
 // the process runs. Recorded as deviation D9 in MIGRATION_PLAN.md.
 //

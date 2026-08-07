@@ -1,5 +1,5 @@
-// Package notifier drives the expiry surfaces from the pure expiry engine, ported
-// from services/notifier.py: States (per-key expiry), Banner (the debounced inline
+// Package notifier drives the expiry surfaces from the pure expiry engine:
+// States (per-key expiry), Banner (the debounced inline
 // reminder), and Notify (the cadence-gated desktop alert). Scheduler install lives
 // with the platform layer (the notify verb).
 package notifier
@@ -39,7 +39,7 @@ func New(p paths.Paths, m *manifest.Manifest) *Notifier {
 	return n
 }
 
-// dateOf is the calendar date of now at UTC midnight (matches Python now.date()).
+// dateOf is the calendar date of now at UTC midnight (as v1 computed it()).
 func dateOf(now time.Time) time.Time {
 	return time.Date(now.Year(), now.Month(), now.Day(), 0, 0, 0, 0, time.UTC)
 }

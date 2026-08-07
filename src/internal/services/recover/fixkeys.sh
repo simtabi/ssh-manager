@@ -5,7 +5,7 @@
 # Use this when you're locked out of SSH and the only way in is the provider's
 # console (DigitalOcean Recovery Console, GCP serial/browser SSH, Hetzner, ...).
 # It runs ON the server, edits authorized_keys directly, and needs no working
-# SSH and no Python.
+# SSH and no interpreter.
 #
 # The trick that makes it paste-able: every prompt reads from /dev/tty, not
 # stdin - so pasting the whole script doesn't eat the menu answers.

@@ -11,8 +11,8 @@ import (
 
 // File hygiene, in the language the repository is written in.
 //
-// These checks used to come from pre-commit, which is a Python program - the
-// last thing in the repo that needed a Python runtime, and a second CI job with
+// These checks used to come from pre-commit, which needs an interpreter this
+// repository does not otherwise use - the last thing that did, and a second CI job with
 // its own toolchain setup to run four rules about whitespace. The rules are
 // worth keeping; the runtime was not.
 //

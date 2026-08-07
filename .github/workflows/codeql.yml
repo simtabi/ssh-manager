@@ -29,8 +29,8 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # Scan the Go code and the workflow files themselves. This said `python`
-        # until the rewrite landed, so the product went unscanned: the Python it
+        # Scan the Go code and the workflow files themselves. This named the wrong language
+        # until the rewrite landed, so the product went unscanned: the code it
         # was aimed at is gone, and the Go that replaced it was never analysed.
         language: [go, actions]
     steps:

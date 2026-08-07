@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// Parity reference: python-final:src/ssh_manager/providers/github.py and
-// gitlab.py. The rule those files call out explicitly is the one tested hardest
+// Parity reference: v1's github adapter and
+// v1's GitLab adapter. The rule those files call out explicitly is the one tested hardest
 // here: removal matches on the key *body*, never on the title, so a rotation
 // cannot revoke the key it just installed when old and new share a
 // filename-derived title.
@@ -109,7 +109,7 @@ func TestGitHubDeployAddsAndIsIdempotent(t *testing.T) {
 	})
 }
 
-// The rule the Python file names in its own docstring. Two keys, one of them
+// The rule v1 file names in its own docstring. Two keys, one of them
 // ours; removal must delete the matching body and leave the other alone, even
 // though both carry the same title.
 func TestRemoveMatchesBodyNeverTitle(t *testing.T) {

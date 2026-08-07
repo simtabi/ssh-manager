@@ -16,7 +16,7 @@ There is no facade. `internal/cli` is where composition happens, and it is a
 leaf: nothing under `internal/` imports it. `internal/core` is the domain and
 depends on nothing above it. Both directions are asserted by
 `src/cmd/sshmgr/layering_test.go`, along with a ceiling on methods-per-type - the
-Python facade carried 54 and every verb hung off it.
+v1 facade type carried 54 and every verb hung off it.
 
 The repository has two roots. Everything the Go toolchain reads lives under
 `src/`, which is the module; everything the repository presents - README,
@@ -226,7 +226,7 @@ output. Everything else does.
 
 ### Why is there no single service object?
 
-The Python implementation had a `SshManagerService` facade: 1356 lines, 54
+v1 had a `SshManagerService` facade: 1356 lines, 54
 methods, every verb hanging off it. It was the natural place for logic to
 accumulate, and it did. `internal/cli` composes services directly instead, and a
 test enforces the shape — a ceiling on methods per type, plus the two dependency

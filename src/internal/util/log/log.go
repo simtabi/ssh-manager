@@ -12,7 +12,7 @@ import (
 )
 
 // Field is one ordered key/value pair in an audit record. Order is preserved in
-// the emitted JSON (matching Python's dict insertion order).
+// the emitted JSON (the order v1 emitted them in).
 type Field struct {
 	Key   string
 	Value any

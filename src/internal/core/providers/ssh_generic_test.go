@@ -10,12 +10,12 @@ import (
 	"testing"
 )
 
-// Ports python-final:tests/test_ssh_generic.py, which ran the generated remote
+// Ports v1's ssh_generic tests, which ran the generated remote
 // script for real rather than mocking it. The script is the part that edits a
 // live server's authorized_keys; asserting that Remove "calls ssh" would check
 // nothing that matters. So the tests below put a stand-in ssh first on PATH that
 // executes the script's text locally against a temp $HOME - the same thing the
-// Python test achieved by monkeypatching proc.run.
+// v1's test achieved by stubbing its subprocess wrapper.
 
 // keyBody builds a plausible OpenSSH key body: the wire format the base64 in a
 // public key line actually encodes, so authkeys parses it as a real key.

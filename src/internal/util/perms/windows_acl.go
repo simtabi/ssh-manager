@@ -16,7 +16,7 @@ import (
 
 // broadPrincipals are the over-broad ACEs stripped from keys, directories and
 // configs so no other principal keeps access. Mirrors
-// python-final:src/ssh_manager/platforms/windows.py::_BROAD_PRINCIPALS.
+// v1's windows layer (_BROAD_PRINCIPALS).
 var broadPrincipals = []string{"Everyone", "Authenticated Users", "Users", `BUILTIN\Users`}
 
 // aclOwner is the account an ACL is granted to: %USERNAME% when set, else the
@@ -53,7 +53,7 @@ func icaclsCommands(path, owner string) (required [][]string, optional [][]strin
 // windowsPermsOK treats any existing file as correct. Windows permissions are
 // ACLs, not mode bits: a synthetic st_mode would flag every file as wrong, and
 // the actual enforcement happens through icacls on write. Mirrors
-// python-final:src/ssh_manager/platforms/windows.py::perms_ok.
+// v1's windows layer (perms_ok).
 func windowsPermsOK(path string) bool {
 	_, err := os.Stat(path)
 	return err == nil

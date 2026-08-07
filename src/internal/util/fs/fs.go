@@ -1,5 +1,5 @@
 // Package fs has atomic-write and directory helpers, ported from the parts of
-// src/ssh_manager/util/fs.py the renderer/config writer need. Writes go through a
+// the renderer/config writer need. Writes go through a
 // temp file + rename so a reader never sees a half-written config, and bytes are
 // written as-is (LF stays LF on every platform).
 package fs

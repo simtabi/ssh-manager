@@ -1,5 +1,5 @@
 // Package renderer renders the managed SSH config, ported from
-// src/ssh_manager/core/renderer.py (+ its two Jinja2 templates). One renderer
+// one template pair. One renderer
 // backs config render, config check, and reconcile so they cannot disagree.
 package renderer
 

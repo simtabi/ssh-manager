@@ -19,7 +19,7 @@ func mustDate(t *testing.T, s string) time.Time {
 	return d
 }
 
-// TestComputeStates mirrors the Python compute_states classification and order.
+// TestComputeStates mirrors v1 compute_states classification and order.
 func TestComputeStates(t *testing.T) {
 	inv := inventory.New()
 	// expires_on explicit, derive nothing.
@@ -87,7 +87,7 @@ func TestComputeStates(t *testing.T) {
 }
 
 // The boundaries, which the classification test does not reach.
-// python-final:src/ssh_manager/core/expiry.py: days < 0 is overdue, days <=
+// v1's expiry: days < 0 is overdue, days <=
 // warn_window is due_soon, anything further out is ok. A key expiring *today*
 // is due_soon, not overdue - it is still usable for the rest of the day.
 func TestClassificationBoundaries(t *testing.T) {

@@ -12,11 +12,10 @@ import (
 
 // The exit-code contract, and the one place it is applied.
 //
-// Parity with the Python implementation is a plain binary: 0 on success, 1 on
-// anything else. The implementation this replaced mapped every error to exit 1,
-// a declined confirmation exited 1, and `doctor` exited
-// `0 if report.ok else 1` (python-final:src/ssh_manager/cli.py:59-62, :147,
-// :343-344). No other code was ever produced, so none is invented here.
+// Parity with the implementation it replaced is a plain binary: 0 on success, 1
+// on anything else. That one mapped every error to 1, exited 1 on a declined
+// confirmation, and had `doctor` exit 0 for a clean report and 1 otherwise. No
+// other code was ever produced, so none is invented here.
 //
 // What changes is where it is decided. Commands used to call os.Exit(1) inline,
 // in fourteen places across the CLI. That is unreachable from a test - os.Exit

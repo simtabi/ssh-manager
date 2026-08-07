@@ -21,7 +21,7 @@ server, and editing a server's `authorized_keys` never touches the dashboard.
 > **The cloud adapters' response shapes are pinned by tests, not by a live API
 > call.** No adapter here has been exercised against a real DigitalOcean, Vultr,
 > Hetzner, Linode or Scaleway account, in this implementation or the one it was
-> ported from — the Python tests stubbed the HTTP layer entirely. The endpoint
+> ported from — v1 tests stubbed the HTTP layer entirely. The endpoint
 > paths and JSON shapes are therefore assumptions that both implementations
 > agree on, which is what a port can prove and no more. DigitalOcean is
 > additionally exercised over a real local HTTP server, so the request path
@@ -160,7 +160,7 @@ sshmgr recover
 embedded) that backs up `authorized_keys`, dedups, re-adds the key, and fixes
 perms - paste it into the console and you're back in. `recover` with no argument
 prints the full `fixkeys` menu (reads from `/dev/tty`, so pasting the whole
-script still works; no SSH or Python needed on the server).
+script still works; no SSH or interpreter needed on the server).
 
 > After recovering, open a **second** terminal and confirm a fresh SSH login
 > before closing the console.
@@ -171,7 +171,7 @@ script still works; no SSH or Python needed on the server).
 
 Every feature of the original standalone VPS key tool has a home in ssh-manager:
 
-| Original tool (`providers.py` / `serverkeys.py` / `vpskeys.py` / `fixkeys.sh`) | ssh-manager |
+| Original tool (`providers` / `serverkeys` / `vpskeys` / `fixkeys.sh`) | ssh-manager |
 |---|---|
 | `Provider` REST base (token, session, retry/backoff) | `src/internal/core/providers/cloud.go` + `src/internal/util/httpjson` (stdlib net/http + bounded retry) |
 | `DigitalOcean` / `Vultr` / `Hetzner` / `Linode` / `Scaleway` | same-named adapters in `src/internal/core/providers/cloud.go` |

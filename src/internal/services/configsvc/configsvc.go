@@ -1,5 +1,5 @@
-// Package configsvc renders, checks, and shows the SSH config, ported from
-// src/ssh_manager/services/configsvc.py. All three modes drive the ONE renderer,
+// Package configsvc renders, checks, and shows the SSH config. All three modes
+// drive the ONE renderer,
 // so the verifier and the writer can never disagree; check changes nothing.
 package configsvc
 
@@ -137,7 +137,7 @@ func (s *Service) Check(validateSSH bool) (*CheckResult, error) {
 	}
 	res := &CheckResult{FileDiffs: map[string]string{}, SSHErrors: map[string]string{}}
 	// Iterate in the manifest's render order (root config, then profiles in file
-	// order) - the same order Python's rendered.items() yields - so the Missing
+	// order) - the same order v1 yielded them in - so the Missing
 	// list matches v1 byte-for-byte, not a sorted reordering.
 	for _, rel := range s.renderedOrder(rendered) {
 		content := rendered[rel]
@@ -260,7 +260,7 @@ func sortedKeys(m map[string]string) []string {
 }
 
 // unifiedDiff is a compact line diff (an LCS, so insertions/deletions align). Not
-// byte-identical to Python's difflib, but the drift gate is the exact string
+// byte-identical to v1's diff output, but the drift gate is the exact string
 // compare above; this is the human-readable report.
 func unifiedDiff(current, expected, rel string) string {
 	a := strings.SplitAfter(current, "\n")

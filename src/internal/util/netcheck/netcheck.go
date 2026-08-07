@@ -1,5 +1,5 @@
-// Package netcheck is the network reachability + VPN status probe, ported from
-// util/net.py. Network actions can hang when a host sits behind a VPN that isn't
+// Package netcheck is the network reachability + VPN status probe. Network
+// actions can hang when a host sits behind a VPN that isn't
 // connected; this gives a fast bounded reachability check and a best-effort VPN
 // indicator so commands fail fast with an actionable message. stdlib only.
 package netcheck
@@ -128,7 +128,7 @@ func VPNInterfaces() []string {
 }
 
 // VPNActive is a heuristic: is a VPN/tunnel interface present? nil when
-// undeterminable (mirrors Python's bool | None).
+// undeterminable (mirrors v1's bool | None).
 func VPNActive() *bool {
 	names, ok := interfaceNames()
 	if !ok {

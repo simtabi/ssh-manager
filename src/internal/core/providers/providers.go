@@ -1,5 +1,5 @@
 // Package providers is the read-only provider catalog, ported from the spec/
-// registry parts of src/ssh_manager/providers (base.py + registry.py). It resolves
+// registry parts of v1's provider registry. It resolves
 // a provider name to a ProviderSpec - category, host, keys URL, CLI, token env -
 // which powers list/view/audit labels and `list --type`. The deploy/credential
 // adapter behavior is not ported here (that lands in a later wave); this is the
@@ -15,8 +15,8 @@ import (
 )
 
 // defaultCatalog is the catalog shipped with the package, kept byte-identical to
-// the repo config/providers.json (a test enforces it), mirroring Python's
-// ssh_manager/data/providers.json. Used when the user has no providers.json.
+// the repo config/providers.json (a test enforces it). Used when the user has no
+// providers.json of their own.
 //
 //go:embed default_providers.json
 var defaultCatalog []byte
@@ -58,7 +58,7 @@ var builtinSpecs = map[string]Spec{
 }
 
 // catalogEntry is one providers.json entry. Unknown keys are ignored (a hand-edited
-// file may carry extras like "method"), matching the Python .get()-based parse.
+// file may carry extras like "method"), matching v1's lenient parse.
 type catalogEntry struct {
 	Kind      string         `json:"kind"`
 	Category  string         `json:"category"`
@@ -119,7 +119,7 @@ func AllSpecs(providersFile string) map[string]Spec {
 	for name, raw := range catalogProviders(providersFile) {
 		var e catalogEntry
 		if err := json.Unmarshal(raw, &e); err != nil {
-			continue // non-dict entry -> skip, as the Python isinstance check does
+			continue // non-object entry -> skip, as v1 did
 		}
 		specs[name] = specFromEntry(name, e)
 	}

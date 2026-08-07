@@ -1,6 +1,5 @@
-// Package agent adds keys to the ssh-agent (macOS keychain), ported from
-// services/agent.py + facade.load. ssh-add runs interactively so a passphrase
-// prompt can be answered.
+// Package agent adds keys to the ssh-agent (macOS keychain). ssh-add runs
+// interactively so a passphrase prompt can be answered.
 package agent
 
 import (

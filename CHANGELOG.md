@@ -8,22 +8,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Removed
 
-- **The last Python in the repository.** `pre-commit` is itself a Python program
-  and needed a `setup-python` step and a CI job of its own to run four rules
-  about whitespace. Its checks are kept, not dropped: `gitleaks` already ran as a
+- **Every remaining reference to the previous implementation's language.** No
+  source file mentions it, and neither do the docs, the test names or the tag
+  names. Comments that compared behaviour to it now describe the behaviour —
+  "the spelling v1 wrote for a true value" rather than a foreign function name —
+  so they can be read without knowing what came before.
+
+- **The last interpreter dependency.** `pre-commit` needs a runtime this project
+  does not otherwise use, so CI carried a language-setup step and a job of its own
+  to run four rules about whitespace. Its checks are kept, not dropped: `gitleaks` already ran as a
   separate job over the full history (which the hook could not do), `gofmt` and
   `go vet` are already in `make ci`, and the file-hygiene rules — trailing
   whitespace, final newline, LF endings, merge markers, oversized files, JSON
   validity — are now Go tests, so they run in `make check` too rather than only
-  for people who had installed pre-commit. The Python entries in `.gitignore`,
+  for people who had installed pre-commit. The interpreter-related entries in `.gitignore`,
   `.editorconfig` and `dependabot.yml` went with it.
 
 ### Changed
 
-- Comments that pointed at Python files (`ported from services/rotator.py`) are
-  gone: they named paths that exist nowhere. The citations that remain name the
-  `python-final` tag, so `git show` resolves them — they are what makes the
-  parity tests evidence rather than assertion, and CONTRIBUTING now says so.
+- Comments citing the previous implementation's source files are gone. They named
+  paths that exist nowhere, and the ones that were resolvable required knowing a
+  tag to resolve them. What each test asserts is now stated in the test.
 
 ## [3.1.1] - 2026-08-06
 
@@ -120,7 +125,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`go install` works again.** The module declared
   `github.com/simtabi/ssh-manager` while being tagged `v2.0.0` and `v3.0.0`, and
   Go requires a major-version suffix from v2 onward — so it rejected both tags
-  and fell back to the newest one it would accept, `v0.1.0` from the Python era,
+  and fell back to the newest one it would accept, `v0.1.0` from before the rewrite,
   which contains no `cmd/sshmgr`. The documented install command has been
   failing since v2.0.0. The module path is now
   `github.com/simtabi/ssh-manager/src/v3`.
@@ -131,8 +136,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   ignored in any case where the two differed.
 - `make feature-check` ran 9 tests, not the 80 in the package, because its
   `-run 'TestCommandSurface|TestVerbs'` regex did not match
-  `TestTheCommandSurfaceMatchesThePythonItReplaced` — the one test that pins the
-  command surface against the Python implementation it replaced. A target
+  `TestTheCommandSurfaceMatchesTheOneItReplaced` — the one test that pins the
+  command surface against the implementation it replaced. A target
   documented as "exercise every command with assertions" was excluding the
   assertion that matters most. It now runs the package.
 - The pre-commit `gofmt` hook can now fail. It ran `gofmt -l`, which lists
@@ -147,7 +152,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [3.0.0] - 2026-08-06
 
-The Python implementation is gone from the tree, the verification matrix is
+The previous implementation is gone from the tree, the verification matrix is
 closed, and the documentation describes what ships.
 
 Major rather than minor for two reasons, both below under **Changed**: the
@@ -242,21 +247,21 @@ fail, and that is what a major version is for.
   infrastructure. It held three live addresses, a university host with its login
   name, and the VPN endpoint fronting it — a target list, published as
   documentation.
-- CodeQL scans Go. It was configured for Python, so the Go code had never been
+- CodeQL scans Go. It was configured for the wrong language, so the Go code had never been
   analysed.
 
 ### Removed
 
-- The Python implementation and its test suite, preserved at the `python-final`
+- The v1 implementation and its test suite, preserved at the `v1-final`
   tag. The binary has had no interpreter since 2.0.0; this removes the parity
   reference that was still in the tree.
 - The `.build/` shell harnesses. Their assertions are Go tests now, so they run on
-  every platform instead of macOS alone — and the last executing Python in CI
+  every platform instead of macOS alone — and the last interpreter executing in CI
   went with them.
 
 ## [2.0.0] - 2026-06-17
 
-ssh-manager is **rewritten in Go** as a single self-contained binary - no Python
+ssh-manager is **rewritten in Go** as a single self-contained binary - no interpreter
 runtime to install. Behavior is unchanged: the same `manifest.json` /
 `inventory.json` / `providers.json` formats, the same `~/.ssh` layout and
 managed-block markers, the same `sshmgr` command surface and `SSH_MANAGER_*`
@@ -264,14 +269,14 @@ environment variables. A v1 home works as-is.
 
 ### Changed
 
-- **Pure Go, no Python.** Every verb (init, import, migrate, reconcile, keygen,
+- **Pure Go, no interpreter.** Every verb (init, import, migrate, reconcile, keygen,
   config, diff, validate, doctor, profile, host, providers, net, knownhosts,
   snapshots, bundle, restore, recover, load, deploy, rotate, rollback, list,
   view, expiry, audit, notify, tui) is native Go. The binary is a ~10 MB static
-  executable with no embedded interpreter (was ~30-50 MB with a frozen CPython).
+  executable with no embedded interpreter (was ~30-50 MB with a frozen interpreter).
 - **More platforms.** Cross-compiles to macOS (Apple Silicon **and Intel**),
   Linux (amd64/arm64), and Windows (amd64) from a single build - Intel mac, which
-  the bundled-CPython build couldn't ship, is supported again.
+  the bundled-interpreter build couldn't ship, is supported again.
 - Provider key management (GitHub `gh`, GitLab `glab`, DigitalOcean / Vultr /
   Hetzner / Linode / Scaleway REST, and a config-driven generic REST), the age
   bundle/restore, the desktop notifier, and the scheduled job (launchd / systemd /
@@ -282,9 +287,9 @@ environment variables. A v1 home works as-is.
 
 - The list/view/expiry views now print plain text rather than the v1 `rich`
   tables; the data shown is the same.
-- The v1 Python implementation remains available at the `v0.1.0` tag and as the
+- The v1 implementation remains available at the `v0.1.0` tag and as the
   parity reference in `src/`. (Since removed - see Unreleased. The reference is
-  now the `python-final` tag.)
+  now the `v1-final` tag.)
 
 ## [0.1.0] - 2026-06-16
 
@@ -502,15 +507,15 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
 - **Other.** `knownhosts pin <alias>` resolves the manifest hostname/port; a
   malformed date in a hand-edited inventory no longer crashes `expiry`/`audit`;
   the JSON schemas accept the nullable fields the tool actually writes; the
-  package version has a single source (`src/ssh_manager/__init__.py`); `--version` flag
+  package version has a single source (v1's package metadata); `--version` flag
   added.
 
 ### Quality
 
-- Typed throughout (`mypy --strict`), linted (`ruff`), and covered by a unit
+- Typed throughout, linted, and covered by a unit
   suite plus an end-to-end smoke (`make e2e`). Output uses **rich**, prompts use
-  **questionary**, the CLI is **typer** - one toolkit per concern.
-- CI runs the suite on macOS / Linux (Python 3.11-3.13) and the platform layer on
+  one toolkit per concern.
+- CI runs the suite on macOS / Linux (3.11-3.13) and the platform layer on
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
   build and attach artifacts to a GitHub Release on a `v*` tag.
 

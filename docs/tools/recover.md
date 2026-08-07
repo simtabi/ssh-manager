@@ -2,7 +2,7 @@
 
 ssh-manager is built so you don't get locked out - but if you do (lost laptop, wiped
 `~/.ssh`, a bad `authorized_keys` edit), `recover` is the escape hatch. It needs
-no working SSH and no Python *on the server* - you reach the box another way
+no working SSH and no interpreter *on the server* - you reach the box another way
 (your provider's web/recovery console: DigitalOcean Recovery Console, GCP
 serial/browser SSH, Hetzner console, ...) and paste.
 

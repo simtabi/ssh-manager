@@ -1,6 +1,6 @@
 // Package lock is an advisory file lock so concurrent commands (e.g. a scheduled
 // `audit --notify` and a manual `reconcile`) can't corrupt state mid-mutation.
-// Ported from util/lock.py: an exclusive flock on POSIX, an exclusive-share
+// Ported. an exclusive flock on POSIX, an exclusive-share
 // CreateFile (with retry) on Windows. stdlib only.
 package lock
 

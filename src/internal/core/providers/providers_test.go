@@ -6,7 +6,7 @@ import (
 )
 
 // TestEmbeddedCatalogMatchesRepo enforces the invariant that the embedded default
-// is byte-identical to config/providers.json (as Python keeps data/providers.json).
+// is byte-identical to config/providers.json (as v1 keeps data/providers.json).
 func TestEmbeddedCatalogMatchesRepo(t *testing.T) {
 	repo, err := os.ReadFile("../../../config/providers.json")
 	if err != nil {
