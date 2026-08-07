@@ -52,8 +52,22 @@ if [ -z "$VERSION" ]; then
   api="https://api.github.com/repos/${OWNER}/${REPO}/releases/latest"
   auth=()
   [ -n "${GITHUB_TOKEN:-}" ] && auth=(-H "Authorization: Bearer ${GITHUB_TOKEN}")
-  VERSION="$(curl -fsSL "${auth[@]}" -H 'Accept: application/vnd.github+json' "$api" \
-    | grep -m1 '"tag_name"' | sed -E 's/.*"tag_name": *"([^"]+)".*/\1/')"
+  # ${auth[@]+"${auth[@]}"}, not "${auth[@]}": under `set -u`, bash 3.2 treats an
+  # EMPTY array expansion as an unbound variable and exits. macOS still ships
+  # 3.2.57 as /bin/bash, which is what `#!/usr/bin/env bash` finds there unless
+  # the user has installed a newer one - so the documented `curl ... | bash`
+  # failed on a stock Mac with "auth[@]: unbound variable", before downloading
+  # anything, for everyone who did not happen to have GITHUB_TOKEN set (which
+  # made the array non-empty and hid it). Fixed in bash 4.4; this idiom works in
+  # both.
+  # Fetch first, parse second, rather than piping curl into `grep -m1`. grep -m1
+  # closes the pipe as soon as it matches, curl gets EPIPE and exits 56
+  # ("Failure writing output to destination"), and `set -o pipefail` turns that
+  # into a failed install - intermittently, depending on whether curl had
+  # finished writing. awk reads a here-string, so there is no pipeline left for
+  # an early exit to break.
+  body="$(curl -fsSL ${auth[@]+"${auth[@]}"} -H 'Accept: application/vnd.github+json' "$api")"
+  VERSION="$(awk -F'"' '/"tag_name"/{print $4; exit}' <<<"$body")"
 fi
 [ -n "$VERSION" ] || err "could not determine the version to install."
 case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac

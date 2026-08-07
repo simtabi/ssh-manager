@@ -61,7 +61,13 @@ try {
   $haveSums = $true
   try { Invoke-WebRequest "$base/checksums.txt" -OutFile $sums } catch { $haveSums = $false; Write-Warning 'checksums.txt not found; skipping verification.' }
   if ($haveSums) {
-    $line = Select-String -Path $sums -Pattern ([regex]::Escape($asset)) | Select-Object -First 1
+    # Anchored on the whole filename field, not a substring. checksums.txt lists
+    # the binary, its archive and the archive's SBOM, so a bare name like
+    # "sshmgr_macos_arm64" appears in three lines; -First 1 on an unanchored match
+    # would compare the download against whichever hash came first in the file.
+    # That happens to be harmless for the .exe names this script asks for and for
+    # nothing else, which is not a property to rest a checksum gate on.
+    $line = Select-String -Path $sums -Pattern ('\s' + [regex]::Escape($asset) + '$') | Select-Object -First 1
     if (-not $line) { throw "no checksum entry for $asset" }
     $want = (($line.Line -split '\s+')[0]).ToLower()
     $got  = (Get-FileHash $exe -Algorithm SHA256).Hash.ToLower()

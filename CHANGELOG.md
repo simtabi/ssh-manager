@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **`curl … | bash` failed outright on a stock Mac.** The installer expanded an
+  empty array under `set -u`, which bash 3.2 — still what macOS ships as
+  `/bin/bash`, and what `#!/usr/bin/env bash` finds there — rejects as an unbound
+  variable. It died before downloading anything, for everyone without
+  `GITHUB_TOKEN` set (which made the array non-empty and hid it). A second bug in
+  the same six lines piped `curl` into `grep -m1`: grep closes the pipe on its
+  first match, curl exits 56, and `pipefail` turns that into a failed install.
+  CI now runs the installer on every non-Windows runner, so the macOS job
+  exercises bash 3.2 — neither bug is a syntax error, so shellcheck saw neither.
+- The PowerShell installer matched its checksum line by unanchored substring.
+  `checksums.txt` lists a binary, its archive and the archive's SBOM, so a bare
+  name matches three lines and `-First 1` took whichever came first. Safe for the
+  `.exe` names it asks for and nothing else, which is not a property to rest a
+  checksum gate on; it is anchored on the filename field now, like the shell one.
+
 ### Removed
 
 - **Every remaining reference to the previous implementation's language.** No

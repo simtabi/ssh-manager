@@ -55,6 +55,24 @@ jobs:
           working-directory: src
       # No longer macOS-only: the shell version used BSD `stat -f`, which was the
       # single reason two thirds of the matrix never ran it.
+      # The installer is a `curl | bash` entry point, so the only test that means
+      # anything is running it. Static checks did not catch either of the two bugs
+      # that made it fail outright on a stock Mac: an empty-array expansion that
+      # bash 3.2 rejects under `set -u`, and `curl | grep -m1`, where grep closes
+      # the pipe, curl exits 56, and pipefail turns that into a failed install.
+      # shellcheck sees neither, because neither is a syntax error.
+      - name: The installer actually installs
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          set -euo pipefail
+          dir="$(mktemp -d)/bin"
+          # bash explicitly, so the macOS runner exercises its system bash 3.2
+          # rather than whatever `env bash` happens to find.
+          SSHMGR_INSTALL_DIR="$dir" bash src/scripts/install.sh
+          "$dir/sshmgr" version
+          test -x "$dir/sshmgr"
+
       - name: E2E smoke
         if: runner.os != 'Windows'
         shell: bash
