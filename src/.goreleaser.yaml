@@ -193,6 +193,14 @@ release:
     name: ssh-manager
   draft: false
   prerelease: auto
+  # The install scripts ship with the release, so `curl | bash` has a URL on the
+  # same host as the binaries it downloads, versioned with them, and reachable
+  # through the stable releases/latest/download/ redirect. The documented URL
+  # pointed at a vanity path that was never published and returned 404 - the
+  # primary install command in the README could not fetch the script at all.
+  extra_files:
+    - glob: src/scripts/install.sh
+    - glob: src/scripts/install.ps1
 
 changelog:
   disable: true # release body comes from CHANGELOG.md via --release-notes

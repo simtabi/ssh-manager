@@ -54,7 +54,7 @@ matching native one per OS. The binary version comes from the tag via ldflags
 3. Create the `release` GitHub Environment (`release.yml` runs in it).
 4. Green on macOS, Linux and Windows: `make check`, `make e2e`, `make feature-check`.
 5. After the tag lands, confirm the published artifact installs:
-   `curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash -s vX.Y.Z && sshmgr version`.
+   `curl -fsSL https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scripts/install.sh | bash -s vX.Y.Z && sshmgr version`.
 
 ## Channels still to wire (need external setup)
 

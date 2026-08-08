@@ -3,7 +3,7 @@
   sshmgr installer for Windows.
 
 .EXAMPLE
-  irm https://opensource.simtabi.com/install/ssh-manager.ps1 | iex
+  irm https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scripts/install.ps1 | iex
 
 .EXAMPLE
   # Pin a version / custom dir (env vars are prefixed with the uppercased binary name)

@@ -20,14 +20,14 @@ macOS, Linux and Windows are all first-class, each validated on its own CI runne
 From a release binary:
 
 ```sh
-curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash
+curl -fsSL https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scripts/install.sh | bash
 sshmgr doctor           # verify deps, perms, agent, known_hosts, drift
 ```
 
 On Windows:
 
 ```powershell
-irm https://opensource.simtabi.com/install/ssh-manager.ps1 | iex
+irm https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scripts/install.ps1 | iex
 ```
 
 With the Go toolchain:

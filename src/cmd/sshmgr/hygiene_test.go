@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -155,5 +156,38 @@ func TestEveryTrackedJSONFileParses(t *testing.T) {
 	}
 	if checked == 0 {
 		t.Fatal("no JSON files were checked; this test has stopped measuring anything")
+	}
+}
+
+// A documented raw.githubusercontent URL has to point at a file that exists in
+// this repository. The install command in the README pointed at a vanity path
+// that was never published and returned 404 - the primary way to install this
+// tool could not fetch the script at all - and nothing noticed, because nothing
+// checks a URL. This cannot verify what a host serves, but it does verify the
+// half that is knowable here: that the path names a file we actually ship. It is
+// the check that would have caught the tree moving under src/.
+func TestDocumentedRawURLsPointAtFilesThatExist(t *testing.T) {
+	root, files := trackedFiles(t)
+	re := regexp.MustCompile(`https://raw\.githubusercontent\.com/simtabi/ssh-manager/[^/]+/([^\s)"'` + "`" + `]+)`)
+
+	var checked int
+	for _, name := range files {
+		if isBinary(name) {
+			continue
+		}
+		body, err := os.ReadFile(filepath.Join(root, name))
+		if err != nil {
+			continue
+		}
+		for _, m := range re.FindAllStringSubmatch(string(body), -1) {
+			path := strings.TrimRight(m[1], ".,")
+			if _, err := os.Stat(filepath.Join(root, path)); err != nil {
+				t.Errorf("%s links to %s, which is not a file in this repository", name, path)
+			}
+			checked++
+		}
+	}
+	if checked == 0 {
+		t.Fatal("no raw URLs were checked; the install commands are documented with one, so this has stopped measuring anything")
 	}
 }

@@ -8,6 +8,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **The install command could not fetch its script.**
+  `https://opensource.simtabi.com/install/ssh-manager` — the URL in the README,
+  the docs and the installers' own usage lines — returns 404, and always has;
+  that portal subtree was never published. Both install commands now point at a
+  URL that resolves, and a test asserts every documented raw URL names a file
+  this repository actually ships. The install scripts are also uploaded as
+  release assets, so a future release carries them alongside the binaries.
 - **`curl … | bash` failed outright on a stock Mac.** The installer expanded an
   empty array under `set -u`, which bash 3.2 — still what macOS ships as
   `/bin/bash`, and what `#!/usr/bin/env bash` finds there — rejects as an unbound

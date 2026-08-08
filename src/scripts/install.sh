@@ -2,8 +2,8 @@
 #
 # sshmgr installer for macOS and Linux.
 #
-#   curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash
-#   curl -fsSL https://opensource.simtabi.com/install/ssh-manager | bash -s v0.1.0
+#   curl -fsSL https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scripts/install.sh | bash
+#   curl -fsSL https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scripts/install.sh | bash -s v0.1.0
 #
 # Windows users: use scripts/install.ps1 (irm ... | iex) or download the bare
 # sshmgr_windows_<arch>.exe from the GitHub releases page.
