@@ -50,7 +50,7 @@ jobs:
           # worse on a different day, reports a clean result for a codebase it
           # never read.
           cache: false
-      - uses: github/codeql-action/init@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+      - uses: github/codeql-action/init@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
         with:
           languages: ${{ matrix.language }}
           # Go must be built for CodeQL to read it - the extractor works from a
@@ -71,4 +71,4 @@ jobs:
           # rejects the other's: "Go does not support the none build mode" and
           # "GitHub Actions does not support the autobuild build mode".
           build-mode: ${{ matrix.language == 'go' && 'autobuild' || 'none' }}
-      - uses: github/codeql-action/analyze@5595ccaf912efad79be6eef63a5619ff05969be3 # v4.37.6
+      - uses: github/codeql-action/analyze@ff2f1c621b7f889edc0d3c761ac2e6a3f8cdb0dd # v4.37.7
