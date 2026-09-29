@@ -4,7 +4,6 @@
 
 The preferred channel is GitHub private vulnerability reporting: open a private report at <https://github.com/simtabi/ssh-manager/security/advisories/new>. The report stays attached to the repository, with a draft advisory and a CVE request path. Email **security@simtabi.com** if you do not use GitHub.
 
-Please report security vulnerabilities privately to **security@simtabi.com**.
 Do **not** open a public issue for a security report.
 
 Include, where possible: a description of the issue, affected version(s),
