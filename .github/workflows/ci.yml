@@ -38,7 +38,9 @@ jobs:
           persist-credentials: false
       - uses: actions/setup-go@b7ad1dad31e06c5925ef5d2fc7ad053ef454303e # v7.0.0
         with:
-          go-version: stable
+          # The module declares its toolchain; `stable` moved to 1.27 under a
+          # golangci-lint built with 1.26, which panics on the newer stdlib.
+          go-version-file: src/go.mod
       # One gate, defined once, in the Makefile. Reimplementing these steps here
       # let the local `make check` and CI drift apart silently.
       - name: Gate
