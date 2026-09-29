@@ -1,7 +1,9 @@
 version: 2
 updates:
   - package-ecosystem: "gomod"
-    directory: "/"
+    # The module lives in src/, not at the root; "/" finds no go.mod and the
+    # update job fails.
+    directory: "/src"
     schedule:
       interval: "weekly"
       day: "monday"
