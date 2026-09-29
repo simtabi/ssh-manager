@@ -66,8 +66,16 @@ if [ -z "$VERSION" ]; then
   # into a failed install - intermittently, depending on whether curl had
   # finished writing. awk reads a here-string, so there is no pipeline left for
   # an early exit to break.
-  body="$(curl -fsSL ${auth[@]+"${auth[@]}"} -H 'Accept: application/vnd.github+json' "$api")"
+  body="$(curl -fsSL ${auth[@]+"${auth[@]}"} -H 'Accept: application/vnd.github+json' "$api" || true)"
   VERSION="$(awk -F'"' '/"tag_name"/{print $4; exit}' <<<"$body")"
+  # The API allows 60 unauthenticated requests an hour per IP, and anyone behind
+  # a shared NAT - or on a CI runner - can find that spent and get a 403. The
+  # releases/latest web redirect is not counted against it and names the same
+  # tag, so fall back to it rather than failing the install.
+  if [ -z "$VERSION" ]; then
+    latest="$(curl -fsSLI -o /dev/null -w '%{url_effective}' "https://github.com/${OWNER}/${REPO}/releases/latest" || true)"
+    case "$latest" in */tag/*) VERSION="${latest##*/tag/}" ;; esac
+  fi
 fi
 [ -n "$VERSION" ] || err "could not determine the version to install."
 case "$VERSION" in v*) ;; *) VERSION="v$VERSION" ;; esac
