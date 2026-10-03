@@ -40,9 +40,30 @@ switch ($env:PROCESSOR_ARCHITECTURE) {
 if (-not $InstallDir) { $InstallDir = Join-Path $env:LOCALAPPDATA "Programs\$repo" }
 
 if (-not $Version) {
-  $rel = Invoke-RestMethod -Headers @{ 'Accept' = 'application/vnd.github+json' } `
-    "https://api.github.com/repos/$owner/$repo/releases/latest"
-  $Version = $rel.tag_name
+  try {
+    $rel = Invoke-RestMethod -Headers @{ 'Accept' = 'application/vnd.github+json' } `
+      "https://api.github.com/repos/$owner/$repo/releases/latest"
+    $Version = $rel.tag_name
+  } catch { $Version = $null }
+
+  # The API allows 60 unauthenticated requests an hour per IP, and anyone behind a
+  # shared NAT - or on a CI runner - can find that spent and get a 403. The
+  # releases/latest web redirect is not counted against it and names the same tag,
+  # so fall back to it rather than failing the install (install.sh does the same).
+  # HttpWebRequest with redirects off reads the Location header identically on
+  # Windows PowerShell 5.1 and PowerShell 7; a 3xx can surface as an exception on
+  # the latter, so its response is read from there too.
+  if (-not $Version) {
+    $req = [System.Net.HttpWebRequest]::Create("https://github.com/$owner/$repo/releases/latest")
+    $req.AllowAutoRedirect = $false
+    $req.Method = 'HEAD'
+    try { $resp = $req.GetResponse() } catch [System.Net.WebException] { $resp = $_.Exception.Response }
+    if ($resp) {
+      try { $location = [string]$resp.Headers['Location'] } finally { $resp.Close() }
+      if ($location -match '/releases/tag/([^/?#]+)$') { $Version = $Matches[1] }
+    }
+  }
+  if (-not $Version) { throw 'could not determine the version to install.' }
 }
 if ($Version -notlike 'v*') { $Version = "v$Version" }
 

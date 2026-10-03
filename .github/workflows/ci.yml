@@ -73,6 +73,29 @@ jobs:
           "$dir/sshmgr" version
           test -x "$dir/sshmgr"
 
+      # The Windows installer is an `irm | iex` entry point and was only ever
+      # parsed, never run. Run it, then run it again with the API URL broken so
+      # the releases/latest fallback is what resolves the version.
+      - name: The Windows installer actually installs
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          foreach ($case in 'api', 'redirect-fallback') {
+            $script = Get-Content -Raw src/scripts/install.ps1
+            if ($case -eq 'redirect-fallback') {
+              $broken = $script -replace 'api\.github\.com/repos/\$owner/\$repo/releases/latest', 'api.github.com/repos/$owner/$repo-forced-404/releases/latest'
+              if ($broken -eq $script) { throw 'could not break the API URL; the fallback would go untested' }
+              $script = $broken
+            }
+            $path = Join-Path $env:RUNNER_TEMP "install-$case.ps1"
+            Set-Content -Path $path -Value $script
+            $dir = Join-Path $env:RUNNER_TEMP "bin-$case"
+            & $path -InstallDir $dir
+            & (Join-Path $dir 'sshmgr.exe') version
+            if ($LASTEXITCODE -ne 0) { throw "sshmgr version failed ($case)" }
+          }
+
       - name: E2E smoke
         if: runner.os != 'Windows'
         shell: bash
