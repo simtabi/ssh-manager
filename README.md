@@ -24,6 +24,40 @@ Windows: `irm https://raw.githubusercontent.com/simtabi/ssh-manager/main/src/scr
 [Releases](https://github.com/simtabi/ssh-manager/releases). Every path, and where
 per-user state lives, is in [docs/installation.md](docs/installation.md).
 
+## Quick start guide and usage
+
+### Getting started
+
+`init` seeds an **empty** manifest; add a profile and a host before `reconcile`
+mints anything:
+
+```sh
+sshmgr init                  # create ~/.config/ssh-manager (dirs, perms, seed files)
+sshmgr profile add work
+sshmgr host add work gh -H github.com -u git      # or edit manifest.json directly
+sshmgr import ~/.ssh/config                        # or onboard an existing setup
+```
+
+### Usage
+
+Build `~/.ssh` from the manifest:
+
+```sh
+sshmgr reconcile --dry-run   # preview: what would be minted, what would be written
+sshmgr reconcile             # build ~/.ssh from the manifest
+sshmgr config check          # confirm the file matches the manifest (exit != 0 on drift)
+```
+
+Get a key onto its target:
+
+```sh
+sshmgr deploy work_gh-ed25519    # ssh-copy-id, gh, glab, a REST API, or manual
+sshmgr validate                  # every keypair parses and the halves match
+```
+
+The full walkthrough is in [Getting started](docs/getting-started.md); everything
+else is in the [documentation index](#documentation).
+
 ## <a name="documentation"></a>Documentation
 
 ### Guides
