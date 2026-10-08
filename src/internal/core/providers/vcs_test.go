@@ -139,21 +139,21 @@ func TestGitHubEnterpriseUsesTheEnterpriseToken(t *testing.T) {
 
 	t.Run("github.com uses GH_TOKEN", func(t *testing.T) {
 		calls := fakeCLI(t, "gh", `[]`)
-		t.Setenv("GH_TOKEN", "dotcom-token")
+		t.Setenv("GH_TOKEN", "test-secret-not-real-dotcom")
 		GitHub{}.Deploy(vcsTarget(t, pub))
 
 		log := callLog(t, calls)
 		if !strings.Contains(log, "GH_HOST=github.com") {
 			t.Errorf("GH_HOST not set:\n%s", log)
 		}
-		if !strings.Contains(log, "GH_TOKEN=dotcom-token") || strings.Contains(log, "GH_ENTERPRISE_TOKEN=dotcom-token") {
+		if !strings.Contains(log, "GH_TOKEN=test-secret-not-real-dotcom") || strings.Contains(log, "GH_ENTERPRISE_TOKEN=test-secret-not-real-dotcom") {
 			t.Errorf("github.com should authenticate with GH_TOKEN:\n%s", log)
 		}
 	})
 
 	t.Run("a GHES host uses GH_ENTERPRISE_TOKEN", func(t *testing.T) {
 		calls := fakeCLI(t, "gh", `[]`)
-		t.Setenv("GHES_TOKEN", "ghes-token")
+		t.Setenv("GHES_TOKEN", "test-secret-not-real-ghes")
 		gh := GitHub{spec: Spec{Host: "github.example.com", TokenEnv: "GHES_TOKEN"}}
 		gh.Deploy(vcsTarget(t, pub))
 
@@ -161,7 +161,7 @@ func TestGitHubEnterpriseUsesTheEnterpriseToken(t *testing.T) {
 		if !strings.Contains(log, "GH_HOST=github.example.com") {
 			t.Errorf("GH_HOST should carry the enterprise host:\n%s", log)
 		}
-		if !strings.Contains(log, "GH_ENTERPRISE_TOKEN=ghes-token") {
+		if !strings.Contains(log, "GH_ENTERPRISE_TOKEN=test-secret-not-real-ghes") {
 			t.Errorf("a GHES host authenticates with GH_ENTERPRISE_TOKEN:\n%s", log)
 		}
 	})
