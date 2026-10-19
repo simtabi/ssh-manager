@@ -105,6 +105,11 @@ var goOnly = map[string]string{
 	"rotate --all":             "bulk rotation - every key a host uses",
 	"rotate --category":        "bulk rotation - every key in a category's profiles",
 	"rotate --dry-run":         "bulk rotation - list the batch, change nothing",
+	"key regen-pub":            "rebuild .pub files from the private key or the 1Password item",
+	"key regen-pub --all":      "regen-pub - every key",
+	"key regen-pub --category": "regen-pub - every key in a category",
+	"key regen-pub --dry-run":  "regen-pub - report only",
+	"key regen-pub --yes":      "confirm-before-changing",
 
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",

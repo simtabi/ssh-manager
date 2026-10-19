@@ -555,3 +555,26 @@ func TestRotateAllRotatesEveryWiredKey(t *testing.T) {
 		t.Error("not every selected key was rotated")
 	}
 }
+
+func TestKeyRegenPubRestoresAMissingPublicKey(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	p := editHome(t)
+	run(t, "profile", "add", "work")
+	run(t, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+	run(t, "reconcile", "--yes")
+	pub := filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519.pub")
+	want, _ := os.ReadFile(pub)
+	if err := os.Remove(pub); err != nil {
+		t.Fatal(err)
+	}
+	out := run(t, "key", "regen-pub", "work", "--yes")
+	if !strings.Contains(out, "created   work/work_gh-ed25519") {
+		t.Fatalf("output:\n%s", out)
+	}
+	got, _ := os.ReadFile(pub)
+	if strings.Fields(string(got))[1] != strings.Fields(string(want))[1] {
+		t.Error("the regenerated .pub is not the key's public half")
+	}
+}
