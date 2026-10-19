@@ -16,7 +16,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   and keeps one `<key>.old` predecessor; `rollback` restores it. Items are
   archived, never deleted. Rotating a key after switching its profile to
   `1password` moves it into the vault. `validate` checks the item matches the
-  `.pub`, and `doctor` checks for `op` and the agent socket.
+  `.pub`, and `doctor` checks for `op`, the agent socket, and that the agent
+  serves each vault (`agent.toml`). Two 1Password profiles may not keep the same
+  key name in one vault, and 1Password keys must be `ed25519`.
 - **Batch rotation.** `rotate` accepts several keys, profiles or host aliases,
   `--category <name>`, or `--all`, with `--dry-run` to list the batch. One
   confirmation, backup and snapshot; each key rotates on its own, so one failure
