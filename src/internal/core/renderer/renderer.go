@@ -48,8 +48,11 @@ type RenderHost struct {
 	User         string
 	Port         int
 	IdentityFile string
-	KnownHosts   string
-	RawOptions   manifest.OrderedOptions
+	// IdentityAgent is the agent socket for a key kept in 1Password, "" for a
+	// key on disk. Rendered quoted: the macOS socket path contains a space.
+	IdentityAgent string
+	KnownHosts    string
+	RawOptions    manifest.OrderedOptions
 }
 
 const identitiesOnlyKey = "IdentitiesOnly"
@@ -106,6 +109,9 @@ func writeHostBlock(b *strings.Builder, h RenderHost) {
 		b.WriteString("    Port " + strconv.Itoa(h.Port) + "\n")
 	}
 	b.WriteString("    IdentityFile " + h.IdentityFile + "\n")
+	if h.IdentityAgent != "" && !hasOption(h.RawOptions, "IdentityAgent") {
+		b.WriteString("    IdentityAgent \"" + h.IdentityAgent + "\"\n")
+	}
 	b.WriteString("    IdentitiesOnly " + identitiesOnly(h.RawOptions) + "\n")
 	b.WriteString("    UserKnownHostsFile " + h.KnownHosts + "\n")
 	for _, k := range h.RawOptions.Keys() {
@@ -115,6 +121,28 @@ func writeHostBlock(b *strings.Builder, h RenderHost) {
 		b.WriteString("    " + k + " " + h.RawOptions.Get(k) + "\n")
 	}
 	b.WriteString("\n") // blank line between/after host blocks
+}
+
+// hasOption reports whether the host sets key itself; an explicit value wins.
+func hasOption(opts manifest.OrderedOptions, key string) bool {
+	for _, k := range opts.Keys() {
+		if strings.EqualFold(k, key) {
+			return true
+		}
+	}
+	return false
+}
+
+// identityFor is what a host block points ssh at: the private key on disk, or
+// for a 1Password profile the public key plus the 1Password agent, which is
+// how ssh picks one key out of an agent.
+func identityFor(m *manifest.Manifest, profile, keyName string) (file, agent string) {
+	file = m.IdentityFile(profile, keyName)
+	if m.Profiles[profile].InOnePassword() {
+		file += ".pub"
+		agent = m.Defaults.OnePasswordAgentSocket()
+	}
+	return file, agent
 }
 
 func writeGlobalBlock(b *strings.Builder, globalOptions manifest.OrderedOptions, emitUseKeychain bool) {
@@ -201,14 +229,16 @@ func hostsByProfile(m *manifest.Manifest) (map[string][]RenderHost, error) {
 	}
 	byProfile := map[string][]RenderHost{}
 	for _, rk := range resolved {
+		file, agent := identityFor(m, rk.Profile, rk.KeyName)
 		byProfile[rk.Profile] = append(byProfile[rk.Profile], RenderHost{
-			Alias:        rk.Host.Alias,
-			Hostname:     rk.Host.Hostname,
-			User:         rk.Host.User,
-			Port:         rk.Host.Port,
-			IdentityFile: rk.IdentityFile,
-			KnownHosts:   m.KnownHostsFile(),
-			RawOptions:   rk.Host.RawOptions,
+			Alias:         rk.Host.Alias,
+			Hostname:      rk.Host.Hostname,
+			User:          rk.Host.User,
+			Port:          rk.Host.Port,
+			IdentityFile:  file,
+			IdentityAgent: agent,
+			KnownHosts:    m.KnownHostsFile(),
+			RawOptions:    rk.Host.RawOptions,
 		})
 	}
 	return byProfile, nil
@@ -240,15 +270,17 @@ func RenderHostBlockFor(m *manifest.Manifest, profile string, host manifest.Host
 	if err != nil {
 		return "", err
 	}
+	file, agent := identityFor(m, profile, kname)
 	var b strings.Builder
 	writeHostBlock(&b, RenderHost{
-		Alias:        host.Alias,
-		Hostname:     host.Hostname,
-		User:         host.User,
-		Port:         host.Port,
-		IdentityFile: m.IdentityFile(profile, kname),
-		KnownHosts:   m.KnownHostsFile(),
-		RawOptions:   host.RawOptions,
+		Alias:         host.Alias,
+		Hostname:      host.Hostname,
+		User:          host.User,
+		Port:          host.Port,
+		IdentityFile:  file,
+		IdentityAgent: agent,
+		KnownHosts:    m.KnownHostsFile(),
+		RawOptions:    host.RawOptions,
 	})
 	return b.String(), nil
 }

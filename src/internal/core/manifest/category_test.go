@@ -130,3 +130,44 @@ func TestGlobProfileTreeSeesBothLayoutsAndNotArchives(t *testing.T) {
 		t.Errorf("old = %s, want %s", got, want)
 	}
 }
+
+func TestKeyStoreValidation(t *testing.T) {
+	bad := map[string]string{
+		"unknown store":       `{"version":1,"profiles":{"p":{"key_store":"vault","hosts":[]}}}`,
+		"1password, no vault": `{"version":1,"profiles":{"p":{"key_store":"1password","hosts":[]}}}`,
+		"vault without store": `{"version":1,"profiles":{"p":{"op_vault":"Simtabi","hosts":[]}}}`,
+	}
+	for name, doc := range bad {
+		if _, err := loadJSON(t, doc); err == nil {
+			t.Errorf("%s: loaded, want a validation error", name)
+		}
+	}
+	m, err := loadJSON(t, `{"version":1,"profiles":{"bot":{"key_store":"1password","op_vault":"Simtabi","hosts":[]},"f":{"hosts":[]}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.Profiles["bot"].InOnePassword() || m.Profiles["f"].InOnePassword() || !UsesOnePassword(m) {
+		t.Error("InOnePassword / UsesOnePassword disagree with the manifest")
+	}
+	if got := m.IdentityFile("bot", "k"); got != "~/.ssh/profiles/bot/k" {
+		t.Errorf("IdentityFile = %q: the key's identity must not change with its store", got)
+	}
+}
+
+func TestOnePasswordAgentSocketPerPlatform(t *testing.T) {
+	cases := map[string]string{
+		"darwin":  "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock",
+		"linux":   "~/.1password/agent.sock",
+		"freebsd": "~/.1password/agent.sock",
+		"windows": "",
+	}
+	for goos, want := range cases {
+		if got := onePasswordAgentFor(goos); got != want {
+			t.Errorf("%s: %q, want %q", goos, got, want)
+		}
+	}
+	m, _ := loadJSON(t, `{"version":1,"defaults":{"onepassword_agent":"~/.1password/agent.sock"},"profiles":{}}`)
+	if got := m.Defaults.OnePasswordAgentSocket(); got != "~/.1password/agent.sock" {
+		t.Errorf("override ignored: %q", got)
+	}
+}

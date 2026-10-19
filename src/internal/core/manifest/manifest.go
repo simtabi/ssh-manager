@@ -680,9 +680,9 @@ func checkKeyStores(m *Manifest) error {
 // defaults override when set, else the platform's standard socket (checked
 // against 1password.dev/ssh/get-started, 2026-10-19). "" on Windows, where
 // Microsoft OpenSSH talks to one fixed pipe and per-host agents do not apply.
-func (m *Manifest) OnePasswordAgentSocket() string {
-	if m.Defaults.OnePasswordAgent != "" {
-		return m.Defaults.OnePasswordAgent
+func (d Defaults) OnePasswordAgentSocket() string {
+	if d.OnePasswordAgent != "" {
+		return d.OnePasswordAgent
 	}
 	return onePasswordAgentFor(runtime.GOOS)
 }
@@ -698,13 +698,13 @@ func onePasswordAgentFor(goos string) string {
 	}
 }
 
-// InOnePassword reports whether a profile keeps its private keys in 1Password.
-func (m *Manifest) InOnePassword(profile string) bool {
-	return m.Profiles[profile].KeyStore == KeyStoreOnePassword
-}
+// InOnePassword reports whether the profile keeps its private keys in 1Password.
+func (p Profile) InOnePassword() bool { return p.KeyStore == KeyStoreOnePassword }
 
-// UsesOnePassword reports whether any profile keeps its keys in 1Password.
-func (m *Manifest) UsesOnePassword() bool {
+// UsesOnePassword reports whether any profile keeps its keys in 1Password. A
+// function rather than a method: Manifest carries a method ceiling (see
+// TestNoTypeHasBecomeTheFacadeAgain), and this needs nothing private.
+func UsesOnePassword(m *Manifest) bool {
 	for _, p := range m.Profiles {
 		if p.KeyStore == KeyStoreOnePassword {
 			return true
@@ -906,20 +906,10 @@ func (m *Manifest) Categories() []string {
 
 // IdentityFile is the rendered ~ form path for a key (always forward slashes).
 // It names the private key. For a 1Password profile the private key is never on
-// disk, so ssh is pointed at RenderedIdentityFile instead; inventory records and
+// disk, so the renderer points ssh at its .pub instead; inventory records and
 // every other caller keep this one, so a key has the same identity in both stores.
 func (m *Manifest) IdentityFile(profileName, keyName string) string {
 	return sshToken + "/" + m.ProfileRel(profileName) + "/" + keyName
-}
-
-// RenderedIdentityFile is the IdentityFile written into ssh_config: the private
-// key path, or for a 1Password profile its public key, which is how ssh picks
-// one key out of an agent (1Password's documented fix for the six-key limit).
-func (m *Manifest) RenderedIdentityFile(profileName, keyName string) string {
-	if m.InOnePassword(profileName) {
-		return m.IdentityFile(profileName, keyName) + ".pub"
-	}
-	return m.IdentityFile(profileName, keyName)
 }
 
 // KeyRef names one key: the profile that owns it plus the file name inside that

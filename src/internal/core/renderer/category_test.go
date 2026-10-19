@@ -158,3 +158,62 @@ func TestIsManagedFileRecognisesBothHeaders(t *testing.T) {
 		}
 	}
 }
+
+const onePasswordJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519", "onepassword_agent": "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"},
+  "profiles": {
+    "bot": {"key_store": "1password", "op_vault": "Simtabi", "hosts": [
+      {"alias": "github-simtabi", "hostname": "github.com", "user": "git", "key_name": "simtabibot_github-ed25519"}]},
+    "me": {"hosts": [
+      {"alias": "github-imani", "hostname": "github.com", "user": "git", "key_name": "imanimanyara_github-ed25519"}]}
+  }
+}`
+
+func TestOnePasswordHostsUseThePublicKeyAndTheAgent(t *testing.T) {
+	m := mustManifest(t, onePasswordJSON)
+	out, err := RenderAll(m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	root := out[RootConfig]
+	want := "Host github-simtabi\n    HostName github.com\n    User git\n" +
+		"    IdentityFile ~/.ssh/profiles/bot/simtabibot_github-ed25519.pub\n" +
+		"    IdentityAgent \"~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock\"\n" +
+		"    IdentitiesOnly yes\n"
+	if !strings.Contains(root, want) {
+		t.Errorf("1Password host block:\n%s\nwant it to contain:\n%s", root, want)
+	}
+	file := root[strings.Index(root, "Host github-imani"):]
+	file = file[:strings.Index(file, "\n\n")]
+	if strings.Contains(file, "IdentityAgent") || strings.Contains(file, ".pub") {
+		t.Errorf("a file-store host must not change:\n%s", file)
+	}
+	// ssh itself must read the quoted path with its space as one value.
+	if _, err := exec.LookPath("ssh"); err != nil || runtime.GOOS == "windows" {
+		return
+	}
+	cfg := filepath.Join(t.TempDir(), "config")
+	if err := os.WriteFile(cfg, []byte(root), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	b, err := exec.Command("ssh", "-G", "-F", cfg, "github-simtabi").CombinedOutput()
+	if err != nil {
+		t.Fatalf("ssh -G: %v\n%s", err, b)
+	}
+	if !strings.Contains(string(b), "identityagent ") || !strings.Contains(string(b), "2BUA8C4S2C.com.1password/t/agent.sock") {
+		t.Errorf("ssh did not read the IdentityAgent path:\n%s", b)
+	}
+}
+
+func TestAnExplicitIdentityAgentWins(t *testing.T) {
+	m := mustManifest(t, strings.Replace(onePasswordJSON, `"key_name": "simtabibot_github-ed25519"}`,
+		`"key_name": "simtabibot_github-ed25519", "raw_options": {"IdentityAgent": "~/.other.sock"}}`, 1))
+	out, err := RenderAll(m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if n := strings.Count(out[RootConfig], "IdentityAgent"); n != 1 || !strings.Contains(out[RootConfig], "~/.other.sock") {
+		t.Errorf("want only the host's own IdentityAgent:\n%s", out[RootConfig])
+	}
+}
