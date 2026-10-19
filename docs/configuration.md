@@ -215,6 +215,13 @@ The agent socket defaults to the platform's path (macOS
 Windows no `IdentityAgent` is rendered, because Microsoft OpenSSH uses one fixed
 pipe for every host.
 
+Two rules are enforced when the manifest loads:
+
+- **Key names are unique within a vault.** The item is titled with the key name,
+  so two 1Password profiles sharing a vault and a key name would share one key.
+- **Keys are `ed25519`.** 1Password generates nothing else, so another
+  `key_type` on a 1Password profile is rejected rather than silently ignored.
+
 The store is per profile, not per host, so the hosts sharing a key cannot
 disagree about where it lives. To move a profile into 1Password, set
 `key_store` and run `sshmgr rotate` on each key: it generates the new key in the

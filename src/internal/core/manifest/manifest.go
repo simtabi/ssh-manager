@@ -698,6 +698,41 @@ func onePasswordAgentFor(goos string) string {
 	}
 }
 
+// checkOnePasswordKeys rejects two key setups that 1Password cannot hold
+// apart or cannot make. It runs after the per-profile checks, because it
+// resolves every profile's key names.
+//
+//   - A vault item is titled with the bare key name, and key names are unique
+//     only within a profile. Two 1Password profiles sharing a vault and a key
+//     name would find each other's item: two identities, one key.
+//   - 1Password generates Ed25519 keys only, so any other key_type on a
+//     1Password profile would be silently ignored.
+func checkOnePasswordKeys(m *Manifest) error {
+	refs, err := m.KeyRefs()
+	if err != nil {
+		return err
+	}
+	owner := map[string]string{} // vault\x00key -> profile
+	for _, ref := range refs {
+		p := m.Profiles[ref.Profile]
+		if !p.InOnePassword() {
+			continue
+		}
+		if kt := m.KeyTypeFor(ref); kt != "ed25519" {
+			return fmt.Errorf("key %s is kept in 1Password, which generates ed25519 keys only, "+
+				"but its key_type is %q", ref, kt)
+		}
+		k := strings.ToLower(p.OPVault) + "\x00" + ref.KeyName
+		if other, ok := owner[k]; ok && other != ref.Profile {
+			return fmt.Errorf("profiles %q and %q both keep key %q in 1Password vault %q - the vault "+
+				"item is titled with the key name, so they would share one key; rename one of them",
+				other, ref.Profile, ref.KeyName, p.OPVault)
+		}
+		owner[k] = ref.Profile
+	}
+	return nil
+}
+
 // InOnePassword reports whether the profile keeps its private keys in 1Password.
 func (p Profile) InOnePassword() bool { return p.KeyStore == KeyStoreOnePassword }
 
@@ -788,7 +823,7 @@ func (m *Manifest) validate() error {
 			}
 		}
 	}
-	return nil
+	return checkOnePasswordKeys(m)
 }
 
 func (m *Manifest) sortedProfileNames() []string {
