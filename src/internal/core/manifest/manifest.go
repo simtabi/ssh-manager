@@ -793,6 +793,12 @@ func CategoryConfigRel(category string) string {
 	return "profiles/" + category + "/config"
 }
 
+// CategoryConfigFile is the ~ form path the root config Includes for a
+// category, matching how IdentityFile paths render.
+func CategoryConfigFile(category string) string {
+	return sshToken + "/" + CategoryConfigRel(category)
+}
+
 // Categories returns the distinct categories in use, in first-seen manifest
 // (file) order, so the root config Includes them in a stable order.
 func (m *Manifest) Categories() []string {

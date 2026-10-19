@@ -263,3 +263,82 @@ func TestShowRendersWithoutWriting(t *testing.T) {
 		t.Error("show must not write the config")
 	}
 }
+
+const categorizedJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519"},
+  "profiles": {
+    "personal": {"category": "internal", "key_scope": "per_service",
+      "hosts": [{"alias": "gh", "hostname": "github.com", "user": "git"}]}
+  }
+}`
+
+func TestWriteRendersCategoryFilesAndChecksThem(t *testing.T) {
+	ssh := t.TempDir()
+	svc := New(ssh, load(t, categorizedJSON), false)
+	if _, err := svc.Write(false); err != nil {
+		t.Fatal(err)
+	}
+	b, err := os.ReadFile(filepath.Join(ssh, "profiles", "internal", "config"))
+	if err != nil {
+		t.Fatalf("category file not written: %v", err)
+	}
+	if !strings.Contains(string(b), "Host gh\n") {
+		t.Errorf("category file is missing its host:\n%s", b)
+	}
+	chk, err := svc.Check(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !chk.InSync() {
+		t.Errorf("a freshly written tree must be in sync:\n%s", chk.Format())
+	}
+}
+
+// A user who split their config by hand before sshmgr knew about categories has
+// a headerless profiles/<category>/config beside profile directories. Pruning
+// it, as the legacy rule would, takes every host in it offline.
+func TestHandWrittenCategoryFileIsNeverPruned(t *testing.T) {
+	ssh := t.TempDir()
+	hand := filepath.Join(ssh, "profiles", "others", "config")
+	if err := os.MkdirAll(filepath.Join(ssh, "profiles", "others", "work"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(hand, []byte("Host unc\n    HostName sc.its.unc.edu\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	svc := New(ssh, load(t, manifestJSON), false)
+	res, err := svc.Write(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Pruned) != 0 {
+		t.Fatalf("pruned %v, want nothing: the file is not sshmgr's", res.Pruned)
+	}
+	if _, err := os.Stat(hand); err != nil {
+		t.Errorf("the hand-written category file was removed: %v", err)
+	}
+	chk, err := svc.Check(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(chk.Orphan) != 0 {
+		t.Errorf("a file sshmgr does not own is not its orphan: %v", chk.Orphan)
+	}
+}
+
+// A category sshmgr rendered and the manifest then dropped is sshmgr's file,
+// header and all, and is pruned like any other stale managed file.
+func TestRenderedCategoryFileIsPrunedWhenTheCategoryGoes(t *testing.T) {
+	ssh := t.TempDir()
+	if _, err := New(ssh, load(t, categorizedJSON), false).Write(false); err != nil {
+		t.Fatal(err)
+	}
+	res, err := New(ssh, load(t, manifestJSON), false).Write(false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Pruned) != 1 || res.Pruned[0] != "profiles/internal/config" {
+		t.Fatalf("pruned = %v, want the dropped category's file", res.Pruned)
+	}
+}

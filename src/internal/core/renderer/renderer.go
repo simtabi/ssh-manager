@@ -15,8 +15,9 @@ const (
 	ManagedHeader = "# Managed by ssh-manager - do not edit (run: sshmgr config render)"
 	ManagedEnd    = "# End of ssh-manager-managed block - content outside it is preserved"
 	// RootConfig is the top-level config file's relative path under ~/.ssh.
-	// It is the only file the renderer produces: every Host block lives inline
-	// here rather than in a per-profile file pulled in via Include.
+	// Every uncategorized profile's Host blocks live inline here. A profile
+	// with a category renders into profiles/<category>/config instead, which
+	// the root config Includes - one file per category, never one per profile.
 	RootConfig = "config"
 	// bannerWidth is the total column width of a "# --- profile: <name> ---"
 	// banner line, dashes padding out the remainder.
@@ -130,19 +131,73 @@ func writeGlobalBlock(b *strings.Builder, globalOptions manifest.OrderedOptions,
 	b.WriteString("    HashKnownHosts " + hashKnownHosts(globalOptions) + "\n")
 }
 
-// RenderRootConfig renders the entire managed block: every profile's hosts
-// inline under a banner (in manifest/file order), then the global Host * block
-// last.
+// RenderRootConfig renders the entire managed block: one Include per category
+// in use, then every uncategorized profile's hosts inline under a banner (in
+// manifest/file order), then the global Host * block last.
 //
 // Host * must stay last. OpenSSH takes the first value it obtains for a given
 // keyword, so a global block placed above the per-host blocks would silently
-// override their more specific directives. That ordering used to be incidental
-// - Include sat above Host * and the included files expanded in place - inline
-// rendering makes it explicit and load-bearing.
+// override their more specific directives. The category Includes therefore sit
+// at the top of the block, where each included file expands in place ahead of
+// Host *.
+//
+// The Includes open with `Match all`. An Include that follows a Host or Match
+// line is conditional on it, and the managed block is composed under whatever
+// foreign content the user keeps above it - a hand-written Host block there
+// would otherwise scope every category to that one host and leave the rest
+// unconfigured, with no error. `Match all` resets the condition to every host.
+// It is emitted only when there is a category to include, so a manifest with
+// none renders byte-identical to before.
 func RenderRootConfig(m *manifest.Manifest, emitUseKeychain bool) (string, error) {
-	resolved, err := m.IterResolved()
+	byProfile, err := hostsByProfile(m)
 	if err != nil {
 		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(ManagedHeader + "\n\n")
+	if cats := m.Categories(); len(cats) > 0 {
+		b.WriteString("Match all\n")
+		for _, c := range cats {
+			b.WriteString("Include " + manifest.CategoryConfigFile(c) + "\n")
+		}
+		b.WriteString("\n")
+	}
+	for _, pname := range m.ProfileNames() {
+		if m.Profiles[pname].Category != "" {
+			continue // rendered into its category's file
+		}
+		writeProfile(&b, pname, byProfile[pname])
+	}
+	writeGlobalBlock(&b, m.Defaults.GlobalOptions, emitUseKeychain)
+	b.WriteString(ManagedEnd + "\n")
+	return b.String(), nil
+}
+
+// RenderCategoryConfig renders profiles/<category>/config: the Host blocks of
+// every profile in that category, in manifest (file) order. It carries the
+// managed header so sshmgr can tell a file it wrote from one a user wrote
+// there by hand, and no Host * block - the root config's applies to every
+// host, wherever its block lives.
+func RenderCategoryConfig(m *manifest.Manifest, category string) (string, error) {
+	byProfile, err := hostsByProfile(m)
+	if err != nil {
+		return "", err
+	}
+	var b strings.Builder
+	b.WriteString(ManagedHeader + "\n")
+	b.WriteString("# Category: " + category + " - included from ~/.ssh/config\n\n")
+	for _, pname := range m.ProfileNames() {
+		if m.Profiles[pname].Category == category {
+			writeProfile(&b, pname, byProfile[pname])
+		}
+	}
+	return b.String(), nil
+}
+
+func hostsByProfile(m *manifest.Manifest) (map[string][]RenderHost, error) {
+	resolved, err := m.IterResolved()
+	if err != nil {
+		return nil, err
 	}
 	byProfile := map[string][]RenderHost{}
 	for _, rk := range resolved {
@@ -156,21 +211,24 @@ func RenderRootConfig(m *manifest.Manifest, emitUseKeychain bool) (string, error
 			RawOptions:   rk.Host.RawOptions,
 		})
 	}
-	var b strings.Builder
-	b.WriteString(ManagedHeader + "\n\n")
-	for _, pname := range m.ProfileNames() {
-		hosts := byProfile[pname]
-		if len(hosts) == 0 {
-			continue
-		}
-		b.WriteString(profileBanner(pname) + "\n")
-		for _, h := range hosts {
-			writeHostBlock(&b, h)
-		}
+	return byProfile, nil
+}
+
+func writeProfile(b *strings.Builder, pname string, hosts []RenderHost) {
+	if len(hosts) == 0 {
+		return
 	}
-	writeGlobalBlock(&b, m.Defaults.GlobalOptions, emitUseKeychain)
-	b.WriteString(ManagedEnd + "\n")
-	return b.String(), nil
+	b.WriteString(profileBanner(pname) + "\n")
+	for _, h := range hosts {
+		writeHostBlock(b, h)
+	}
+}
+
+// IsManagedFile reports whether content opens with the managed header (or the
+// pre-rename one) - i.e. whether sshmgr wrote it.
+func IsManagedFile(content string) bool {
+	first, _, _ := strings.Cut(content, "\n")
+	return isManagedHeader(strings.TrimSpace(first))
 }
 
 // RenderHostBlockFor renders the Host block one manifest host produces - byte
@@ -244,15 +302,22 @@ func ComposeRootConfig(existing, managed string) string {
 	return out
 }
 
-// RenderAll renders every managed file: {relative path -> content}. There is
-// exactly one entry ("config"); the map return type is kept so configsvc's
-// diff/prune machinery does not need to special-case a single file.
+// RenderAll renders every managed file: {relative path -> content} - the root
+// config, plus profiles/<category>/config for each category in use.
 func RenderAll(m *manifest.Manifest, emitUseKeychain bool) (map[string]string, error) {
 	root, err := RenderRootConfig(m, emitUseKeychain)
 	if err != nil {
 		return nil, err
 	}
-	return map[string]string{RootConfig: root}, nil
+	out := map[string]string{RootConfig: root}
+	for _, c := range m.Categories() {
+		content, err := RenderCategoryConfig(m, c)
+		if err != nil {
+			return nil, err
+		}
+		out[manifest.CategoryConfigRel(c)] = content
+	}
+	return out, nil
 }
 
 func splitLines(text string) []string {

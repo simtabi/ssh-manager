@@ -189,8 +189,9 @@ func (s *Service) Show(alias string) (string, error) {
 	return string(out), nil
 }
 
-// configFilesOnDisk lists managed config files present under ~/.ssh, by location
-// (root config + profiles/*/config), as forward-slash relpaths.
+// configFilesOnDisk lists managed config files present under ~/.ssh as
+// forward-slash relpaths: the root config, plus each profiles/*/config sshmgr
+// owns (see ownsConfigFile). Anything listed here and not rendered is pruned.
 func (s *Service) configFilesOnDisk() []string {
 	var found []string
 	if _, ok := readFile(filepath.Join(s.sshDir, renderer.RootConfig)); ok {
@@ -199,12 +200,42 @@ func (s *Service) configFilesOnDisk() []string {
 	matches, _ := filepath.Glob(filepath.Join(s.sshDir, "profiles", "*", "config"))
 	sort.Strings(matches)
 	for _, m := range matches {
+		if !ownsConfigFile(m) {
+			continue
+		}
 		rel, err := filepath.Rel(s.sshDir, m)
 		if err == nil {
 			found = append(found, filepath.ToSlash(rel))
 		}
 	}
 	return found
+}
+
+// ownsConfigFile decides whether a profiles/<x>/config is sshmgr's to prune.
+// Two shapes are:
+//
+//   - one carrying the managed header: a category file sshmgr rendered;
+//   - one in a flat profile directory - keys, old/ and dot directories only -
+//     which is where v1 wrote its per-profile files, without a header.
+//
+// A headerless file beside profile directories is neither. It is a category
+// file someone wrote by hand before sshmgr knew about categories, and it is
+// the only thing routing those hosts until the manifest catches up, so
+// deleting it would take every host in the category offline.
+func ownsConfigFile(path string) bool {
+	if content, ok := readFile(path); ok && renderer.IsManagedFile(content) {
+		return true
+	}
+	entries, err := os.ReadDir(filepath.Dir(path))
+	if err != nil {
+		return false
+	}
+	for _, e := range entries {
+		if e.IsDir() && e.Name() != "old" && !strings.HasPrefix(e.Name(), ".") {
+			return false // a subdirectory that is a profile: this is a category
+		}
+	}
+	return true
 }
 
 func (s *Service) validateAliases() map[string]string {
@@ -227,14 +258,14 @@ func (s *Service) validateAliases() map[string]string {
 }
 
 // renderedOrder returns the rendered relpaths in manifest render order: the root
-// config first, then each non-empty profile's config in manifest (file) order.
+// config first, then each category's config in first-seen manifest order.
 func (s *Service) renderedOrder(rendered map[string]string) []string {
 	order := make([]string, 0, len(rendered))
 	if _, ok := rendered[renderer.RootConfig]; ok {
 		order = append(order, renderer.RootConfig)
 	}
-	for _, p := range s.manifest.NonEmptyProfiles() {
-		rel := "profiles/" + p + "/config"
+	for _, c := range s.manifest.Categories() {
+		rel := manifest.CategoryConfigRel(c)
 		if _, ok := rendered[rel]; ok {
 			order = append(order, rel)
 		}
