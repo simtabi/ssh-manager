@@ -517,3 +517,41 @@ func TestProfileEditCategoryRendersTheCategoryFile(t *testing.T) {
 		t.Errorf("profile add --category: category = %q", got)
 	}
 }
+
+// A batch rotation: one confirmation, every selected key rotated on its own, a
+// key no host uses skipped, and --dry-run touching nothing.
+func TestRotateAllRotatesEveryWiredKey(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	p := editHome(t)
+	t.Setenv("SSH_MANAGER_AGE_RECIPIENT", "")
+	run(t, "profile", "add", "work")
+	run(t, "host", "add", "work", "panel-a", "-H", "ploi-a.example", "-u", "x", "--provider", "ploi")
+	run(t, "host", "add", "work", "panel-b", "-H", "ploi-b.example", "-u", "x", "--provider", "ploi")
+	run(t, "key", "add", "work", "work_spare-ed25519") // declared, wired to nothing
+	run(t, "reconcile", "--yes")
+
+	pubOf := func(name string) string {
+		b, _ := os.ReadFile(filepath.Join(p.SSHDir, "profiles", "work", name+".pub"))
+		return string(b)
+	}
+	before := pubOf("work_panel-a-ed25519") + pubOf("work_panel-b-ed25519")
+
+	dry := run(t, "rotate", "--all", "--dry-run")
+	if !strings.Contains(dry, "2 key(s) would rotate") || !strings.Contains(dry, "work_spare-ed25519 - no host uses it") {
+		t.Fatalf("dry run output:\n%s", dry)
+	}
+	if pubOf("work_panel-a-ed25519")+pubOf("work_panel-b-ed25519") != before {
+		t.Fatal("--dry-run changed a key")
+	}
+
+	out := run(t, "rotate", "--all", "--allow-unverified", "--yes", "--no-key-backup")
+	if !strings.Contains(out, "2 of 2 key(s) rotated") {
+		t.Fatalf("rotate --all output:\n%s", out)
+	}
+	if pubOf("work_panel-a-ed25519") == "" || strings.Contains(before, pubOf("work_panel-a-ed25519")) ||
+		strings.Contains(before, pubOf("work_panel-b-ed25519")) {
+		t.Error("not every selected key was rotated")
+	}
+}

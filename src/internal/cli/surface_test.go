@@ -100,6 +100,12 @@ var goOnly = map[string]string{
 
 	// Categories group profiles under profiles/<category>/ with one Include per
 	// category. v1 had only the flat layout.
+	// Bulk key work: rotate a selection instead of one key at a time, and
+	// rebuild public keys from their private key or 1Password item.
+	"rotate --all":             "bulk rotation - every key a host uses",
+	"rotate --category":        "bulk rotation - every key in a category's profiles",
+	"rotate --dry-run":         "bulk rotation - list the batch, change nothing",
+
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
 
