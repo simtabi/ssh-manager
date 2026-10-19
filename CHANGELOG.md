@@ -6,6 +6,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-10-19
+
 ### Added
 
 - **Keys can live in 1Password.** A profile with `"key_store": "1password"` and
@@ -587,7 +589,8 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
   build and attach artifacts to a GitHub Release on a `v*` tag.
 
-[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.1.1...HEAD
+[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/simtabi/ssh-manager/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/simtabi/ssh-manager/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/simtabi/ssh-manager/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/simtabi/ssh-manager/compare/v2.0.0...v3.0.0
