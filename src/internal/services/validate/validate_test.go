@@ -288,3 +288,55 @@ func TestADeclaredButUnwiredKeyIsStillChecked(t *testing.T) {
 		t.Errorf("an unminted declared key should report as missing: %+v", checks[0])
 	}
 }
+
+// A profile moved to 1Password whose old private key file is still on disk is
+// the trap: the .pub makes it look present, but ssh is pointed at the 1Password
+// agent, which does not hold that key. Validate must say so.
+func TestOnePasswordProfileWithAPrivateKeyFileOnDiskFails(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(`{"version":1,"profiles":{"bot":{"key_store":"1password","op_vault":"Simtabi",
+	  "hosts":[{"alias":"gh","hostname":"github.com","user":"git","key_name":"bot_gh-ed25519"}]}}}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	ssh := t.TempDir()
+	priv := m.KeyPath(ssh, manifest.KeyRef{Profile: "bot", KeyName: "bot_gh-ed25519"})
+	if err := os.MkdirAll(filepath.Dir(priv), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := keystore.New().Generate(priv, "ed25519", "t", "", false); err != nil {
+		t.Fatal(err)
+	}
+	// No op on PATH (ssh-keygen kept): the vault check degrades to a note.
+	t.Setenv("PATH", filepath.Dir(mustLook(t, "ssh-keygen")))
+	checks, err := New(&m, ssh).ValidateKeys("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(checks) != 1 || checks[0].OK || !strings.Contains(strings.Join(checks[0].Issues, "|"), "sshmgr rotate") {
+		t.Fatalf("checks = %+v, want a failing check pointing at rotate", checks)
+	}
+	if !strings.Contains(strings.Join(checks[0].Notes, "|"), "not checked") {
+		t.Errorf("without op the vault check should be a note, got %+v", checks[0])
+	}
+
+	// Remove the stray private key: now only the expected public half remains.
+	if err := os.Remove(priv); err != nil {
+		t.Fatal(err)
+	}
+	checks, _ = New(&m, ssh).ValidateKeys("")
+	if !checks[0].OK {
+		t.Errorf("public half only, op unavailable: want OK with a note, got %+v", checks[0])
+	}
+}
+
+func mustLook(t *testing.T, name string) string {
+	t.Helper()
+	p, err := exec.LookPath(name)
+	if err != nil {
+		t.Skip(name + " not on PATH")
+	}
+	return p
+}

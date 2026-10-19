@@ -47,8 +47,11 @@ func newDiffCmd() *cobra.Command {
 					continue // hosts sharing one key are one key to mint
 				}
 				seen[ref] = true
-				priv := m.KeyPath(p.SSHDir, ref)
-				if fs.Exists(priv) {
+				onDisk := m.KeyPath(p.SSHDir, ref)
+				if m.Profiles[ref.Profile].InOnePassword() {
+					onDisk += ".pub" // the private half lives in 1Password
+				}
+				if fs.Exists(onDisk) {
 					present++
 				} else {
 					missing = append(missing, fmt.Sprintf("  MINT  %s (manifest wants it; not on disk)", ref))

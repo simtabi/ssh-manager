@@ -4,6 +4,7 @@
 package validate
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"strings"
@@ -11,6 +12,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/authkeys"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
 )
 
@@ -29,11 +31,12 @@ type Service struct {
 	m      *manifest.Manifest
 	sshDir string
 	ks     *keystore.KeyStore
+	op     *opstore.Client
 }
 
 // New builds a validate service over the given manifest and ~/.ssh directory.
 func New(m *manifest.Manifest, sshDir string) *Service {
-	return &Service{m: m, sshDir: sshDir, ks: keystore.New()}
+	return &Service{m: m, sshDir: sshDir, ks: keystore.New(), op: opstore.New()}
 }
 
 // ValidateKeys validates every managed key, one check per profile+name pair.
@@ -74,9 +77,20 @@ func (s *Service) validateOne(profile, keyName, priv string) KeyCheck {
 	var fp *string
 	pubText := ""
 
-	if !exists(priv) {
+	inOP := s.m.Profiles[profile].InOnePassword()
+	switch {
+	case inOP && exists(priv):
+		// ssh is pointed at the .pub and the 1Password agent; a private key file
+		// here is not what it offers, and is usually the key from before the
+		// profile moved to 1Password.
+		issues = append(issues, "a private key file is on disk, but this profile keeps its keys in "+
+			"1Password - ssh will not use it. Run `sshmgr rotate "+profile+"/"+keyName+
+			"` to generate the key in 1Password")
+	case inOP:
+		// expected: the private key is in 1Password
+	case !exists(priv):
 		issues = append(issues, "private key missing")
-	} else if !perms.PermsOK(priv, perms.PrivateKeyMode) {
+	case !perms.PermsOK(priv, perms.PrivateKeyMode):
 		issues = append(issues, "private key perms not 600")
 	}
 
@@ -95,8 +109,13 @@ func (s *Service) validateOne(profile, keyName, priv string) KeyCheck {
 		}
 	}
 
+	if inOP {
+		i, n := s.checkOnePassword(profile, keyName, pubText)
+		issues, notes = append(issues, i...), append(notes, n...)
+	}
+
 	// Real pair check: derive the public key from the private material.
-	if exists(priv) {
+	if !inOP && exists(priv) {
 		derived, encrypted, _ := s.ks.PublicFromPrivate(priv)
 		switch {
 		case derived != "":
@@ -114,6 +133,29 @@ func (s *Service) validateOne(profile, keyName, priv string) KeyCheck {
 		KeyName: keyName, Profile: profile, Fingerprint: fp,
 		OK: len(issues) == 0, Issues: issues, Notes: notes,
 	}
+}
+
+// checkOnePassword confirms the key's item is in the profile's vault and that
+// its public key is the one on disk - the pair check for a key whose private
+// half never leaves 1Password.
+func (s *Service) checkOnePassword(profile, keyName, pubText string) (issues, notes []string) {
+	vault := s.m.Profiles[profile].OPVault
+	if err := s.op.Available(); err != nil {
+		return nil, []string{"1Password item not checked: " + err.Error()}
+	}
+	it, err := s.op.Get(vault, keyName)
+	switch {
+	case errors.Is(err, opstore.ErrNotFound):
+		return []string{fmt.Sprintf("no item %q in 1Password vault %q - run `sshmgr reconcile` "+
+			"to create it", keyName, vault)}, nil
+	case err != nil:
+		return nil, []string{"1Password item not checked: " + err.Error()}
+	}
+	if pubText != "" && authkeys.KeyBody(it.PublicKey) != authkeys.KeyBody(pubText) {
+		issues = append(issues, fmt.Sprintf("the .pub does NOT match 1Password item %q in vault %q",
+			keyName, vault))
+	}
+	return issues, nil
 }
 
 func exists(path string) bool {

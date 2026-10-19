@@ -160,12 +160,18 @@ func (r Report) Lines() []string {
 func Notes(row keysvc.Row) []string {
 	var out []string
 	switch {
+	case row.InOnePassword():
+		// Only the public half lives on disk; the private one is in 1Password,
+		// so its absence is the expected state, not half a pair.
+		if !row.PublicOnDisk {
+			out = append(out, Missing)
+		}
 	case !row.PrivateOnDisk && !row.PublicOnDisk:
 		out = append(out, Missing)
 	case !row.PrivateOnDisk || !row.PublicOnDisk:
 		out = append(out, HalfPair)
 	}
-	if row.PrivateOnDisk && !row.Recorded {
+	if (row.PrivateOnDisk || (row.InOnePassword() && row.PublicOnDisk)) && !row.Recorded {
 		out = append(out, Unrecorded)
 	}
 	if !row.Wired() {
@@ -237,6 +243,10 @@ func (s *Service) manifestKeyFinding(row keysvc.Row, state string) Finding {
 	switch state {
 	case Missing:
 		f.Detail = "the manifest references it; neither half is on disk"
+		if row.InOnePassword() {
+			f.Detail = "the manifest references it; its public key is not on disk " +
+				"(the private key lives in 1Password vault " + row.Vault + ")"
+		}
 		f.Fix = "sshmgr reconcile"
 	case HalfPair:
 		half := "the private key is missing"

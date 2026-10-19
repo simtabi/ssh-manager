@@ -56,6 +56,9 @@ type Result struct {
 	// UnwiredKeys are keys the deletion left with no host, but which their
 	// profile still declares - so they remain sshmgr's, just unused.
 	UnwiredKeys []string
+	// VaultItems are 1Password items that held a deleted key. sshmgr never
+	// deletes a vault item; the user archives it.
+	VaultItems []string
 	// OrphanedKeys are keys the deletion removed from the manifest entirely,
 	// because nothing declared them and only the deleted host named them. Their
 	// files are still on disk and nothing tracks them any more.
@@ -78,6 +81,9 @@ func (r Result) Format() string {
 		lines = append(lines, fmt.Sprintf("  pruned known_hosts: %d line(s) no host needs any more", r.PrunedPins))
 	}
 	add("re-rendered", r.ConfigWritten)
+	for _, it := range r.VaultItems {
+		lines = append(lines, "  kept in 1Password: "+it+" - archive it there if it is no longer needed")
+	}
 	for _, ref := range r.UnwiredKeys {
 		lines = append(lines, fmt.Sprintf("  %s is now UNWIRED: its profile still declares it, but no "+
 			"host uses it.", ref))
@@ -136,6 +142,10 @@ func (s *Service) DeleteProfile(name string, opt Options) (Result, error) {
 	}
 	res := Result{
 		Removed: "profile " + name, Revoked: del.Revoked, PrunedRecords: del.PrunedKeys,
+	}
+	if before.Profiles[name].InOnePassword() {
+		res.VaultItems = append(res.VaultItems, fmt.Sprintf("profile %s's key items in vault %q",
+			name, before.Profiles[name].OPVault))
 	}
 	if err := s.finish(&res, files, before.ProfileDir(s.p.SSHDir, name), opt); err != nil {
 		return res, err
@@ -273,6 +283,9 @@ func (s *Service) DeleteKey(ref manifest.KeyRef, opt Options) (Result, error) {
 		return Result{}, err
 	}
 	res := Result{Removed: "key " + ref.String(), Revoked: del.Revoked, PrunedRecords: del.PrunedKeys}
+	if row.InOnePassword() {
+		res.VaultItems = append(res.VaultItems, fmt.Sprintf("item %q in vault %q", ref.KeyName, row.Vault))
+	}
 	// No config re-render and no known_hosts pruning: a deletable key is by
 	// definition wired to no host, so neither the rendered config nor any pin
 	// mentions it.

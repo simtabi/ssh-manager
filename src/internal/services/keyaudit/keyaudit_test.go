@@ -9,6 +9,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/keysvc"
 )
 
 const manifestJSON = `{
@@ -456,5 +457,22 @@ func TestKeyMovedIntoACategoryByHandIsReportedWhereItIs(t *testing.T) {
 	}
 	if !strings.Contains(missing[0].Detail, "profiles/internal/work/work_gh-ed25519") {
 		t.Errorf("the missing detail should say where the key actually is: %q", missing[0].Detail)
+	}
+}
+
+// A 1Password key has only its public half on disk. That is the expected
+// state, not half a pair, and losing the .pub is what makes it missing.
+func TestOnePasswordKeyNeedsOnlyItsPublicHalf(t *testing.T) {
+	inOP := keysvc.Row{Vault: "Simtabi", PublicOnDisk: true, Recorded: true, Hosts: []string{"gh"}}
+	if got := Notes(inOP); len(got) != 0 {
+		t.Errorf("public half present: notes = %v, want none", got)
+	}
+	gone := keysvc.Row{Vault: "Simtabi", Recorded: true, Hosts: []string{"gh"}}
+	if got := Notes(gone); len(got) != 1 || got[0] != Missing {
+		t.Errorf("public half gone: notes = %v, want [missing]", got)
+	}
+	unrecorded := keysvc.Row{Vault: "Simtabi", PublicOnDisk: true, Hosts: []string{"gh"}}
+	if got := Notes(unrecorded); len(got) != 1 || got[0] != Unrecorded {
+		t.Errorf("no inventory record: notes = %v, want [unrecorded]", got)
 	}
 }
