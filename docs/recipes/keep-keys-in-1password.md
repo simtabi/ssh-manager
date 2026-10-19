@@ -7,6 +7,15 @@ You need the [1Password CLI](https://developer.1password.com/docs/cli/get-starte
 (`op` 2.20 or later), signed in, and the SSH agent turned on in the 1Password
 app (Settings > Developer > Use the SSH agent).
 
+If the vault is not your Personal, Private or Employee vault, or you already
+have a `~/.config/1Password/ssh/agent.toml`, tell the agent to serve it:
+
+```toml
+# ~/.config/1Password/ssh/agent.toml
+[[ssh-keys]]
+vault = "Simtabi"
+```
+
 In the manifest, give the profile a store and a vault:
 
 ```jsonc
@@ -23,7 +32,7 @@ In the manifest, give the profile a store and a vault:
 ```
 
 ```sh
-sshmgr doctor          # op found, agent socket present
+sshmgr doctor          # op found, agent socket present, vault served
 sshmgr reconcile       # creates the item, writes simtabibot_github-ed25519.pub
 sshmgr validate        # the item exists and matches the .pub
 ```

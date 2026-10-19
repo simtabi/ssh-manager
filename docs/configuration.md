@@ -195,6 +195,20 @@ private key never touches disk. `rotate` generates replacements in the vault too
 Needs `op` (2.20 or later) signed in, and the agent turned on in the 1Password
 app (Settings > Developer > Use the SSH agent); `doctor` checks both.
 
+**The agent must serve the vault.** With no `agent.toml`, the 1Password SSH
+agent offers only keys in your Personal, Private or Employee vault. Once
+`~/.config/1Password/ssh/agent.toml` exists, it offers only what the file lists
+(even an empty file overrides the default). For any other vault, or whenever the
+file exists, list the vault as a whole:
+
+```toml
+[[ssh-keys]]
+vault = "Simtabi"
+```
+
+A whole-vault entry, not one per item: a rotation's `<key>.staged` item has to be
+served to be verified. `doctor` checks this for every vault a profile names.
+
 The agent socket defaults to the platform's path (macOS
 `~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`, Linux
 `~/.1password/agent.sock`); set `defaults.onepassword_agent` to override it. On

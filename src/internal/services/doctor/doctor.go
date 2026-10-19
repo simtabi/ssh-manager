@@ -300,6 +300,19 @@ func onePasswordIssues(m *manifest.Manifest) []string {
 				"Settings > Developer > Use the SSH agent in the 1Password app")
 		}
 	}
+	// A key in a vault the agent does not serve is never offered to ssh, which
+	// shows up only as "Permission denied (publickey)".
+	seen := map[string]bool{}
+	for _, name := range m.ProfileNames() {
+		p := m.Profiles[name]
+		if !p.InOnePassword() || seen[strings.ToLower(p.OPVault)] {
+			continue
+		}
+		seen[strings.ToLower(p.OPVault)] = true
+		if ok, why := opstore.AgentServesVault(p.OPVault, opstore.AgentConfigPath()); !ok {
+			out = append(out, why)
+		}
+	}
 	return out
 }
 

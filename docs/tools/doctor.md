@@ -20,7 +20,7 @@ sshmgr doctor --strict  # every dangling-key state is fatal (CI)
 | `home` / `ssh` | the resolved config home and `~/.ssh`, so an override is visible |
 | `providers` | whether the catalog is the shipped default or a user file |
 | `agent` | whether `ssh-agent` is running and how many keys it holds |
-| `1Password` | when a profile uses `key_store: 1password`: that `op` is on PATH and the agent socket exists |
+| `1Password` | when a profile uses `key_store: 1password`: that `op` is on PATH, the agent socket exists, and the agent serves the profile's vault (`agent.toml`) |
 | `known_hosts` | whether the trust store exists, and which hosts are unpinned |
 | `config drift` | whether the rendered block still matches the manifest |
 | `perms` | every managed path whose mode is not what it should be |
