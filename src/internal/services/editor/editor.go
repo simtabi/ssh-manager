@@ -10,6 +10,8 @@ package editor
 
 import (
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -17,6 +19,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/log"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
 )
 
 // DeleteResult is what one manifest-level deletion changed. It is data for the
@@ -97,6 +100,97 @@ func (e *Editor) EditProfile(name string, keyScope *string, keyName *string) err
 	}
 	log.Audit(e.p.AuditLog(), "profile.edit", log.Field{Key: "profile", Value: name})
 	return nil
+}
+
+// CategoryResult reports what SetCategory changed on disk.
+type CategoryResult struct {
+	From, To       string // profile directories, relative to ~/.ssh
+	Moved          bool   // the key directory was renamed from From to To
+	RecordsUpdated int    // inventory records re-pointed at the new location
+}
+
+// SetCategory files a profile under category ("" returns it to the flat
+// layout) and brings the tree along: the profile's key directory is renamed
+// into place when it is still at the old location, and inventory records are
+// re-pointed. When the directory has already been moved by hand - the usual
+// way a tree reaches this state - only the records change.
+//
+// It refuses when both locations exist, rather than choosing one: two key
+// directories for one profile is a conflict for a person to resolve.
+func (e *Editor) SetCategory(name, category string) (CategoryResult, error) {
+	m, err := e.load()
+	if err != nil {
+		return CategoryResult{}, err
+	}
+	p, ok := m.Profiles[name]
+	if !ok {
+		return CategoryResult{}, fmt.Errorf("unknown profile: %q", name)
+	}
+	res := CategoryResult{From: m.ProfileRel(name)}
+	oldDir := m.ProfileDir(e.p.SSHDir, name)
+	oldIdent := m.IdentityFile(name, "")
+	p.Category = category
+	m.SetProfile(name, p)
+	if err := m.Validate(); err != nil {
+		return CategoryResult{}, err
+	}
+	res.To = m.ProfileRel(name)
+	newDir := m.ProfileDir(e.p.SSHDir, name)
+	newIdent := m.IdentityFile(name, "")
+	if res.From == res.To {
+		return res, nil
+	}
+
+	oldExists, newExists := isDir(oldDir), isDir(newDir)
+	if oldExists && newExists {
+		return CategoryResult{}, fmt.Errorf("both %s and %s exist - merge them by hand, then rerun",
+			res.From, res.To)
+	}
+	if oldExists {
+		if err := os.MkdirAll(filepath.Dir(newDir), perms.DirMode); err != nil {
+			return CategoryResult{}, err
+		}
+		if err := os.Rename(oldDir, newDir); err != nil {
+			return CategoryResult{}, err
+		}
+		res.Moved = true
+	}
+	undo := func() {
+		if res.Moved {
+			_ = os.Rename(newDir, oldDir)
+		}
+	}
+
+	inv, err := inventory.Load(e.p.Inventory())
+	if err != nil {
+		undo()
+		return CategoryResult{}, err
+	}
+	for fp, rec := range inv.Keys {
+		if rec.Profile == name && strings.HasPrefix(rec.Path, oldIdent) {
+			rec.Path = newIdent + strings.TrimPrefix(rec.Path, oldIdent)
+			inv.Keys[fp] = rec
+			res.RecordsUpdated++
+		}
+	}
+	if err := m.Save(e.p.Manifest()); err != nil {
+		undo()
+		return CategoryResult{}, err
+	}
+	if res.RecordsUpdated > 0 {
+		if err := inv.Save(e.p.Inventory()); err != nil {
+			return res, fmt.Errorf("manifest updated but the inventory was not: %w", err)
+		}
+	}
+	log.Audit(e.p.AuditLog(), "profile.category",
+		log.Field{Key: "profile", Value: name}, log.Field{Key: "category", Value: category},
+		log.Field{Key: "moved", Value: res.Moved})
+	return res, nil
+}
+
+func isDir(path string) bool {
+	fi, err := os.Lstat(path)
+	return err == nil && fi.IsDir()
 }
 
 // DeleteProfile removes a profile, revoking/pruning its hosts' keys.
