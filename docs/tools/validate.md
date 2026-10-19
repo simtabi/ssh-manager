@@ -21,6 +21,12 @@ For each key it checks:
 **Encrypted private keys** are *noted, not failed*: the pair can't be verified
 without the passphrase, but the key is valid.
 
+**Keys in 1Password** (`key_store: 1password`) have no private key on disk. For
+them validate checks that the item exists in the profile's vault and that its
+public key is the `.pub` on disk. It fails a private key *file* found beside
+one: the `.pub` makes it look present, but ssh asks the 1Password agent, which
+does not hold it. Without `op` the vault check is noted, not failed.
+
 ```sh
 sshmgr validate                     # all keys
 sshmgr validate work                # one profile

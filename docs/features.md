@@ -95,7 +95,7 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 
 | Command | What it does | Tests |
 |---|---|---|
-| `profile add <name> [--shared] [--key-name] [--category]` | Add a profile, optionally filed under `profiles/<category>/`. | U·F |
+| `profile add <name> [--shared] [--key-name] [--category]` | Add a profile, optionally filed under `profiles/<category>/`. A profile keeps its keys on disk, or in 1Password with `key_store: 1password` (see [Key stores](configuration.md#key-stores)). | U·F |
 | `profile edit <name> [--key-scope] [--key-name] [--category]` | Change a profile in place. `--category` moves its key directory under `profiles/<category>/` (or back, with `""`) and re-points its inventory records. | U |
 | `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
 | `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag]` | Add a host to a profile (alias is **positional**). | U·F |

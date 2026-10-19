@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Keys can live in 1Password.** A profile with `"key_store": "1password"` and
+  an `op_vault` keeps its private keys as SSH Key items in that vault, created
+  with the `op` CLI; only the public halves are written to disk. Its hosts render
+  `IdentityFile <key>.pub` and `IdentityAgent` pointing at the 1Password agent.
+  `rotate` stages the replacement in the vault, verifies it through the agent,
+  and keeps one `<key>.old` predecessor; `rollback` restores it. Items are
+  archived, never deleted. Rotating a key after switching its profile to
+  `1password` moves it into the vault. `validate` checks the item matches the
+  `.pub`, and `doctor` checks for `op` and the agent socket.
+- **`op://` secret references.** A provider token whose value starts `op://` is
+  read with `op read`, beside the existing `cmd:` form.
 - **Profiles can be grouped into categories.** A profile with `"category":
   "clients"` keeps its keys under `profiles/clients/<profile>/` and renders its
   `Host` blocks into `profiles/clients/config`, which the root config Includes
@@ -60,6 +71,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **GitHub verify checks the account.** When a deploy's API token and an ssh
+  login are both available, GitHub must greet the key as the account the token
+  belongs to. A token for the wrong account (a personal token left in a machine
+  user's variable) used to add the key there and pass verification.
 - **`reconcile` refuses to mint a key that only changed directory.** A declared
   key found in the other layout (flat when the manifest says categorized, or the
   reverse) used to be planned as a fresh key, leaving two keys for one identity.

@@ -48,6 +48,39 @@ available until the next rotation supersedes it.
 
 `doctor` asserts the ≤1-old invariant (counted per key name).
 
+## Keys kept in 1Password
+
+For a profile with `key_store: 1password` the flow is the same, with the vault
+standing in for the private key files:
+
+1. **Stage** a new SSH Key item titled `<key>.staged` in the profile's vault
+   (a leftover from a crashed rotation is archived first); its public half goes
+   to `.staging/`.
+2. **Deploy** and **verify** as above. A verify login uses the staged `.pub`
+   through the 1Password agent, so nothing private is read.
+3. **Commit:** any earlier `<key>.old` item goes to the vault's Archive (one
+   predecessor, as on disk), the live item is retitled `<key>.old`, the staged
+   item takes `<key>`, and the public keys move as files do. A failed step puts
+   back what had moved.
+
+`rollback` retitles `<key>.old` back to `<key>` and archives the rotated-in
+item. sshmgr archives items and never deletes them, so every one is still
+recoverable from 1Password's Archive.
+
+Rotating a key whose profile has just been switched to `1password` moves it
+into the vault: the outgoing key file pair is archived to `old/`, and the new
+key exists only as an item. A rollback across that move is refused, because its
+predecessor is a key file; set `key_store` back to `file` to roll back.
+
+## A GitHub machine user
+
+A key on a GitHub account is deployed, verified and revoked through that
+account's API, with the token named by the host's `token_env`. When both the
+API and an ssh login are available, verify also checks that GitHub greets the
+key as the account the token belongs to, so a token for the wrong account
+fails the rotation instead of committing a key the alias cannot push with. See
+[Use a GitHub machine user](../recipes/github-machine-user.md).
+
 ---
 
 [← Docs index](../../README.md#documentation)
