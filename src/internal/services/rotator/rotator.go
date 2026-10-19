@@ -17,6 +17,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/providers"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/log"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/netcheck"
@@ -91,11 +92,12 @@ type Rotator struct {
 	m   *manifest.Manifest
 	inv *inventory.Inventory
 	ks  *keystore.KeyStore
+	op  *opstore.Client // for profiles whose key_store is 1password
 }
 
 // New builds a Rotator.
 func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Rotator {
-	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New()}
+	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New(), op: opstore.New()}
 }
 
 // profileAndHosts resolves a key selector to its owning profile and the hosts
@@ -130,6 +132,7 @@ func (r *Rotator) target(h manifest.Host, profile, pubPath, pubText, identPath s
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		PubkeyPath: pubPath, PubkeyText: pubText, TokenEnv: deref(h.TokenEnv),
 		IdentityPath: identPath, KnownHosts: filepath.Join(r.p.SSHDir, "known_hosts"),
+		IdentityAgent: r.agentFor(profile, identPath),
 	}
 }
 
@@ -153,6 +156,9 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
+	}
+	if r.m.Profiles[profile].InOnePassword() {
+		return r.rotateOnePassword(profile, keyName, hosts, allowUnverified)
 	}
 	pdir := r.dir(profile)
 	curPriv := filepath.Join(pdir, keyName)
@@ -338,6 +344,9 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
+	}
+	if r.m.Profiles[profile].InOnePassword() {
+		return r.rollbackOnePassword(profile, keyName, hosts)
 	}
 	pdir := r.dir(profile)
 	oldPriv := filepath.Join(pdir, "old", keyName)
