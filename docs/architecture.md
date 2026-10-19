@@ -137,10 +137,11 @@ that identity's profile directory, and nothing crosses profiles:
 
 ```
 ~/.ssh/
-├── config                          # 600 - ONE file. A marked ssh-manager block
-│                                   #   holds every Host entry, grouped by profile
-│                                   #   banner with `Host *` last. Foreign content
-│                                   #   outside the markers is preserved verbatim.
+├── config                          # 600 - A marked ssh-manager block holds every
+│                                   #   uncategorized Host entry, grouped by profile
+│                                   #   banner, one Include per category, and
+│                                   #   `Host *` last. Foreign content outside the
+│                                   #   markers is preserved verbatim.
 ├── known_hosts                     # 600 - ONE hashed trust store. Lines this tool
 │                                   #   pinned carry an `sshmgr` comment tag, so it
 │                                   #   only ever prunes its own.
@@ -156,7 +157,7 @@ that identity's profile directory, and nothing crosses profiles:
 
 Per-profile isolation is enforced by the rendered config, not by the file layout:
 
-- `IdentityFile ~/.ssh/profiles/<p>/<key>` plus **per-host** `IdentitiesOnly yes`
+- `IdentityFile ~/.ssh/profiles/[<category>/]<p>/<key>` plus **per-host** `IdentitiesOnly yes`
   means a host is only ever offered **its own** key. No cross-offer, and no
   lockout from an agent volunteering five keys before the right one.
 - Perms are load-bearing (dirs 700, private keys and the config 600, public keys
@@ -223,6 +224,25 @@ own.
 
 This is the one place the Go implementation deliberately does not match v1's
 output. Everything else does.
+
+### Why do categories use `Include` when everything else is inline?
+
+A category is a grouping someone asked to see as a file: client accounts in one
+place, internal ones in another. That is a layout choice, not an isolation
+mechanism, so it does not reopen the argument above. Isolation still comes from
+`IdentityFile` plus per-host `IdentitiesOnly`, written into every block wherever
+the block lives.
+
+The ordering hazard that retired v1's per-profile Includes is handled
+explicitly. The Includes sit at the top of the managed block, ahead of every
+inline host and `Host *`, and open with `Match all` so they stay global when
+foreign content above the block ends inside a `Host` stanza. A test runs
+`ssh -G` against both forms, so the reason is pinned to OpenSSH.
+
+Every path to a key goes through `Manifest.ProfileDir` / `KeyPath`, and a
+layering test fails any `filepath.Join` that builds `profiles/<computed>` by hand.
+That is the defect categories expose: a hand-built path is right for a flat
+profile and silently one directory too high for a categorized one.
 
 ### Why is there no single service object?
 

@@ -199,11 +199,22 @@ func (s *Service) Audit(strict bool) (Report, error) {
 	owned := map[manifest.KeyRef]bool{}
 	for _, row := range rows {
 		owned[row.Ref] = true
+	}
+	stray, misplaced := s.untracked(owned)
+	for _, row := range rows {
 		for _, state := range Notes(row) {
-			rep.Findings = append(rep.Findings, s.manifestKeyFinding(row, state))
+			f := s.manifestKeyFinding(row, state)
+			// A key that is only in the wrong directory is not missing, and the
+			// usual fix would mint a replacement for a key that still works.
+			if at, ok := misplaced[row.Ref]; ok && state == Missing {
+				f.Detail = "not where the manifest puts it - it is at " + at
+				f.Fix = "do not reconcile (it would mint a replacement): move the key back, " +
+					"or set profile " + row.Ref.Profile + "'s category"
+			}
+			rep.Findings = append(rep.Findings, f)
 		}
 	}
-	rep.Findings = append(rep.Findings, s.untracked(owned)...)
+	rep.Findings = append(rep.Findings, stray...)
 	rep.Findings = append(rep.Findings, s.staleInventory()...)
 	rep.Findings = append(rep.Findings, s.loose()...)
 
@@ -249,19 +260,20 @@ func (s *Service) manifestKeyFinding(row keysvc.Row, state string) Finding {
 // the orphan check it replaces, it does not require a .pub sibling: a private
 // key with no public half is the most dangling thing in the tree, and requiring
 // the .pub made exactly that case invisible.
-func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
-	profiles := filepath.Join(s.sshDir, "profiles")
-	entries, err := filepath.Glob(filepath.Join(profiles, "*", "*"))
-	if err != nil {
-		return nil
-	}
-	seen := map[manifest.KeyRef]bool{}
+//
+// It also returns the declared keys it found in another directory than the
+// manifest resolves, keyed by ref, with the path they were found at.
+func (s *Service) untracked(owned map[manifest.KeyRef]bool) ([]Finding, map[manifest.KeyRef]string) {
+	// Both layouts: profiles/<profile>/* and profiles/<category>/<profile>/*.
+	entries := manifest.GlobProfileTree(s.sshDir, "*")
+	seen := map[string]bool{}
+	misplacedAt := map[manifest.KeyRef]string{}
 	var out []Finding
 	for _, path := range entries {
 		base := filepath.Base(path)
 		fi, err := os.Lstat(path)
 		// Directories are old/, .staging and .mint-* - archives and residue, both
-		// somebody else's business.
+		// somebody else's business - or, in a category, the profiles themselves.
 		if err != nil || fi.IsDir() || skipName(base) {
 			continue
 		}
@@ -269,11 +281,31 @@ func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
 			Profile: filepath.Base(filepath.Dir(path)),
 			KeyName: strings.TrimSuffix(base, ".pub"),
 		}
-		if owned[ref] || seen[ref] {
+		// Ownership is by location, not by name alone: a declared key sitting in
+		// another directory than the manifest resolves is one sshmgr cannot find,
+		// which is what happens when profiles are moved into a category by hand.
+		expected := s.m.KeyPath(s.sshDir, ref)
+		misplaced := filepath.Dir(path) != filepath.Dir(expected)
+		if owned[ref] && !misplaced {
 			continue
 		}
-		seen[ref] = true
-		rel := filepath.ToSlash(filepath.Join("profiles", ref.Profile, ref.KeyName))
+		rel, _ := filepath.Rel(s.sshDir, filepath.Join(filepath.Dir(path), ref.KeyName))
+		rel = filepath.ToSlash(rel)
+		if seen[rel] {
+			continue
+		}
+		seen[rel] = true
+		if owned[ref] {
+			misplacedAt[ref] = rel
+			want, _ := filepath.Rel(s.sshDir, expected)
+			out = append(out, Finding{
+				State: Untracked, Subject: rel,
+				Detail: "the manifest places this key at " + filepath.ToSlash(want),
+				Fix: "move it there, or set profile " + ref.Profile +
+					"'s category to match where it is",
+			})
+			continue
+		}
 		detail := "no profile declares it"
 		if _, ok := s.m.Profiles[ref.Profile]; !ok {
 			detail = "profile " + ref.Profile + " is not in the manifest"
@@ -283,7 +315,7 @@ func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
 			Fix: "sshmgr key add " + ref.Profile + " " + ref.KeyName + "   (adopt it), or delete the files",
 		})
 	}
-	return out
+	return out, misplacedAt
 }
 
 // staleInventory finds records for paths no manifest key owns. A record for a

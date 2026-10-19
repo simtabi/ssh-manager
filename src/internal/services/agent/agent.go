@@ -5,7 +5,6 @@ package agent
 import (
 	"os"
 	"os/exec"
-	"path/filepath"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 )
@@ -62,7 +61,7 @@ func Load(m *manifest.Manifest, sshDir, profile string, add func(string) bool) (
 		if rk.Profile != profile {
 			continue
 		}
-		priv := filepath.Join(sshDir, "profiles", rk.Profile, rk.KeyName)
+		priv := m.KeyPath(sshDir, manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName})
 		if seen[priv] {
 			continue
 		}

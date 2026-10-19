@@ -371,7 +371,7 @@ func OldKeyMaxAge(get func(string) string) time.Duration {
 func archivedKeys(ssh string, maxAge time.Duration, now time.Time) (map[string]int, []string) {
 	counts := map[string]int{}
 	var stale []string
-	olds, _ := filepath.Glob(filepath.Join(ssh, "profiles", "*", "old"))
+	olds := manifest.GlobProfileTree(ssh, "old")
 	sort.Strings(olds)
 	for _, old := range olds {
 		fi, err := os.Stat(old)
@@ -451,7 +451,7 @@ func duplicateKeys(ssh string) []string {
 	ks := keystore.New()
 	byFP := map[string][]string{}
 	var order []string // first-encounter fp order (pubs sorted), matching v1
-	pubs, _ := filepath.Glob(filepath.Join(profDir, "*", "*.pub"))
+	pubs := manifest.GlobProfileTree(ssh, "*.pub")
 	sort.Strings(pubs)
 	for _, pub := range pubs {
 		fp, err := ks.Fingerprint(pub)

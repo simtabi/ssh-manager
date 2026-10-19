@@ -8,7 +8,8 @@ a sandbox). Run all three with `make test e2e feature-check`.
 The mental model: the **manifest** in `~/.config/ssh-manager/manifest.json` is the single source
 of truth; `~/.ssh` is generated, reproducible output. Profiles model *identity*
 (work · personal · simtabi · ...), not technology, and everything for an identity
-lives isolated under `~/.ssh/profiles/<profile>/`.
+lives isolated under `~/.ssh/profiles/<profile>/`, or `~/.ssh/profiles/<category>/<profile>/`
+when the profile has a category.
 
 ## Home & setup
 
@@ -94,8 +95,8 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 
 | Command | What it does | Tests |
 |---|---|---|
-| `profile add <name> [--shared] [--key-name]` | Add a profile. | U·F |
-| `profile edit <name> [--key-scope] [--key-name]` | Change a profile in place. | U·F |
+| `profile add <name> [--shared] [--key-name] [--category]` | Add a profile, optionally filed under `profiles/<category>/`. | U·F |
+| `profile edit <name> [--key-scope] [--key-name] [--category]` | Change a profile in place. `--category` moves its key directory under `profiles/<category>/` (or back, with `""`) and re-points its inventory records. | U |
 | `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
 | `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag]` | Add a host to a profile (alias is **positional**). | U·F |
 | `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name]` | Change a host in place. | U·F |

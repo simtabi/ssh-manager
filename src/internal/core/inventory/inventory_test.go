@@ -296,3 +296,16 @@ func TestCorruptInventoryIsAnErrorNotAFreshStart(t *testing.T) {
 		}
 	}
 }
+
+func TestIsArchivedPathInACategory(t *testing.T) {
+	cases := map[string]bool{
+		"~/.ssh/profiles/clients/adelsaiq/old/k": true,
+		"~/.ssh/profiles/clients/adelsaiq/k":     false,
+		"~/.ssh/profiles/internal/personal/k":    false,
+	}
+	for p, want := range cases {
+		if got := IsArchivedPath(p); got != want {
+			t.Errorf("IsArchivedPath(%q) = %v, want %v", p, got, want)
+		}
+	}
+}

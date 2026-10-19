@@ -342,3 +342,59 @@ func TestControlFlowDoesNotTravelByPanic(t *testing.T) {
 		})
 	}
 }
+
+// Profile directories have two layouts - profiles/<profile>/ and
+// profiles/<category>/<profile>/ - and manifest.ProfileRel is the one place
+// that decides between them. A filepath.Join that puts anything computed after
+// a literal "profiles" is building that path by hand: it is right for a flat
+// profile and silently one directory too high for a categorized one, which is
+// exactly how every key path broke when profiles first moved into categories.
+//
+// Joins whose segments after "profiles" are all string literals stay legal:
+// that is the profiles/ root itself, or a glob such as profiles/*/known_hosts
+// for the legacy per-profile files that only ever existed flat.
+func TestProfilePathsAreBuiltOnlyByTheManifest(t *testing.T) {
+	files := goFiles(t, "internal", "cmd")
+	inspected := 0
+	for path, f := range files {
+		if strings.HasPrefix(path, "internal/core/manifest/") {
+			continue // the resolver itself
+		}
+		ast.Inspect(f, func(n ast.Node) bool {
+			call, ok := n.(*ast.CallExpr)
+			if !ok {
+				return true
+			}
+			sel, ok := call.Fun.(*ast.SelectorExpr)
+			if !ok || sel.Sel.Name != "Join" {
+				return true
+			}
+			if pkg, ok := sel.X.(*ast.Ident); !ok || pkg.Name != "filepath" {
+				return true
+			}
+			inspected++
+			for i, arg := range call.Args {
+				lit, ok := arg.(*ast.BasicLit)
+				if !ok || lit.Value != `"profiles"` {
+					continue
+				}
+				for _, rest := range call.Args[i+1:] {
+					if _, isLit := rest.(*ast.BasicLit); !isLit {
+						t.Errorf("%s: filepath.Join builds a profiles/<computed> path by hand; "+
+							"use manifest.ProfileDir / KeyPath / GlobProfileTree so a categorized "+
+							"profile resolves", path)
+						return true
+					}
+				}
+			}
+			return true
+		})
+	}
+	// A walk that stopped matching would pass over the whole tree. Measured
+	// 2026-10-19: 93 filepath.Join calls outside the manifest package. The floor
+	// sits well under that so routine deletions do not trip it, and far above
+	// zero so a broken walk does.
+	if inspected < 60 {
+		t.Fatalf("inspected only %d filepath.Join calls - the source walk is not seeing the tree", inspected)
+	}
+}

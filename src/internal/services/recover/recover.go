@@ -8,7 +8,6 @@ import (
 	_ "embed"
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/authkeys"
@@ -36,7 +35,7 @@ func Script(p paths.Paths, m *manifest.Manifest, selector string) (string, error
 		return "", err
 	}
 	keyName := ref.KeyName
-	pubPath := filepath.Join(p.SSHDir, "profiles", ref.Profile, keyName+".pub")
+	pubPath := m.KeyPath(p.SSHDir, ref) + ".pub"
 	if !exists(pubPath) {
 		return "", fmt.Errorf("public key not found for %q - run `sshmgr reconcile` first", ref)
 	}

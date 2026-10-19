@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sort"
+	"strings"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
@@ -492,6 +493,59 @@ func TestReconcileTightensTheConfigHomeToo(t *testing.T) {
 		}
 		if mode := fi.Mode().Perm(); mode != 0o600 {
 			t.Errorf("%s is %04o, want 0600: readable by every local account", filepath.Base(path), mode)
+		}
+	}
+}
+
+// Moving a profile into a category by hand, before the manifest says so, leaves
+// the key one directory deeper than reconcile looks. Minting there would create
+// a second key for the same identity while the deployed one stays live.
+func TestReconcileRefusesToMintAKeyThatOnlyMoved(t *testing.T) {
+	m := loadManifest(t)
+	ssh := t.TempDir()
+	moved := filepath.Join(ssh, "profiles", "internal", "personal", "id_personal")
+	if err := os.MkdirAll(filepath.Dir(moved), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(moved, []byte("PRIVATE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := New(paths.Paths{SSHDir: ssh, ConfigDir: t.TempDir()}, m, inventory.New(), false)
+
+	_, err := r.Reconcile(true, "")
+	if err == nil {
+		t.Fatal("reconcile planned a replacement for a key that exists one directory deeper")
+	}
+	if !strings.Contains(err.Error(), moved) {
+		t.Errorf("the error should name where the key is: %v", err)
+	}
+	if _, statErr := os.Stat(filepath.Join(ssh, "profiles", "personal", "id_personal")); statErr == nil {
+		t.Error("a replacement key was written")
+	}
+}
+
+// Once the manifest names the category, the same tree is simply in place.
+func TestReconcileFindsAKeyInItsCategory(t *testing.T) {
+	m := loadManifest(t)
+	p := m.Profiles["personal"]
+	p.Category = "internal"
+	m.Profiles["personal"] = p
+	ssh := t.TempDir()
+	key := filepath.Join(ssh, "profiles", "internal", "personal", "id_personal")
+	if err := os.MkdirAll(filepath.Dir(key), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(key, []byte("PRIVATE\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	r := New(paths.Paths{SSHDir: ssh, ConfigDir: t.TempDir()}, m, inventory.New(), false)
+	res, err := r.Reconcile(true, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, mk := range res.Minted {
+		if strings.Contains(mk.Path, "id_personal") {
+			t.Errorf("planned a mint for the categorized key already on disk: %s", mk.Path)
 		}
 	}
 }

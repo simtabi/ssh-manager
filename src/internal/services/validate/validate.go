@@ -6,7 +6,6 @@ package validate
 import (
 	"fmt"
 	"os"
-	"path/filepath"
 	"strings"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/authkeys"
@@ -55,7 +54,7 @@ func (s *Service) ValidateKeys(selector string) ([]KeyCheck, error) {
 		if !selectorMatches(selector, ref) {
 			continue
 		}
-		priv := filepath.Join(s.sshDir, "profiles", ref.Profile, ref.KeyName)
+		priv := s.m.KeyPath(s.sshDir, ref)
 		checks = append(checks, s.validateOne(ref.Profile, ref.KeyName, priv))
 	}
 	if len(checks) == 0 && selector != "" {

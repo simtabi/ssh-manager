@@ -98,6 +98,11 @@ var goOnly = map[string]string{
 
 	"doctor --strict": "D7 - CI gate: escalates every dangling-key state to fatal",
 
+	// Categories group profiles under profiles/<category>/ with one Include per
+	// category. v1 had only the flat layout.
+	"profile add --category":  "categories - file a new profile under profiles/<category>/",
+	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
+
 	// Confirmation and safety flags. v1 prompted; the Go verbs take an
 	// explicit --yes so they are usable from a script, and refuse to destroy key
 	// material without a backup path.

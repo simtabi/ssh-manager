@@ -149,12 +149,17 @@ func (inv *Inventory) Record(fingerprint string, rec KeyRecord) {
 }
 
 // IsArchivedPath reports whether path is a rotation's /old/ predecessor slot,
-// i.e. .../profiles/<profile>/old/<key_name> (by structure, so a profile literally
+// i.e. .../profiles/[<category>/]<profile>/old/<key_name> (by structure, so a profile literally
 // named "old" is not mistaken for an archived key).
 func IsArchivedPath(path string) bool {
 	parts := strings.Split(path, "/")
 	n := len(parts)
-	return n >= 4 && parts[n-2] == "old" && parts[n-4] == "profiles"
+	if n < 4 || parts[n-2] != "old" {
+		return false
+	}
+	// Flat: .../profiles/<profile>/old/<key>. Categorized:
+	// .../profiles/<category>/<profile>/old/<key>.
+	return parts[n-4] == "profiles" || (n >= 5 && parts[n-5] == "profiles")
 }
 
 // ComputeExpiry returns created (YYYY-MM-DD) + rotateAfterDays as YYYY-MM-DD.

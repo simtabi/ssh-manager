@@ -112,7 +112,7 @@ func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory, emitUseK
 }
 
 func (r *Reconciler) privPath(profile, keyName string) string {
-	return filepath.Join(r.p.SSHDir, "profiles", profile, keyName)
+	return r.m.KeyPath(r.p.SSHDir, manifest.KeyRef{Profile: profile, KeyName: keyName})
 }
 
 // Reconcile rebuilds the tree (mints missing keys, renders config, fixes perms,
@@ -279,13 +279,33 @@ func (r *Reconciler) planMint(selector string) (toMint, existing []plannedKey, e
 			continue
 		}
 		pk := plannedKey{Ref: ref, Hosts: hosts}
-		if fs.Exists(r.privPath(ref.Profile, ref.KeyName)) {
+		priv := r.privPath(ref.Profile, ref.KeyName)
+		if fs.Exists(priv) {
 			existing = append(existing, pk)
-		} else {
-			toMint = append(toMint, pk)
+			continue
 		}
+		if elsewhere := r.misplaced(ref, priv); elsewhere != "" {
+			return nil, nil, fmt.Errorf("key %s is not at %s but at %s - refusing to mint a "+
+				"replacement for a key that still exists; move it back, or set profile %q's "+
+				"category to match where it is", ref, priv, elsewhere, ref.Profile)
+		}
+		toMint = append(toMint, pk)
 	}
 	return toMint, existing, nil
+}
+
+// misplaced returns where a key the manifest expects at priv actually sits, if
+// it is in the other layout: flat when the manifest says categorized, or under
+// a category the manifest does not name. Minting there would leave two keys
+// for one identity, the old one still deployed and the new one not. "" when
+// the key is nowhere else.
+func (r *Reconciler) misplaced(ref manifest.KeyRef, priv string) string {
+	for _, p := range manifest.GlobProfileTree(r.p.SSHDir, ref.KeyName) {
+		if p != priv && filepath.Base(filepath.Dir(p)) == ref.Profile {
+			return p
+		}
+	}
+	return ""
 }
 
 // planMatches reports whether a key is in scope for selector: everything when
@@ -337,7 +357,7 @@ func (r *Reconciler) ensureTree() error {
 		remember(ref.Profile)
 	}
 	for _, pname := range order {
-		if err := fs.EnsureDir(filepath.Join(ssh, "profiles", pname), perms.DirMode); err != nil {
+		if err := fs.EnsureDir(r.m.ProfileDir(ssh, pname), perms.DirMode); err != nil {
 			return err
 		}
 	}

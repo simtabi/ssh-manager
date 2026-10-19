@@ -23,7 +23,7 @@ func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "profile", Short: "Manage a profile (add/edit/delete)"}
 
 	var shared bool
-	var keyName string
+	var keyName, addCategory string
 	add := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a profile",
@@ -38,8 +38,14 @@ func newProfileCmd() *cobra.Command {
 				return err
 			}
 			snapshotBeforeMutation(p)
-			if err := editor.New(p).AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
+			ed := editor.New(p)
+			if err := ed.AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
 				return err
+			}
+			if addCategory != "" {
+				if _, err := ed.SetCategory(args[0], addCategory); err != nil {
+					return err
+				}
 			}
 			_, _ = fmt.Fprintf(c.OutOrStdout(), "added profile %s (no hosts yet - add one with "+
 				"`sshmgr host add %s <alias>`)\n", args[0], args[0])
@@ -48,9 +54,11 @@ func newProfileCmd() *cobra.Command {
 	}
 	add.Flags().BoolVar(&shared, "shared", false, "key_scope=shared (one key per profile)")
 	add.Flags().StringVar(&keyName, "key-name", "", "profile key name (shared scope)")
+	add.Flags().StringVar(&addCategory, "category", "",
+		"file the profile under profiles/<category>/ and render its hosts into profiles/<category>/config")
 	cmd.AddCommand(add)
 
-	var editScope, editKeyName string
+	var editScope, editKeyName, editCategory string
 	edit := &cobra.Command{
 		Use:   "edit <name>",
 		Short: "Edit a profile",
@@ -61,9 +69,26 @@ func newProfileCmd() *cobra.Command {
 				return err
 			}
 			snapshotBeforeMutation(p)
-			if err := editor.New(p).EditProfile(args[0],
-				strPtrIf(c, "key-scope", editScope), strPtrIf(c, "key-name", editKeyName)); err != nil {
-				return err
+			ed := editor.New(p)
+			if c.Flags().Changed("category") {
+				res, err := ed.SetCategory(args[0], editCategory)
+				if err != nil {
+					return err
+				}
+				if res.From != res.To {
+					verb := "keys expected at"
+					if res.Moved {
+						verb = "moved keys to"
+					}
+					_, _ = fmt.Fprintf(c.OutOrStdout(), "%s: %s %s (was %s); %d inventory record(s) updated\n",
+						args[0], verb, res.To, res.From, res.RecordsUpdated)
+				}
+			}
+			if c.Flags().Changed("key-scope") || c.Flags().Changed("key-name") || !c.Flags().Changed("category") {
+				if err := ed.EditProfile(args[0],
+					strPtrIf(c, "key-scope", editScope), strPtrIf(c, "key-name", editKeyName)); err != nil {
+					return err
+				}
 			}
 			// Changing key_scope or key_name changes which key each host resolves
 			// to, and that key may not exist yet.
@@ -82,6 +107,8 @@ func newProfileCmd() *cobra.Command {
 	}
 	edit.Flags().StringVar(&editScope, "key-scope", "", "per_service | shared")
 	edit.Flags().StringVar(&editKeyName, "key-name", "", "the shared key every host in this profile uses (key_scope: shared)")
+	edit.Flags().StringVar(&editCategory, "category", "",
+		"move the profile under profiles/<category>/ (its key directory and inventory records follow); \"\" returns it to the flat layout")
 	cmd.AddCommand(edit)
 
 	var yes, revoke, purge, noKeyBackup bool

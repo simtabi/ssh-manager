@@ -84,7 +84,7 @@ func (d *Deployer) Deploy(selector, targetAlias string) (DeployReport, error) {
 		return DeployReport{}, err
 	}
 	profile, keyName := ref.Profile, ref.KeyName
-	pub := filepath.Join(d.p.SSHDir, "profiles", profile, keyName+".pub")
+	pub := d.m.KeyPath(d.p.SSHDir, ref) + ".pub"
 	if _, err := os.Stat(pub); err != nil {
 		return DeployReport{}, fmt.Errorf("public key not found: %s - run `sshmgr reconcile` first", pub)
 	}

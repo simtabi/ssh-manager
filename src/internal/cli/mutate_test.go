@@ -483,3 +483,37 @@ func TestVerbsRejectUnknownSelectors(t *testing.T) {
 		}
 	}
 }
+
+// The command a user runs after filing profiles under categories by hand: the
+// keys are already in place, so only the manifest, the inventory and the
+// rendered config move.
+func TestProfileEditCategoryRendersTheCategoryFile(t *testing.T) {
+	p := editHome(t)
+	run(t, "profile", "add", "work")
+	run(t, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+
+	out := run(t, "profile", "edit", "work", "--category", "others")
+	if !strings.Contains(out, "profiles/others/work") {
+		t.Errorf("the edit should say where the keys now live: %s", out)
+	}
+	cat, err := os.ReadFile(filepath.Join(p.SSHDir, "profiles", "others", "config"))
+	if err != nil {
+		t.Fatalf("category config not rendered: %v", err)
+	}
+	if !strings.Contains(string(cat), "Host gh\n") {
+		t.Errorf("the host should render into its category file:\n%s", cat)
+	}
+	root := configText(t, p)
+	if !strings.Contains(root, "Include ~/.ssh/profiles/others/config") || strings.Contains(root, "Host gh\n") {
+		t.Errorf("the root config should Include the category, not inline its host:\n%s", root)
+	}
+
+	run(t, "profile", "add", "acme", "--category", "clients")
+	m, err := manifest.Load(p.Manifest())
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := m.Profiles["acme"].Category; got != "clients" {
+		t.Errorf("profile add --category: category = %q", got)
+	}
+}
