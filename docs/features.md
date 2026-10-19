@@ -49,6 +49,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | Command | What it does | Tests |
 |---|---|---|
 | `key list [selector]` | Every key with its fingerprint, expiry, the hosts using it, and its state — including keys nothing references. | U |
+| `key regen-pub [selectors...] [--category] [--all] [--dry-run]` | Rebuild `.pub` files from the private key or the 1Password item; reports unchanged / created / rewritten / skipped. Never changes a private key. | U |
 | `key add <profile> <name> [--type] [--rotate-after-days] [--host] [--passphrase]` | Declare a key on a profile and mint it. Without `--host` the key is minted **unwired**: it exists and nothing uses it, which `doctor` then reports. | U |
 | `key delete <profile/key> [--purge] [--revoke] [--yes] [--no-key-backup]` | Remove the declaration and the inventory record. **Refuses while any host still resolves to the key** — a `Host` block pointing at a missing `IdentityFile` fails as a bare "Permission denied (publickey)" with nothing naming the cause. `--purge` also deletes the files. | U |
 | `clean [--dry-run] [--adopt]` | Prune stale `known_hosts` pins, stale inventory records and write residue. Only removes pins tagged `sshmgr`; `--adopt` opts an untagged pin that matches a manifest host into management, since an untagged pin is presumed to be yours. | U |
@@ -72,6 +73,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 |---|---|---|
 | `deploy <key> [target]` | Install the public key on its target via the host's provider (GitHub/GitLab CLI, cloud-VPS REST, `generic-ssh` `ssh-copy-id`, or web-panel/manual) and record it. **Exits ≠0 if a target is unreachable.** | U·E·F |
 | `rotate <key> [--yes] [--allow-unverified] [--passphrase]` | Zero-downtime staged rotation: stage → deploy → verify → archive (≤1 predecessor). Aborts cleanly (pulling the staged key back) if a target can't be verified or is unreachable. | U·E·F |
+| `rotate [selectors...] [--category] [--all] [--dry-run]` | Rotate a batch: several keys, profiles or aliases, a category, or every key a host uses. One confirmation, backup and snapshot; each key rotates on its own and a failure leaves only that key untouched. | U |
 | `rollback <key> [--yes]` | Restore the single `/old/` predecessor (re-deploy is best-effort; skips unreachable hosts). | U·E·F |
 | `load <profile>` | Add the profile's keys to the agent (Keychain on macOS). | U·F |
 

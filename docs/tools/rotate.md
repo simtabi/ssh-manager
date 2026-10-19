@@ -2,6 +2,7 @@
 
 ```sh
 sshmgr rotate <key> [--allow-unverified] [--passphrase] [--yes]
+sshmgr rotate [<key>|<profile>|<alias> ...] [--category <name>] [--all] [--dry-run]
 sshmgr rollback <key> [--yes]
 ```
 
@@ -34,6 +35,27 @@ Each target must verify before commit. Automated providers (generic SSH, GitHub
 with a token) verify by logging in / `ssh -T`. A **manual / web-panel** target
 (e.g. ploi) can't auto-verify, so rotation **aborts by default** - finish the
 paste in the panel and re-run with `--allow-unverified` to accept it.
+
+## Rotating a batch
+
+`rotate` takes any number of keys, profiles or host aliases, every key in a
+category (`--category orgs`), or every key (`--all`):
+
+```sh
+sshmgr rotate --all --dry-run          # list what would rotate
+sshmgr rotate --category clients
+sshmgr rotate simtabi imanimanyara/imanimanyara_github-ed25519
+```
+
+A batch asks once, writes one encrypted backup and one snapshot, then rotates
+each key on its own with the flow above. A key that fails (an unreachable host,
+a target that will not verify) is left exactly as it was, and the rest still
+rotate; the command exits non-zero and names the keys it left. The inventory is
+saved after every committed key, so an interrupted batch keeps what it
+finished. A key no host uses is skipped: there is nothing to deploy it to.
+
+A selector that matches nothing is an error, so a typo never runs as an empty
+batch, and `--all` cannot be combined with other selectors.
 
 ## Shared keys
 

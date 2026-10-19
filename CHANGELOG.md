@@ -17,6 +17,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   archived, never deleted. Rotating a key after switching its profile to
   `1password` moves it into the vault. `validate` checks the item matches the
   `.pub`, and `doctor` checks for `op` and the agent socket.
+- **Batch rotation.** `rotate` accepts several keys, profiles or host aliases,
+  `--category <name>`, or `--all`, with `--dry-run` to list the batch. One
+  confirmation, backup and snapshot; each key rotates on its own, so one failure
+  leaves only that key as it was.
+- **`key regen-pub`** rebuilds `.pub` files from the private key, or from the
+  vault item for a 1Password profile, for the same selections. It reports each
+  key as unchanged, created or rewritten, and never touches a private key.
 - **`op://` secret references.** A provider token whose value starts `op://` is
   read with `op read`, beside the existing `cmd:` form.
 - **Profiles can be grouped into categories.** A profile with `"category":
