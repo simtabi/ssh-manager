@@ -26,6 +26,11 @@ sshmgr validate                          # every pair parses and matches
 sshmgr doctor
 ```
 
+Keys kept in 1Password (`key_store: 1password`) are not in the bundle: only
+their `.pub` is on disk, and the private key is already backed up by 1Password.
+On the new machine, sign in to 1Password and run `sshmgr key regen-pub --all`
+(or `sshmgr reconcile`) to bring their public halves back from the vault.
+
 `restore` overlays: a key already on disk that the bundle does not contain — one
 minted since the backup — survives. It replaces only what it has a copy of.
 

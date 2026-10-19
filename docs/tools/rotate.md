@@ -12,7 +12,7 @@ filename** - so swap-back is a plain move and there's never a name collision.
 
 ## The flow (invariant 7)
 
-1. **Stage** a replacement in `profiles/<profile>/.staging/` (never left behind).
+1. **Stage** a replacement in the profile's `.staging/` (never left behind).
 2. **Deploy** the staged public key to every target (the current key is still
    active and authorized - nothing breaks here).
 3. **Verify** login with the staged key on each target (`ssh ... true`; `ssh -T`

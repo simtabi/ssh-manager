@@ -9,6 +9,15 @@ machine user is an ordinary GitHub account used only by automation. Put it in a
 team with **Read** on the repositories it needs, and its single key reaches all
 of them.
 
+## A GitHub App is not a substitute for SSH
+
+A GitHub App (for example one that opens pull requests from CI, or supplies
+`git` credentials over HTTPS) cannot hold an SSH key: Apps authenticate with
+short-lived tokens over HTTPS only. If every `git` remote uses HTTPS with an
+App's token, no SSH key and no machine user is needed. A machine user is for
+the case where something must use SSH: an SSH remote, a deploy pipeline that
+only speaks SSH, or a server that pulls with a key.
+
 ## Set it up
 
 1. Create the account (for example `simtabi-bot`) with an inbox you control,

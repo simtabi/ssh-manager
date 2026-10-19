@@ -118,7 +118,7 @@ instances, or their own tooling for project/account-level keys:
 - **Account/project level** (so new VMs get the key):
   ```sh
   # OS Login (recommended):
-  gcloud compute os-login ssh-keys add --key-file=~/.ssh/profiles/<p>/<key>.pub
+  gcloud compute os-login ssh-keys add --key-file=~/.ssh/profiles/[<category>/]<p>/<key>.pub
   gcloud compute os-login ssh-keys remove --key=<fingerprint>
   # or project metadata (legacy):
   gcloud compute project-info add-metadata --metadata-from-file ssh-keys=keys.txt
