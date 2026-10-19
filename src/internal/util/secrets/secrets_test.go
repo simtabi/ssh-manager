@@ -155,3 +155,21 @@ func runCount(t *testing.T, path string) int {
 	}
 	return len(b)
 }
+
+// A 1Password secret reference is read with `op read`, the whole reference as
+// one argument even when an item or field name has a space in it.
+func TestAnOpReferenceIsReadThroughOp(t *testing.T) {
+	log := stubCommand(t, "op", "printf 'bot-token\\n'\n")
+	ref := "op://Simtabi/simtabi-bot github/token"
+
+	if got := Resolve(ref); got != "bot-token" {
+		t.Fatalf("op:// secret = %q, want the stub's output", got)
+	}
+	argv, err := os.ReadFile(log)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := "[read][" + ref + "]"; !strings.Contains(strings.ReplaceAll(string(argv), "\n", ""), want) {
+		t.Errorf("argv = %q, want %s", argv, want)
+	}
+}

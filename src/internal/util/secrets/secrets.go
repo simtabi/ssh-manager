@@ -1,6 +1,7 @@
 // Package secrets resolves provider tokens. A token
 // value of cmd:<command> runs the command at use-time and uses its trimmed stdout
-// as the secret (so it integrates with any secret manager); anything else is
+// as the secret (so it integrates with any secret manager); op://vault/item/field
+// is a 1Password secret reference, read with `op read`; anything else is
 // returned as-is. Results are memoized per process.
 package secrets
 
@@ -10,7 +11,10 @@ import (
 	"sync"
 )
 
-const cmdPrefix = "cmd:"
+const (
+	cmdPrefix = "cmd:"
+	opPrefix  = "op://"
+)
 
 // cache memoizes successful lookups only. A cmd: secret typically prompts - a
 // password manager unlock, a touch on a hardware token - so re-running it for
@@ -26,10 +30,18 @@ func Resolve(raw string) string {
 	if raw == "" {
 		return ""
 	}
-	if !strings.HasPrefix(raw, cmdPrefix) {
+	var command string
+	switch {
+	case strings.HasPrefix(raw, cmdPrefix):
+		command = raw[len(cmdPrefix):]
+	case strings.HasPrefix(raw, opPrefix):
+		// The same as cmd:op read <ref>, without asking the user to spell out a
+		// command. Quoted so a reference with spaces ("op://Simtabi/bot token/
+		// credential") stays one argument.
+		command = "op read " + shellQuote(raw)
+	default:
 		return raw
 	}
-	command := raw[len(cmdPrefix):]
 	if v, ok := cache.Load(command); ok {
 		return v.(string)
 	}
@@ -93,4 +105,9 @@ func shlexSplit(s string) []string {
 		args = append(args, cur.String())
 	}
 	return args
+}
+
+// shellQuote wraps s in single quotes for shlexSplit, escaping any it contains.
+func shellQuote(s string) string {
+	return "'" + strings.ReplaceAll(s, "'", `'\''`) + "'"
 }
