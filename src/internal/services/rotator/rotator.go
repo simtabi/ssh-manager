@@ -385,6 +385,22 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	_ = perms.SetPerms(curPriv, perms.PrivateKeyMode)
 	_ = perms.SetPerms(curPub, perms.PublicKeyMode)
 
+	return r.finishRollback(profile, keyName, hosts, curPub, curPriv, curPubText, report)
+}
+
+// preservePair copies the keypair at src to dst without disturbing src.
+//
+// A hard link, not a copy: the two names share one inode, so the source keeps
+// working while the archive exists and no private key bytes are written a second
+// time. src and dst are both inside one profile directory, so a link is
+// essentially always possible; a filesystem that refuses one (a bind mount over
+// old/, say) falls back to copying, since preserving the outgoing key matters
+// more than how it is preserved.
+// finishRollback re-deploys the restored key to every target, revokes the
+// rolled-back one, and settles the inventory, once the local files hold the
+// restored key. identPath is what a verify login uses.
+func (r *Rotator) finishRollback(profile, keyName string, hosts []manifest.Host,
+	curPub, curPriv, curPubText string, report RotateReport) (RotateReport, error) {
 	restoredPubText := readFile(curPub)
 	var results []TargetResult
 	var unreached []string
@@ -437,14 +453,6 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	return report, nil
 }
 
-// preservePair copies the keypair at src to dst without disturbing src.
-//
-// A hard link, not a copy: the two names share one inode, so the source keeps
-// working while the archive exists and no private key bytes are written a second
-// time. src and dst are both inside one profile directory, so a link is
-// essentially always possible; a filesystem that refuses one (a bind mount over
-// old/, say) falls back to copying, since preserving the outgoing key matters
-// more than how it is preserved.
 func preservePair(srcPriv, dstPriv string) error {
 	for _, ext := range []string{"", ".pub"} {
 		src, dst := srcPriv+ext, dstPriv+ext
