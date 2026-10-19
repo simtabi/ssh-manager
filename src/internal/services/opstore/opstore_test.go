@@ -93,3 +93,17 @@ func TestEditAndArchiveAddressTheItemByID(t *testing.T) {
 		}
 	}
 }
+
+// A wrong vault is not a missing item: reconcile must not answer it by trying
+// to create one.
+func TestAMissingVaultIsNotAMissingItem(t *testing.T) {
+	for _, msg := range []string{
+		`[ERROR] "Simtabbi" isn't a vault in this account.`,
+		`[ERROR] account not found`,
+	} {
+		c, _ := fakeOp(t, "echo '"+msg+"' >&2; exit 1\n")
+		if _, err := c.Get("Simtabbi", "x"); err == nil || errors.Is(err, ErrNotFound) {
+			t.Errorf("%q: err = %v, want a plain error, not ErrNotFound", msg, err)
+		}
+	}
+}

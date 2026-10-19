@@ -122,10 +122,12 @@ func (c *Client) run(args ...string) ([]byte, error) {
 	return stdout.Bytes(), nil
 }
 
+// isNotFound reports op's own wording for a missing item ("\"x\" isn't an item
+// in the \"V\" vault"), and nothing broader. A looser match also caught a
+// missing vault ("isn't a vault"), a missing account and similar failures, which
+// reconcile then answered by trying to create the item.
 func isNotFound(err error) bool {
-	msg := strings.ToLower(err.Error())
-	return strings.Contains(msg, "isn't an item") || strings.Contains(msg, "not found") ||
-		strings.Contains(msg, "no item")
+	return strings.Contains(strings.ToLower(err.Error()), "isn't an item")
 }
 
 // parseItem reads the fields sshmgr needs from `op item ... --format json`.
