@@ -131,6 +131,10 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 		return RotateReport{}, fmt.Errorf("could not prepare the archive directory, so the rotation "+
 			"was not committed (the active key is untouched): %w", err)
 	}
+	// note tells a failure that happens after the earlier predecessor was
+	// archived where that item went: everything else is put back, but an
+	// archive is not undone.
+	note := func(err error) error { return err }
 	if prev, err := r.op.Get(vault, oldTitle(keyName)); err == nil {
 		// One predecessor, as on disk: the older one goes to the vault's
 		// Archive, where it can still be restored.
@@ -138,6 +142,10 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 			discard()
 			return RotateReport{}, fmt.Errorf("could not archive the earlier predecessor %q, so the "+
 				"rotation was not committed: %w", oldTitle(keyName), err)
+		}
+		note = func(err error) error {
+			return fmt.Errorf("%w\n(the earlier predecessor %q had already been moved to the Archive "+
+				"of vault %q; restore it from there if you still need it)", err, oldTitle(keyName), vault)
 		}
 	}
 	var undo []func()
@@ -151,8 +159,8 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 	case err == nil:
 		if err := r.op.Rename(vault, cur.ID, oldTitle(keyName)); err != nil {
 			discard()
-			return RotateReport{}, fmt.Errorf("could not retitle the outgoing key, so the rotation "+
-				"was not committed (the active key is untouched): %w", err)
+			return RotateReport{}, note(fmt.Errorf("could not retitle the outgoing key, so the rotation "+
+				"was not committed (the active key is untouched): %w", err))
 		}
 		undo = append(undo, func() { _ = r.op.Rename(vault, cur.ID, keyName) })
 	case errors.Is(err, opstore.ErrNotFound) && exists(curPriv):
@@ -160,36 +168,36 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 		oldPriv := filepath.Join(oldDir, keyName)
 		if err := os.Rename(curPriv, oldPriv); err != nil {
 			discard()
-			return RotateReport{}, fmt.Errorf("could not archive the outgoing key file, so the "+
-				"rotation was not committed: %w", err)
+			return RotateReport{}, note(fmt.Errorf("could not archive the outgoing key file, so the "+
+				"rotation was not committed: %w", err))
 		}
 		undo = append(undo, func() { _ = os.Rename(oldPriv, curPriv) })
 	case errors.Is(err, opstore.ErrNotFound):
 		// A .pub with no item and no private key: nothing to retire in the vault.
 	default:
 		discard()
-		return RotateReport{}, err
+		return RotateReport{}, note(err)
 	}
 	if err := r.op.Rename(vault, staged.ID, keyName); err != nil {
 		rollbackCommit()
 		discard()
-		return RotateReport{}, fmt.Errorf("could not give the new key its title, so the rotation was "+
-			"undone and the previous key is active again: %w", err)
+		return RotateReport{}, note(fmt.Errorf("could not give the new key its title, so the rotation was "+
+			"undone and the previous key is active again: %w", err))
 	}
 	oldPub := filepath.Join(oldDir, keyName+".pub")
 	if err := copyFile(curPub, oldPub); err != nil {
 		_ = r.op.Rename(vault, staged.ID, stagedTitle(keyName))
 		rollbackCommit()
 		discard()
-		return RotateReport{}, fmt.Errorf("could not archive the outgoing public key, so the rotation "+
-			"was undone: %w", err)
+		return RotateReport{}, note(fmt.Errorf("could not archive the outgoing public key, so the rotation "+
+			"was undone: %w", err))
 	}
 	if err := os.Rename(stagedPub, curPub); err != nil {
 		_ = r.op.Rename(vault, staged.ID, stagedTitle(keyName))
 		rollbackCommit()
 		discard()
-		return RotateReport{}, fmt.Errorf("could not move the new public key into place, so the "+
-			"rotation was undone: %w", err)
+		return RotateReport{}, note(fmt.Errorf("could not move the new public key into place, so the "+
+			"rotation was undone: %w", err))
 	}
 	_ = perms.SetPerms(curPub, perms.PublicKeyMode)
 	_ = perms.SetPerms(oldPub, perms.PublicKeyMode)

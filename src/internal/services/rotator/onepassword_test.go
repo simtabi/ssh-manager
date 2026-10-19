@@ -35,7 +35,11 @@ case "$cmd" in
   d=$(find_title "$1"); [ -z "$d" ] && { echo "[ERROR] \"$1\" isn't an item in the vault." >&2; exit 1; }
   json "$d" ;;
 "item edit")
-  id="$1"; shift; while [ $# -gt 0 ]; do [ "$1" = "--title" ] && echo "$2" > "$V/items/$id/title"; shift; done ;;
+  id="$1"; shift; while [ $# -gt 0 ]; do
+    if [ "$1" = "--title" ]; then
+      [ -n "$FAKE_OP_FAIL_FROM" ] && [ "$(cat $V/items/$id/title)" = "$FAKE_OP_FAIL_FROM" ] && { echo "[ERROR] edit refused" >&2; exit 1; }
+      echo "$2" > "$V/items/$id/title"
+    fi; shift; done ;;
 "item delete")
   mv "$V/items/$1" "$V/archive/$1" ;;
 *) echo "fake op: unsupported $cmd" >&2; exit 2 ;;
@@ -209,5 +213,37 @@ func TestRotateMovesAFileKeyIntoOnePassword(t *testing.T) {
 	if _, err := New(p, m, inv).Rollback("bot_panel-ed25519"); err == nil ||
 		!strings.Contains(err.Error(), "key_store") {
 		t.Errorf("rollback across the move: err = %v, want a pointer at key_store", err)
+	}
+}
+
+// A rotation that fails after archiving the earlier predecessor puts the live
+// key back and says where the archived item went.
+func TestFailedOnePasswordRotationNamesTheArchivedPredecessor(t *testing.T) {
+	titles, archived := opVault(t)
+	p, m, inv := opSetup(t, opManifestJSON)
+	if _, err := reconciler.New(p, m, inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	if rep, err := New(p, m, inv).Rotate("bot_panel-ed25519", true, ""); err != nil || !rep.Committed {
+		t.Fatalf("first rotate: %v", err)
+	}
+	pub := filepath.Join(p.SSHDir, "profiles", "orgs", "bot", "bot_panel-ed25519.pub")
+	live, _ := os.ReadFile(pub)
+
+	// The staged item cannot be retitled: the last vault step of the commit.
+	t.Setenv("FAKE_OP_FAIL_FROM", "bot_panel-ed25519.staged")
+	_, err := New(p, m, inv).Rotate("bot_panel-ed25519", true, "")
+	if err == nil || !strings.Contains(err.Error(), "moved to the Archive") {
+		t.Fatalf("err = %v, want it to name the archived predecessor", err)
+	}
+	t.Setenv("FAKE_OP_FAIL_FROM", "")
+	if got, _ := os.ReadFile(pub); string(got) != string(live) {
+		t.Error("the live public key changed although the rotation failed")
+	}
+	if got := strings.Join(titles(), ","); got != "bot_panel-ed25519" {
+		t.Errorf("vault = %q, want the live key back under its title", got)
+	}
+	if archived() < 2 {
+		t.Errorf("archived = %d, want the earlier predecessor and the staged key archived", archived())
 	}
 }
