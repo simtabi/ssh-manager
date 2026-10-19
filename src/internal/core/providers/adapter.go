@@ -16,7 +16,21 @@ type Target struct {
 	Port         int
 	TokenEnv     string // "" == none
 	IdentityPath string // private key for verify; "" == none
-	KnownHosts   string // per-profile known_hosts; "" == none
+	// IdentityAgent is the agent holding the key when IdentityPath is a public
+	// key (a key kept in 1Password); "" == the key is a file.
+	IdentityAgent string
+	KnownHosts    string // per-profile known_hosts; "" == none
+}
+
+// identityOpts are the ssh options that make a verify login use exactly the
+// key under test: the file itself, or the agent's copy of it selected by its
+// public key.
+func (t Target) identityOpts() []string {
+	opts := []string{"-i", t.IdentityPath, "-o", "IdentitiesOnly=yes"}
+	if t.IdentityAgent != "" {
+		opts = append(opts, "-o", "IdentityAgent="+t.IdentityAgent)
+	}
+	return opts
 }
 
 // SSHDest is user@hostname.
