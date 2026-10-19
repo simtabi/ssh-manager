@@ -105,8 +105,11 @@ func TestMatchAllKeepsIncludesGlobalUnderAForeignHostBlock(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// Point the Includes at the temp tree instead of the real ~/.ssh.
-		root = strings.ReplaceAll(root, "Include ~/.ssh/", "Include "+dir+"/")
+		// Point the Includes at the temp tree instead of the real ~/.ssh. Forward
+		// slashes: OpenSSH's config parser reads a backslash as an escape, so a
+		// native Windows path (C:\Users\...) arrives as C:Users... and the
+		// Include silently matches nothing. Windows OpenSSH accepts "/" fine.
+		root = strings.ReplaceAll(root, "Include ~/.ssh/", "Include "+filepath.ToSlash(dir)+"/")
 		cfg := filepath.Join(dir, "config")
 		if err := os.WriteFile(cfg, []byte(root), 0o600); err != nil {
 			t.Fatal(err)
