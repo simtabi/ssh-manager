@@ -23,6 +23,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/preflight"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/homeperms"
@@ -48,6 +49,9 @@ type Report struct {
 	AliasCollisions    []string
 	ProvidersSource    string // "user file" | "shipped default"
 	StrandedLegacyHome string
+	// OnePassword lists what stops a 1Password profile from working: no op
+	// CLI, or no agent socket. Empty when no profile uses 1Password.
+	OnePassword []string
 }
 
 // OK is the overall verdict.
@@ -57,7 +61,7 @@ type Report struct {
 // result nothing acts on is not a check. Which states are fatal is keyaudit's
 // call, not this one's (--strict makes all of them fatal).
 func (r Report) OK() bool {
-	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync {
+	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync || len(r.OnePassword) > 0 {
 		return false
 	}
 	if !r.Dangling.OK() {
@@ -89,6 +93,9 @@ func (r Report) Format() string {
 			"the legacy one).", r.StrandedLegacyHome))
 	}
 	lines = append(lines, "agent: "+r.AgentStatus)
+	for _, issue := range r.OnePassword {
+		lines = append(lines, "1Password: "+issue)
+	}
 	lines = append(lines, "known_hosts: "+presentAbsent(r.KnownHosts))
 	if len(r.UnpinnedHosts) > 0 {
 		lines = append(lines, "host keys NOT pinned (ssh/git will fail host-key "+
@@ -265,8 +272,35 @@ func (s *Service) Run(strict bool) Report {
 		rep.DuplicateKeys = duplicateKeys(ssh)
 		rep.UnpinnedHosts = s.unpinnedHosts(ssh)
 		rep.AliasCollisions = aliasCollisions(s.m)
+		rep.OnePassword = onePasswordIssues(s.m)
 	}
 	return rep
+}
+
+// onePasswordIssues reports what a profile with key_store "1password" needs and
+// lacks: the op CLI (to mint, validate and rotate) and the agent socket (which
+// ssh is pointed at for every such host).
+func onePasswordIssues(m *manifest.Manifest) []string {
+	if !manifest.UsesOnePassword(m) {
+		return nil
+	}
+	var out []string
+	if err := opstore.New().Available(); err != nil {
+		out = append(out, err.Error())
+	}
+	if sock := m.Defaults.OnePasswordAgentSocket(); sock != "" {
+		path := sock
+		if strings.HasPrefix(path, "~/") {
+			if home, err := os.UserHomeDir(); err == nil {
+				path = filepath.Join(home, path[2:])
+			}
+		}
+		if _, err := os.Stat(path); err != nil {
+			out = append(out, "the SSH agent socket "+sock+" is missing - turn on "+
+				"Settings > Developer > Use the SSH agent in the 1Password app")
+		}
+	}
+	return out
 }
 
 func (s *Service) providersSource() string {
