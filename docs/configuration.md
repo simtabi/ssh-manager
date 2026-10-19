@@ -26,7 +26,12 @@ the very top of `ssh_config`, before any `Host` block) is kept at the top:
 Include ~/.orbstack/ssh/config
 
 # Managed by ssh-manager - do not edit (run: sshmgr config render)
-Include profiles/*/config
+
+Match all
+Include ~/.ssh/profiles/internal/config   # only when a profile has a category
+...
+Host github-imani                          # uncategorized profiles render inline
+    ...
 Host *
     ...
 # End of ssh-manager-managed block - content outside it is preserved
@@ -90,6 +95,7 @@ guarantees each alias offers only its own key and trusts only its own host keys.
   "defaults": { /* see below */ },
   "profiles": {
     "work": {
+      "category": "others",               // optional: profiles/others/work/ + profiles/others/config
       "key_scope": "per_service",         // or "shared"
       "key_name": null,                    // set only when key_scope == "shared"
       "hosts": [
@@ -140,8 +146,8 @@ Mark a host that's only reachable over a VPN with `requires_vpn: true` (and an o
 
 A profile is *who you're being* (work · personal · simtabi · development ·
 school), not *what kind of service* a host is. **Everything for an identity lives
-under `~/.ssh/profiles/<profile>/`** - its keys, rendered `config`, and its own
-`known_hosts` trust store - and nothing crosses profiles:
+under `~/.ssh/profiles/<profile>/`** (or `profiles/<category>/<profile>/`) - its
+keys, and nothing else - and nothing crosses profiles:
 
 - Two GitHub accounts are two profiles sharing `hostname: github.com` via distinct
   aliases (`github.com` vs `github-simtabi`) and `IdentitiesOnly yes`, so each
@@ -151,6 +157,24 @@ under `~/.ssh/profiles/<profile>/`** - its keys, rendered `config`, and its own
   per-host `IdentitiesOnly yes`, not from where the trust store lives. A
   host key trusted as `personal` is **not** trusted as `simtabi` - even on the
   same `github.com` host. Pin host keys with `sshmgr knownhosts pin --all`.
+
+## Categories
+
+A profile may set `category` to file it one level deeper: its keys live under
+`~/.ssh/profiles/<category>/<profile>/`, and its `Host` blocks render into
+`~/.ssh/profiles/<category>/config`, which the root config Includes. Profiles
+without one keep the flat layout and stay inline in the root config, so a
+manifest that uses no categories renders exactly as before.
+
+| Rule | Why |
+|---|---|
+| A category is a safe path segment | It becomes a directory name. |
+| It may not share a name with an uncategorized profile | Both would own `profiles/<name>/`. |
+| A categorized profile may not be named `config` or `old` | `profiles/<category>/config` is the category's file; `.../old/` is a rotation archive. |
+
+Set it with `sshmgr profile add <name> --category <c>` or
+`sshmgr profile edit <name> --category <c>`. The edit moves the key directory and
+updates the inventory. See [Group profiles into categories](recipes/group-profiles-into-categories.md).
 
 ## Key scope
 

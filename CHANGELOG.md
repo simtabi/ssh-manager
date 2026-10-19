@@ -6,6 +6,16 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Profiles can be grouped into categories.** A profile with `"category":
+  "clients"` keeps its keys under `profiles/clients/<profile>/` and renders its
+  `Host` blocks into `profiles/clients/config`, which the root config Includes
+  under `Match all`. `profile add` and `profile edit` take `--category`; the edit
+  moves the key directory and re-points inventory records, or only the records
+  when the directory was already moved by hand. Profiles without a category, and
+  every existing manifest, render exactly as before.
+
 ### Fixed
 
 - **The install command could not fetch its script.**
@@ -50,6 +60,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **`reconcile` refuses to mint a key that only changed directory.** A declared
+  key found in the other layout (flat when the manifest says categorized, or the
+  reverse) used to be planned as a fresh key, leaving two keys for one identity.
+  It now stops and names where the key is. `doctor` reports such a key as
+  untracked at its real path, and its missing finding no longer advises
+  `reconcile`.
+- **`config render` prunes only `profiles/*/config` files it owns:** those with
+  the managed header, or in a flat profile directory (the v1 per-profile slot).
+  A hand-written category file beside profile directories is left alone.
 - Comments citing the previous implementation's source files are gone. They named
   paths that exist nowhere, and the ones that were resolvable required knowing a
   tag to resolve them. What each test asserts is now stated in the test.
@@ -73,6 +92,7 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ## [3.1.0] - 2026-08-06
 
 ### Added
+
 
 - **The interactive menu opens with a banner.** It names the binary and build
   (version, platform, commit, date), the config home and `~/.ssh` it will
