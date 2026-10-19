@@ -124,17 +124,22 @@ sboms:
 homebrew_casks:
   - name: sshmgr
     ids: [archive]
-    # envOrDefault, not .Env.X: .Env only holds variables that are actually set,
-    # so referencing a missing one is a template error that fails the whole
-    # release. It survives in CI only because `env:` assigns the secret
-    # unconditionally, making it present-but-empty - which means `make dist` was
-    # broken for anyone whose shell had never exported it, and the release
-    # config depended on a property of the workflow rather than of itself.
-    skip_upload: '{{ if envOrDefault "TAP_GITHUB_TOKEN" "" }}false{{ else }}true{{ end }}'
+    # Skipped unless a token or the deploy key is present, so `make dist` works in a
+    # shell that exported neither. envOrDefault is right here, but NOT in `token:`
+    # below: GoReleaser 2.18.3 does not define it in that field ("function
+    # envOrDefault not defined", measured), so the token stays .Env, which a skipped
+    # cask never evaluates and a git push with the key never needs.
+    skip_upload: '{{ if or (envOrDefault "TAP_GITHUB_TOKEN" "") (envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "") }}false{{ else }}true{{ end }}'
     repository:
       owner: simtabi
       name: homebrew-tap
-      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"\" }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      # Write deploy key on simtabi/homebrew-tap (secret HOMEBREW_TAP_DEPLOY_KEY): reaches that
+      # one repository only. Set, git pushes with it; unset, the URL is empty and the token
+      # path above runs. Measured with GoReleaser 2.18.3.
+      git:
+        url: '{{ if envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "" }}git@github.com:simtabi/homebrew-tap.git{{ end }}'
+        private_key: '{{ envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "" }}'
     directory: Casks
     homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     description: "Profile-based SSH key and config lifecycle manager."
@@ -153,7 +158,13 @@ scoops:
     repository:
       owner: simtabi
       name: scoop-bucket
-      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"\" }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
+      # Write deploy key on simtabi/scoop-bucket (secret SCOOP_BUCKET_DEPLOY_KEY): reaches that
+      # one repository only. Set, git pushes with it; unset, the URL is empty and the token
+      # path above runs. Measured with GoReleaser 2.18.3.
+      git:
+        url: '{{ if envOrDefault "SCOOP_BUCKET_DEPLOY_KEY" "" }}git@github.com:simtabi/scoop-bucket.git{{ end }}'
+        private_key: '{{ envOrDefault "SCOOP_BUCKET_DEPLOY_KEY" "" }}'
     directory: bucket
     homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     description: "Profile-based SSH key and config lifecycle manager."
@@ -177,7 +188,7 @@ winget:
       owner: simtabi
       name: winget-pkgs
       branch: "sshmgr-{{ .Version }}"
-      token: "{{ envOrDefault \"TAP_GITHUB_TOKEN\" \"\" }}"
+      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
       pull_request:
         enabled: true
         draft: false
