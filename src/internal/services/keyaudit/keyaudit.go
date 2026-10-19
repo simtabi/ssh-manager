@@ -199,11 +199,22 @@ func (s *Service) Audit(strict bool) (Report, error) {
 	owned := map[manifest.KeyRef]bool{}
 	for _, row := range rows {
 		owned[row.Ref] = true
+	}
+	stray, misplaced := s.untracked(owned)
+	for _, row := range rows {
 		for _, state := range Notes(row) {
-			rep.Findings = append(rep.Findings, s.manifestKeyFinding(row, state))
+			f := s.manifestKeyFinding(row, state)
+			// A key that is only in the wrong directory is not missing, and the
+			// usual fix would mint a replacement for a key that still works.
+			if at, ok := misplaced[row.Ref]; ok && state == Missing {
+				f.Detail = "not where the manifest puts it - it is at " + at
+				f.Fix = "do not reconcile (it would mint a replacement): move the key back, " +
+					"or set profile " + row.Ref.Profile + "'s category"
+			}
+			rep.Findings = append(rep.Findings, f)
 		}
 	}
-	rep.Findings = append(rep.Findings, s.untracked(owned)...)
+	rep.Findings = append(rep.Findings, stray...)
 	rep.Findings = append(rep.Findings, s.staleInventory()...)
 	rep.Findings = append(rep.Findings, s.loose()...)
 
@@ -249,10 +260,14 @@ func (s *Service) manifestKeyFinding(row keysvc.Row, state string) Finding {
 // the orphan check it replaces, it does not require a .pub sibling: a private
 // key with no public half is the most dangling thing in the tree, and requiring
 // the .pub made exactly that case invisible.
-func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
+//
+// It also returns the declared keys it found in another directory than the
+// manifest resolves, keyed by ref, with the path they were found at.
+func (s *Service) untracked(owned map[manifest.KeyRef]bool) ([]Finding, map[manifest.KeyRef]string) {
 	// Both layouts: profiles/<profile>/* and profiles/<category>/<profile>/*.
 	entries := manifest.GlobProfileTree(s.sshDir, "*")
 	seen := map[string]bool{}
+	misplacedAt := map[manifest.KeyRef]string{}
 	var out []Finding
 	for _, path := range entries {
 		base := filepath.Base(path)
@@ -281,6 +296,7 @@ func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
 		}
 		seen[rel] = true
 		if owned[ref] {
+			misplacedAt[ref] = rel
 			want, _ := filepath.Rel(s.sshDir, expected)
 			out = append(out, Finding{
 				State: Untracked, Subject: rel,
@@ -299,7 +315,7 @@ func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
 			Fix: "sshmgr key add " + ref.Profile + " " + ref.KeyName + "   (adopt it), or delete the files",
 		})
 	}
-	return out
+	return out, misplacedAt
 }
 
 // staleInventory finds records for paths no manifest key owns. A record for a

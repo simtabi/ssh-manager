@@ -445,4 +445,16 @@ func TestKeyMovedIntoACategoryByHandIsReportedWhereItIs(t *testing.T) {
 	if !strings.Contains(got[0].Detail, "profiles/work/work_gh-ed25519") {
 		t.Errorf("the detail should say where the manifest expects it: %q", got[0].Detail)
 	}
+	// It is also "missing" from where the manifest looks - but the usual fix,
+	// reconcile, would mint a replacement for a key that still works.
+	missing := rep.ByState(Missing)
+	if len(missing) != 1 {
+		t.Fatalf("missing = %v, want the one moved key", subjects(rep, Missing))
+	}
+	if strings.Contains(missing[0].Fix, "sshmgr reconcile") && !strings.Contains(missing[0].Fix, "do not reconcile") {
+		t.Errorf("a moved key must not be fixed by reconcile: %q", missing[0].Fix)
+	}
+	if !strings.Contains(missing[0].Detail, "profiles/internal/work/work_gh-ed25519") {
+		t.Errorf("the missing detail should say where the key actually is: %q", missing[0].Detail)
+	}
 }
