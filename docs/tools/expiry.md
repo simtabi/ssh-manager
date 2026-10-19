@@ -14,7 +14,9 @@ From the inventory, per key: `expires_on = created + rotate_after_days`,
 - `overdue` - past `expires_on`
 
 `rotate` resets `created`/`expires_on`, clearing the warning. Archived `/old/`
-keys are excluded.
+keys are excluded. To clear several at once, rotate them as a batch: a category
+(`sshmgr rotate --category clients`) or everything (`sshmgr rotate --all`); see
+[Rotating a batch](rotate.md#rotating-a-batch).
 
 ## Surfaces (layered - warned whether or not you open the tool)
 

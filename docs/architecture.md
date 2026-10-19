@@ -146,13 +146,16 @@ that identity's profile directory, and nothing crosses profiles:
 │                                   #   pinned carry an `sshmgr` comment tag, so it
 │                                   #   only ever prunes its own.
 └── profiles/
-    ├── work/                       # keys only - no config, no known_hosts
+    ├── work/                       # an uncategorized profile: keys only
     │   ├── work_hpc-ed25519        # 600 - private key, never leaves the machine
     │   ├── work_hpc-ed25519.pub    # 644 - public key
     │   ├── old/                    # <=1 archived predecessor per key (rotation)
     │   └── .staging/               # transient, only mid-rotation
     ├── personal/  ...  (github.com via its own key)
-    └── simtabi/   ...  (github.com again, but a SEPARATE key)
+    └── orgs/                       # a category
+        ├── config                  # 600 - rendered Host blocks for the category
+        └── simtabi/                # github.com again, but a SEPARATE key
+            └── simtabi_github-ed25519.pub   # key_store 1password: .pub only
 ```
 
 Per-profile isolation is enforced by the rendered config, not by the file layout:
@@ -217,7 +220,7 @@ same host key was verified and stored several times over.
 
 The isolation that actually matters — a host is only ever offered its own key —
 comes from `IdentityFile` plus a **per-host** `IdentitiesOnly yes`, which the
-single inline config states explicitly for every host. So the guarantee is
+rendered config states explicitly for every host. So the guarantee is
 stronger and the layout is simpler. The one trust store is hashed, and every line
 this tool writes carries an `sshmgr` comment tag so pruning only ever removes its
 own.

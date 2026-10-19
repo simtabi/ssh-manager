@@ -12,7 +12,9 @@ than GPG. Install it first: `brew install age` (macOS) / `apt install age` (Linu
 
 `bundle` tars and age-encrypts:
 
-- the **private keys** under `~/.ssh/profiles/**` (excluding `.staging/`)
+- the **private keys** under `~/.ssh/profiles/**` (excluding `.staging/`); a
+  profile with `key_store: 1password` has none on disk, so only its `.pub` is
+  included and its keys stay in 1Password
 - `manifest.json`, `inventory.json`, `providers.json`
 
 ...into a single `ssh-manager-<stamp>.age`, alongside two sidecars:

@@ -37,9 +37,13 @@ sshmgr reconcile             # build ~/.ssh from the manifest
 sshmgr config check          # confirm the file matches the manifest (exit != 0 on drift)
 ```
 
-At this point every declared key exists at `~/.ssh/profiles/<profile>/<key>`,
-`~/.ssh/config` holds a managed block with one `Host` entry per host, and
-reachable hosts have been pinned into `~/.ssh/known_hosts`.
+At this point every declared key exists at `~/.ssh/profiles/<profile>/<key>`
+(`profiles/<category>/<profile>/<key>` for a profile with a
+[category](configuration.md#categories)), `~/.ssh/config` holds a managed block
+with one `Host` entry per host, and reachable hosts have been pinned into
+`~/.ssh/known_hosts`. A profile with `key_store: 1password` has only the `.pub`
+on disk; its private key lives in a 1Password vault
+([Key stores](configuration.md#key-stores)).
 
 ## Getting a key onto its target
 
