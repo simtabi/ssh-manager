@@ -4,6 +4,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"sort"
 	"strings"
 	"testing"
@@ -85,6 +86,15 @@ func TestMatchAllKeepsIncludesGlobalUnderAForeignHostBlock(t *testing.T) {
 	if _, err := exec.LookPath("ssh"); err != nil {
 		t.Skip("no ssh client")
 	}
+	// The test has to point Include at a temp directory, and on Windows that is
+	// a drive-letter path. Win32-OpenSSH resolves an Include path that starts
+	// with neither "/" nor "~" relative to ~/.ssh, so C:/... never resolves and
+	// both halves fail for a reason unrelated to Match all. The ordering
+	// semantics being pinned are OpenSSH's own and are exercised on Linux and
+	// macOS; the rendered config uses ~/.ssh/ paths, which Windows reads.
+	if runtime.GOOS == "windows" {
+		t.Skip("Win32-OpenSSH cannot Include a drive-letter path; covered on Linux and macOS")
+	}
 	m := mustManifest(t, categorizedJSON)
 	out, err := RenderAll(m, false)
 	if err != nil {
@@ -105,10 +115,8 @@ func TestMatchAllKeepsIncludesGlobalUnderAForeignHostBlock(t *testing.T) {
 				t.Fatal(err)
 			}
 		}
-		// Point the Includes at the temp tree instead of the real ~/.ssh. Forward
-		// slashes: OpenSSH's config parser reads a backslash as an escape, so a
-		// native Windows path (C:\Users\...) arrives as C:Users... and the
-		// Include silently matches nothing. Windows OpenSSH accepts "/" fine.
+		// Point the Includes at the temp tree instead of the real ~/.ssh, in the
+		// forward-slash form ssh_config paths are written in.
 		root = strings.ReplaceAll(root, "Include ~/.ssh/", "Include "+filepath.ToSlash(dir)+"/")
 		cfg := filepath.Join(dir, "config")
 		if err := os.WriteFile(cfg, []byte(root), 0o600); err != nil {
