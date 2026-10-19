@@ -14,6 +14,7 @@
 package keysvc
 
 import (
+	"fmt"
 	"os"
 	"sort"
 
@@ -42,8 +43,23 @@ type Row struct {
 	Created         string
 	ExpiresOn       string
 	Hosts           []string // aliases wiring this key, in manifest order
-	Deployments     []inventory.Deployment
-	Status          string // query.NoKey | query.NeedsRedeploy | query.Deployed
+	// Vault is the 1Password vault holding the private key, "" for a key on
+	// disk. When set, PrivatePath is never expected to exist.
+	Vault       string
+	Deployments []inventory.Deployment
+	Status      string // query.NoKey | query.NeedsRedeploy | query.Deployed
+}
+
+// InOnePassword reports whether the private key lives in 1Password.
+func (r Row) InOnePassword() bool { return r.Vault != "" }
+
+// Present reports whether everything the key's store keeps on disk is there:
+// both halves for a key on disk, the public half for a key in 1Password.
+func (r Row) Present() bool {
+	if r.InOnePassword() {
+		return r.PublicOnDisk
+	}
+	return r.PrivateOnDisk && r.PublicOnDisk
 }
 
 // Wired reports whether any host references this key.
@@ -158,6 +174,9 @@ func (s *Service) row(ref manifest.KeyRef) (Row, error) {
 		Hosts:           aliases,
 		Status:          query.NoKey,
 	}
+	if s.m.Profiles[ref.Profile].InOnePassword() {
+		row.Vault = s.m.Profiles[ref.Profile].OPVault
+	}
 	if fp, rec, ok := s.record(ident); ok {
 		row.Recorded = true
 		row.Fingerprint = fp
@@ -218,4 +237,68 @@ func deref(s *string) string {
 		return ""
 	}
 	return *s
+}
+
+// Selection names the keys a bulk command acts on: some selectors (each a
+// profile, host alias, key name or profile/key), every key in a category, or
+// every key. All excludes the others, so "--all work" cannot quietly mean all.
+type Selection struct {
+	Selectors []string
+	Category  string
+	All       bool
+}
+
+// Select resolves a Selection to rows, de-duplicated, in manifest order. A
+// selector or category that matches nothing is an error, so a typo never reads
+// as an empty batch, and an empty Selection is an error rather than "nothing".
+func (s *Service) Select(sel Selection) ([]Row, error) {
+	if sel.All && (len(sel.Selectors) > 0 || sel.Category != "") {
+		return nil, fmt.Errorf("--all selects every key; drop it, or drop the other selectors")
+	}
+	if !sel.All && len(sel.Selectors) == 0 && sel.Category == "" {
+		return nil, fmt.Errorf("name keys, profiles or host aliases, or pass --category <name> or --all")
+	}
+	rows, err := s.Rows("")
+	if err != nil {
+		return nil, err
+	}
+	if sel.All {
+		return rows, nil
+	}
+	if sel.Category != "" && !hasCategory(s.m, sel.Category) {
+		return nil, fmt.Errorf("no profile has category %q", sel.Category)
+	}
+	for _, want := range sel.Selectors {
+		hit := false
+		for _, r := range rows {
+			if matches(want, r) {
+				hit = true
+				break
+			}
+		}
+		if !hit {
+			return nil, fmt.Errorf("unknown key, profile or host: %q", want)
+		}
+	}
+	var out []Row
+	for _, r := range rows {
+		inCategory := sel.Category != "" && s.m.Profiles[r.Ref.Profile].Category == sel.Category
+		picked := inCategory
+		for _, want := range sel.Selectors {
+			picked = picked || matches(want, r)
+		}
+		if picked {
+			out = append(out, r)
+		}
+	}
+	return out, nil
+}
+
+func hasCategory(m *manifest.Manifest, category string) bool {
+	for _, p := range m.Profiles {
+		if p.Category == category {
+			return true
+		}
+	}
+	return false
 }

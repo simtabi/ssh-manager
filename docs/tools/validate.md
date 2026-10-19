@@ -21,6 +21,12 @@ For each key it checks:
 **Encrypted private keys** are *noted, not failed*: the pair can't be verified
 without the passphrase, but the key is valid.
 
+**Keys in 1Password** (`key_store: 1password`) have no private key on disk. For
+them validate checks that the item exists in the profile's vault and that its
+public key is the `.pub` on disk. It fails a private key *file* found beside
+one: the `.pub` makes it look present, but ssh asks the 1Password agent, which
+does not hold it. Without `op` the vault check is noted, not failed.
+
 ```sh
 sshmgr validate                     # all keys
 sshmgr validate work                # one profile
@@ -29,6 +35,29 @@ sshmgr validate work_hpc-ed25519    # one key
 
 Example: a corrupted `.pub`, a mismatched pair, or loose perms each surface as a
 red ✗ with the specific issue, and the command exits non-zero.
+
+## `sshmgr key regen-pub [selector ...] [--category <name>] [--all]`
+
+Rebuilds public keys from the key they belong to, when a `.pub` is missing or
+wrong: from the private key with `ssh-keygen -y`, or for a profile with
+`key_store: 1password` from its vault item. Selectors work as for `rotate`.
+
+| Result | Meaning |
+|---|---|
+| `unchanged` | the `.pub` already matched its key |
+| `created` | the `.pub` was missing |
+| `rewritten` | the `.pub` was a different key; redeploy anything set up from it |
+| `skipped` | the private key has a passphrase (the command to derive it by hand is printed), or is missing |
+| `failed` | the key could not be read |
+
+The old `.pub`'s comment is kept, and the inventory record moves to the
+regenerated fingerprint. It never creates or changes a private key: a missing
+private key is `reconcile`'s job, a new one `rotate`'s.
+
+```sh
+sshmgr key regen-pub --all --dry-run
+sshmgr key regen-pub work
+```
 
 ## `sshmgr providers`
 

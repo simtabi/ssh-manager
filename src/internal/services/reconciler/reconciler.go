@@ -7,6 +7,7 @@
 package reconciler
 
 import (
+	"errors"
 	"fmt"
 	"path/filepath"
 	"sort"
@@ -16,6 +17,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/log"
@@ -99,6 +101,7 @@ type Reconciler struct {
 	m   *manifest.Manifest
 	inv *inventory.Inventory
 	ks  *keystore.KeyStore
+	op  *opstore.Client // for profiles whose key_store is 1password
 	cfg *configsvc.Service
 }
 
@@ -106,13 +109,23 @@ type Reconciler struct {
 // elsewhere.
 func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory, emitUseKeychain bool) *Reconciler {
 	return &Reconciler{
-		p: p, m: m, inv: inv, ks: keystore.New(),
+		p: p, m: m, inv: inv, ks: keystore.New(), op: opstore.New(),
 		cfg: configsvc.New(p.SSHDir, m, emitUseKeychain),
 	}
 }
 
 func (r *Reconciler) privPath(profile, keyName string) string {
 	return r.m.KeyPath(r.p.SSHDir, manifest.KeyRef{Profile: profile, KeyName: keyName})
+}
+
+// present reports whether a key's on-disk part exists: the private key for a
+// key on disk, the public key for one kept in 1Password.
+func (r *Reconciler) present(ref manifest.KeyRef) bool {
+	priv := r.privPath(ref.Profile, ref.KeyName)
+	if r.m.Profiles[ref.Profile].InOnePassword() {
+		return fs.Exists(priv + ".pub")
+	}
+	return fs.Exists(priv)
 }
 
 // Reconcile rebuilds the tree (mints missing keys, renders config, fixes perms,
@@ -217,7 +230,7 @@ func (r *Reconciler) Mint(selector, passphrase string, overwrite map[manifest.Ke
 // key is already on disk: a command that adds a key must never regenerate an
 // identity that exists, since the replaced key is what remote targets trust.
 func (r *Reconciler) MintRef(ref manifest.KeyRef, passphrase string) (*MintedKey, error) {
-	if fs.Exists(r.privPath(ref.Profile, ref.KeyName)) {
+	if r.present(ref) {
 		return nil, nil
 	}
 	hosts, err := r.m.HostsForKey(ref)
@@ -280,7 +293,7 @@ func (r *Reconciler) planMint(selector string) (toMint, existing []plannedKey, e
 		}
 		pk := plannedKey{Ref: ref, Hosts: hosts}
 		priv := r.privPath(ref.Profile, ref.KeyName)
-		if fs.Exists(priv) {
+		if r.present(ref) {
 			existing = append(existing, pk)
 			continue
 		}
@@ -300,12 +313,50 @@ func (r *Reconciler) planMint(selector string) (toMint, existing []plannedKey, e
 // for one identity, the old one still deployed and the new one not. "" when
 // the key is nowhere else.
 func (r *Reconciler) misplaced(ref manifest.KeyRef, priv string) string {
-	for _, p := range manifest.GlobProfileTree(r.p.SSHDir, ref.KeyName) {
-		if p != priv && filepath.Base(filepath.Dir(p)) == ref.Profile {
+	name, want := ref.KeyName, priv
+	if r.m.Profiles[ref.Profile].InOnePassword() {
+		name, want = name+".pub", priv+".pub" // only the public half is ever on disk
+	}
+	for _, p := range manifest.GlobProfileTree(r.p.SSHDir, name) {
+		if p != want && filepath.Base(filepath.Dir(p)) == ref.Profile {
 			return p
 		}
 	}
 	return ""
+}
+
+// mintInOnePassword creates the key as an SSH Key item titled with the key name
+// in the profile's vault, and writes only its public half to pub. An item that
+// already has that title is reused rather than duplicated: a .pub deleted from
+// disk is restored from the vault, never replaced by a second key.
+func (r *Reconciler) mintInOnePassword(ref manifest.KeyRef, pub string, overwrite bool) (keystore.GenResult, error) {
+	if overwrite {
+		return keystore.GenResult{}, fmt.Errorf("key %s is kept in 1Password; replace it with "+
+			"`sshmgr rotate %s`, which stages, deploys and verifies the new key first", ref, ref)
+	}
+	vault := r.m.Profiles[ref.Profile].OPVault
+	it, err := r.op.Get(vault, ref.KeyName)
+	switch {
+	case err == nil:
+	case errors.Is(err, opstore.ErrNotFound):
+		if it, err = r.op.Create(vault, ref.KeyName); err != nil {
+			return keystore.GenResult{}, err
+		}
+	default:
+		return keystore.GenResult{}, err
+	}
+	if it.PublicKey == "" {
+		return keystore.GenResult{}, fmt.Errorf("1Password item %q in vault %q has no public key - "+
+			"is it an SSH Key item?", ref.KeyName, vault)
+	}
+	if err := fs.WriteTextAtomic(pub, it.PublicKey+"\n", perms.PublicKeyMode); err != nil {
+		return keystore.GenResult{}, err
+	}
+	fp, err := r.ks.Fingerprint(pub)
+	if err != nil {
+		return keystore.GenResult{}, err
+	}
+	return keystore.GenResult{Fingerprint: fp}, nil
 }
 
 // planMatches reports whether a key is in scope for selector: everything when
@@ -378,7 +429,14 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 	}
 	keyType := r.m.KeyTypeFor(ref)
 	comment := fmt.Sprintf("%s/%s %s", ref.Profile, subject, inventory.Today())
-	gen, err := r.ks.Generate(priv, keyType, comment, passphrase, overwrite)
+	var gen keystore.GenResult
+	var err error
+	if r.m.Profiles[ref.Profile].InOnePassword() {
+		gen, err = r.mintInOnePassword(ref, priv+".pub", overwrite)
+		keyType = "ed25519" // what 1Password generates
+	} else {
+		gen, err = r.ks.Generate(priv, keyType, comment, passphrase, overwrite)
+	}
 	if err != nil {
 		return MintedKey{}, err
 	}

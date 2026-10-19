@@ -15,6 +15,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/lifecycle"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/pubkeys"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
 )
 
@@ -26,6 +27,7 @@ func newKeyCmd() *cobra.Command {
 	cmd.AddCommand(newKeyAddCmd())
 	cmd.AddCommand(newKeyListCmd())
 	cmd.AddCommand(newKeyDeleteCmd())
+	cmd.AddCommand(newKeyRegenPubCmd())
 	return cmd
 }
 
@@ -215,4 +217,64 @@ func dash(s string) string {
 		return "-"
 	}
 	return s
+}
+
+func newKeyRegenPubCmd() *cobra.Command {
+	var all, dryRun, yes bool
+	var category string
+	cmd := &cobra.Command{
+		Use:   "regen-pub [<[profile/]key>|profile|alias ...] [--category <name>] [--all]",
+		Short: "Rebuild public keys from their private key or 1Password item",
+		Long: "Rebuild each selected key's .pub from the key it belongs to: the private key\n" +
+			"file (ssh-keygen -y), or the vault item for a profile whose key_store is\n" +
+			"1password. Repairs a missing or wrong .pub; never changes a private key.\n\n" +
+			"A .pub that was a different key is reported as rewritten, with a reminder to\n" +
+			"redeploy. A private key with a passphrase is skipped, with the command to\n" +
+			"derive it by hand.",
+		RunE: func(c *cobra.Command, args []string) error {
+			p, err := resolvePaths(c)
+			if err != nil {
+				return err
+			}
+			m, err := manifest.Load(p.Manifest())
+			if err != nil {
+				return err
+			}
+			inv, err := inventory.Load(p.Inventory())
+			if err != nil {
+				return err
+			}
+			rows, err := keysvc.New(m, inv, p.SSHDir).Select(keysvc.Selection{Selectors: args, Category: category, All: all})
+			if err != nil {
+				return err
+			}
+			svc := pubkeys.New(m, inv)
+			if !dryRun {
+				if err := confirmChange(c, fmt.Sprintf("Regenerate the .pub of %d key(s).", len(rows)), yes); err != nil {
+					return err
+				}
+				snapshotBeforeMutation(p)
+			}
+			results := svc.Regenerate(rows, dryRun)
+			_, _ = fmt.Fprintln(c.OutOrStdout(), pubkeys.Format(results, dryRun))
+			failed := false
+			for _, r := range results {
+				failed = failed || r.Action == pubkeys.Failed
+			}
+			if !dryRun {
+				if err := inv.Save(p.Inventory()); err != nil {
+					return err
+				}
+			}
+			if failed {
+				return errNotClean
+			}
+			return nil
+		},
+	}
+	cmd.Flags().BoolVar(&all, "all", false, "every key in the manifest")
+	cmd.Flags().StringVar(&category, "category", "", "every key in profiles of this category")
+	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would change, and change nothing")
+	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
+	return cmd
 }

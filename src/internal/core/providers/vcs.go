@@ -142,26 +142,74 @@ func (g GitHub) Deploy(t Target) DeployOutcome {
 	return DeployOutcome{Method: "github-gh", Verified: true, Detail: "added as '" + title + "'"}
 }
 
+// Verify confirms the key is on the account and, where both can be read, that
+// GitHub authenticates it as that same account.
+//
+// The account check matters for a machine user: the key is added with whatever
+// token token_env names, and a token for the wrong account (a personal one left
+// in GH_TOKEN_SIMTABI) would add it there and still pass a "key is listed"
+// check - the alias would then push as the wrong identity. So when the API
+// login and the ssh greeting are both available they must agree. Either one
+// missing (no network for ssh, no API) falls back to the check that remains.
 func (g GitHub) Verify(t Target) bool {
+	greeted := g.sshLogin(t)
 	if g.canAPI(t) {
 		want := authkeys.KeyBody(t.PubkeyText)
 		rows := g.listRemote(t)
-		return rows != nil && want != "" && hasKeyBody(rows, want)
+		if rows == nil || want == "" || !hasKeyBody(rows, want) {
+			return false
+		}
+		if login := g.apiLogin(t); greeted != "" && login != "" && !strings.EqualFold(greeted, login) {
+			return false
+		}
+		return true
 	}
+	return greeted != ""
+}
+
+// sshLogin is the account GitHub greets the key as ("Hi <login>! You've
+// successfully authenticated"), or "" when the login fails or cannot be tried.
+func (g GitHub) sshLogin(t Target) string {
 	if t.IdentityPath == "" {
-		return false
+		return ""
 	}
 	if _, err := exec.LookPath("ssh"); err != nil {
-		return false
+		return ""
 	}
-	args := []string{"ssh", "-T", "-i", t.IdentityPath, "-o", "IdentitiesOnly=yes",
-		"-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10"}
+	args := append([]string{"ssh", "-T"}, t.identityOpts()...)
+	args = append(args, "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "-o", "ConnectTimeout=10")
 	if t.KnownHosts != "" {
 		args = append(args, "-o", "UserKnownHostsFile="+t.KnownHosts)
 	}
 	args = append(args, "git@"+g.host())
 	out, stderr, _ := runEnv(20*time.Second, nil, args...)
-	return strings.Contains(strings.ToLower(stderr+out), "successfully authenticated")
+	return greetedLogin(stderr + out)
+}
+
+// greetedLogin extracts <login> from GitHub's "Hi <login>! You've successfully
+// authenticated" banner.
+func greetedLogin(banner string) string {
+	if !strings.Contains(strings.ToLower(banner), "successfully authenticated") {
+		return ""
+	}
+	i := strings.Index(banner, "Hi ")
+	if i < 0 {
+		return ""
+	}
+	rest := banner[i+3:]
+	if j := strings.IndexAny(rest, "!"); j > 0 {
+		return strings.TrimSpace(rest[:j])
+	}
+	return ""
+}
+
+// apiLogin is the login the token belongs to, or "".
+func (g GitHub) apiLogin(t Target) string {
+	out, _, code := runEnv(30*time.Second, g.env(t), "gh", "api", "user", "--jq", ".login")
+	if code != 0 {
+		return ""
+	}
+	return strings.TrimSpace(out)
 }
 
 func (g GitHub) ListDeployed(t Target) []string {

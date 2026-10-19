@@ -12,6 +12,7 @@ import (
 	"os"
 	"path/filepath"
 	"regexp"
+	"runtime"
 	"sort"
 	"strings"
 	"unicode"
@@ -235,8 +236,14 @@ func (k *KeySpec) UnmarshalJSON(b []byte) error {
 // Host blocks out of the root config into profiles/<category>/config, which the
 // root config Includes. Empty keeps the flat layout and inline rendering, so a
 // manifest written before categories existed behaves exactly as it did.
+//
+// KeyStore says where the profile's private keys live: "file" (the default,
+// written as an omitted field) keeps them under ~/.ssh; "1password" keeps them
+// as SSH Key items in OPVault, with only the public half on disk.
 type Profile struct {
 	Category string    `json:"category,omitempty"`
+	KeyStore string    `json:"key_store,omitempty"`
+	OPVault  string    `json:"op_vault,omitempty"`
 	KeyScope string    `json:"key_scope"`
 	KeyName  *string   `json:"key_name,omitempty"`
 	Keys     []KeySpec `json:"keys,omitempty"`
@@ -261,6 +268,8 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 func (p Profile) MarshalJSON() ([]byte, error) {
 	type wire struct {
 		Category string    `json:"category,omitempty"`
+		KeyStore string    `json:"key_store,omitempty"`
+		OPVault  string    `json:"op_vault,omitempty"`
 		KeyScope string    `json:"key_scope"`
 		KeyName  *string   `json:"key_name"`
 		Keys     []KeySpec `json:"keys,omitempty"`
@@ -270,7 +279,7 @@ func (p Profile) MarshalJSON() ([]byte, error) {
 	if hosts == nil {
 		hosts = []Host{}
 	}
-	return json.Marshal(wire{Category: p.Category, KeyScope: p.KeyScope, KeyName: p.KeyName, Keys: p.Keys, Hosts: hosts})
+	return json.Marshal(wire{Category: p.Category, KeyStore: p.KeyStore, OPVault: p.OPVault, KeyScope: p.KeyScope, KeyName: p.KeyName, Keys: p.Keys, Hosts: hosts})
 }
 
 // ExpiryCheck is the notifier policy.
@@ -302,6 +311,10 @@ type Defaults struct {
 	WarnBeforeDays  []int          `json:"warn_before_days"`
 	ExpiryCheck     ExpiryCheck    `json:"expiry_check"`
 	GlobalOptions   OrderedOptions `json:"global_options"`
+	// OnePasswordAgent overrides the 1Password SSH agent socket a profile with
+	// key_store "1password" renders as its IdentityAgent. Empty = the
+	// platform's standard path (see OnePasswordAgentSocket).
+	OnePasswordAgent string `json:"onepassword_agent,omitempty"`
 }
 
 func newDefaults() Defaults {
@@ -326,12 +339,13 @@ func (d *Defaults) UnmarshalJSON(b []byte) error {
 // as {} via OrderedOptions, in declaration order.
 func (d Defaults) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		KeyType         string         `json:"key_type"`
-		KeyScope        string         `json:"key_scope"`
-		RotateAfterDays int            `json:"rotate_after_days"`
-		WarnBeforeDays  []int          `json:"warn_before_days"`
-		ExpiryCheck     ExpiryCheck    `json:"expiry_check"`
-		GlobalOptions   OrderedOptions `json:"global_options"`
+		KeyType          string         `json:"key_type"`
+		KeyScope         string         `json:"key_scope"`
+		RotateAfterDays  int            `json:"rotate_after_days"`
+		WarnBeforeDays   []int          `json:"warn_before_days"`
+		ExpiryCheck      ExpiryCheck    `json:"expiry_check"`
+		GlobalOptions    OrderedOptions `json:"global_options"`
+		OnePasswordAgent string         `json:"onepassword_agent,omitempty"`
 	}
 	warn := d.WarnBeforeDays
 	if warn == nil {
@@ -340,6 +354,7 @@ func (d Defaults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire{
 		KeyType: d.KeyType, KeyScope: d.KeyScope, RotateAfterDays: d.RotateAfterDays,
 		WarnBeforeDays: warn, ExpiryCheck: d.ExpiryCheck, GlobalOptions: d.GlobalOptions,
+		OnePasswordAgent: d.OnePasswordAgent,
 	})
 }
 
@@ -626,6 +641,113 @@ func checkCategories(m *Manifest) error {
 	return nil
 }
 
+// Key stores. The empty string is the file store, so it never has to be
+// written; anything else must be named here, because a typo would otherwise
+// silently fall back to looking for private keys on disk.
+const (
+	KeyStoreFile        = "file"
+	KeyStoreOnePassword = "1password"
+)
+
+// checkKeyStores validates each profile's key_store and the vault it needs.
+func checkKeyStores(m *Manifest) error {
+	if err := rejectControl("onepassword_agent", m.Defaults.OnePasswordAgent); err != nil {
+		return err
+	}
+	for _, name := range m.sortedProfileNames() {
+		p := m.Profiles[name]
+		switch p.KeyStore {
+		case "", KeyStoreFile:
+			if p.OPVault != "" {
+				return fmt.Errorf("profile %q sets op_vault but its key_store is not %q", name, KeyStoreOnePassword)
+			}
+		case KeyStoreOnePassword:
+			if strings.TrimSpace(p.OPVault) == "" {
+				return fmt.Errorf("profile %q uses key_store %q but names no op_vault", name, KeyStoreOnePassword)
+			}
+			if err := rejectControl("op_vault", p.OPVault); err != nil {
+				return err
+			}
+		default:
+			return fmt.Errorf("profile %q: key_store must be %q or %q (got %q)",
+				name, KeyStoreFile, KeyStoreOnePassword, p.KeyStore)
+		}
+	}
+	return nil
+}
+
+// OnePasswordAgentSocket is the IdentityAgent a 1Password profile renders: the
+// defaults override when set, else the platform's standard socket (checked
+// against 1password.dev/ssh/get-started, 2026-10-19). "" on Windows, where
+// Microsoft OpenSSH talks to one fixed pipe and per-host agents do not apply.
+func (d Defaults) OnePasswordAgentSocket() string {
+	if d.OnePasswordAgent != "" {
+		return d.OnePasswordAgent
+	}
+	return onePasswordAgentFor(runtime.GOOS)
+}
+
+func onePasswordAgentFor(goos string) string {
+	switch goos {
+	case "darwin":
+		return "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock"
+	case "windows":
+		return ""
+	default:
+		return "~/.1password/agent.sock"
+	}
+}
+
+// checkOnePasswordKeys rejects two key setups that 1Password cannot hold
+// apart or cannot make. It runs after the per-profile checks, because it
+// resolves every profile's key names.
+//
+//   - A vault item is titled with the bare key name, and key names are unique
+//     only within a profile. Two 1Password profiles sharing a vault and a key
+//     name would find each other's item: two identities, one key.
+//   - 1Password generates Ed25519 keys only, so any other key_type on a
+//     1Password profile would be silently ignored.
+func checkOnePasswordKeys(m *Manifest) error {
+	refs, err := m.KeyRefs()
+	if err != nil {
+		return err
+	}
+	owner := map[string]string{} // vault\x00key -> profile
+	for _, ref := range refs {
+		p := m.Profiles[ref.Profile]
+		if !p.InOnePassword() {
+			continue
+		}
+		if kt := m.KeyTypeFor(ref); kt != "ed25519" {
+			return fmt.Errorf("key %s is kept in 1Password, which generates ed25519 keys only, "+
+				"but its key_type is %q", ref, kt)
+		}
+		k := strings.ToLower(p.OPVault) + "\x00" + ref.KeyName
+		if other, ok := owner[k]; ok && other != ref.Profile {
+			return fmt.Errorf("profiles %q and %q both keep key %q in 1Password vault %q - the vault "+
+				"item is titled with the key name, so they would share one key; rename one of them",
+				other, ref.Profile, ref.KeyName, p.OPVault)
+		}
+		owner[k] = ref.Profile
+	}
+	return nil
+}
+
+// InOnePassword reports whether the profile keeps its private keys in 1Password.
+func (p Profile) InOnePassword() bool { return p.KeyStore == KeyStoreOnePassword }
+
+// UsesOnePassword reports whether any profile keeps its keys in 1Password. A
+// function rather than a method: Manifest carries a method ceiling (see
+// TestNoTypeHasBecomeTheFacadeAgain), and this needs nothing private.
+func UsesOnePassword(m *Manifest) bool {
+	for _, p := range m.Profiles {
+		if p.KeyStore == KeyStoreOnePassword {
+			return true
+		}
+	}
+	return false
+}
+
 // checkDeclaredKeys validates one profile's keys list. Names are path segments
 // (they become file names under profiles/<profile>/) and unique within the
 // profile - not globally, since a profile models an org and the same person's
@@ -663,6 +785,9 @@ func (m *Manifest) validate() error {
 	if err := checkCategories(m); err != nil {
 		return err
 	}
+	if err := checkKeyStores(m); err != nil {
+		return err
+	}
 	for name, p := range m.Profiles {
 		if err := safeSegment("profile name", name); err != nil {
 			return err
@@ -698,7 +823,7 @@ func (m *Manifest) validate() error {
 			}
 		}
 	}
-	return nil
+	return checkOnePasswordKeys(m)
 }
 
 func (m *Manifest) sortedProfileNames() []string {
@@ -815,6 +940,9 @@ func (m *Manifest) Categories() []string {
 }
 
 // IdentityFile is the rendered ~ form path for a key (always forward slashes).
+// It names the private key. For a 1Password profile the private key is never on
+// disk, so the renderer points ssh at its .pub instead; inventory records and
+// every other caller keep this one, so a key has the same identity in both stores.
 func (m *Manifest) IdentityFile(profileName, keyName string) string {
 	return sshToken + "/" + m.ProfileRel(profileName) + "/" + keyName
 }

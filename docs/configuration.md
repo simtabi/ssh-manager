@@ -96,6 +96,8 @@ guarantees each alias offers only its own key and trusts only its own host keys.
   "profiles": {
     "work": {
       "category": "others",               // optional: profiles/others/work/ + profiles/others/config
+      "key_store": "file",                // or "1password" (then op_vault is required)
+      "op_vault": null,                   // the 1Password vault holding this profile's keys
       "key_scope": "per_service",         // or "shared"
       "key_name": null,                    // set only when key_scope == "shared"
       "hosts": [
@@ -131,6 +133,7 @@ guarantees each alias offers only its own key and trusts only its own host keys.
 | `expiry_check.debounce_hours` | `24` | min gap between inline banners |
 | `expiry_check.desktop_notify` | `true` | allow the scheduled desktop notification |
 | `global_options` | `{}` | ssh options emitted under `Host *` (e.g. `AddKeysToAgent`, macOS `UseKeychain`) |
+| `onepassword_agent` | platform default | the 1Password SSH agent socket for `key_store: 1password` profiles (see [Key stores](#key-stores)) |
 
 ### `provider` / `token_env`
 
@@ -175,6 +178,55 @@ manifest that uses no categories renders exactly as before.
 Set it with `sshmgr profile add <name> --category <c>` or
 `sshmgr profile edit <name> --category <c>`. The edit moves the key directory and
 updates the inventory. See [Group profiles into categories](recipes/group-profiles-into-categories.md).
+
+## Key stores
+
+A profile's private keys live in one of two places, set by `key_store`:
+
+| `key_store` | Private key | On disk | Rendered host |
+|---|---|---|---|
+| `file` (or omitted) | `profiles/…/<key>` | private key + `.pub` | `IdentityFile <key>` |
+| `1password` | an SSH Key item titled `<key>` in `op_vault` | `.pub` only | `IdentityFile <key>.pub` + `IdentityAgent "<socket>"` |
+
+With `1password`, `reconcile` creates the key inside 1Password with the
+[`op` CLI](https://developer.1password.com/docs/cli/) and writes only its public
+half. ssh then asks the 1Password agent for the key matching that `.pub`, so the
+private key never touches disk. `rotate` generates replacements in the vault too.
+Needs `op` (2.20 or later) signed in, and the agent turned on in the 1Password
+app (Settings > Developer > Use the SSH agent); `doctor` checks both.
+
+**The agent must serve the vault.** With no `agent.toml`, the 1Password SSH
+agent offers only keys in your Personal, Private or Employee vault. Once
+`~/.config/1Password/ssh/agent.toml` exists, it offers only what the file lists
+(even an empty file overrides the default). For any other vault, or whenever the
+file exists, list the vault as a whole:
+
+```toml
+[[ssh-keys]]
+vault = "Simtabi"
+```
+
+A whole-vault entry, not one per item: a rotation's `<key>.staged` item has to be
+served to be verified. `doctor` checks this for every vault a profile names.
+
+The agent socket defaults to the platform's path (macOS
+`~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock`, Linux
+`~/.1password/agent.sock`); set `defaults.onepassword_agent` to override it. On
+Windows no `IdentityAgent` is rendered, because Microsoft OpenSSH uses one fixed
+pipe for every host.
+
+Two rules are enforced when the manifest loads:
+
+- **Key names are unique within a vault.** The item is titled with the key name,
+  so two 1Password profiles sharing a vault and a key name would share one key.
+- **Keys are `ed25519`.** 1Password generates nothing else, so another
+  `key_type` on a 1Password profile is rejected rather than silently ignored.
+
+The store is per profile, not per host, so the hosts sharing a key cannot
+disagree about where it lives. To move a profile into 1Password, set
+`key_store` and run `sshmgr rotate` on each key: it generates the new key in the
+vault and archives the old key file to `old/`. See
+[Keep keys in 1Password](recipes/keep-keys-in-1password.md).
 
 ## Key scope
 
@@ -222,9 +274,13 @@ runs at use-time and its trimmed stdout is the token (so it integrates with any
 secret manager and the secret never touches disk):
 
 ```sh
-GH_TOKEN=cmd:op read op://Private/GitHub/token     # 1Password CLI
+GH_TOKEN=op://Private/GitHub/token                      # 1Password secret reference
+GH_TOKEN=cmd:op read op://Private/GitHub/token          # the same, spelled out
 GH_TOKEN=cmd:keyring get ssh-manager gh_token           # OS keyring
 ```
+
+A value starting `op://` is read with `op read`, the whole reference as one
+argument, so item and field names may contain spaces.
 
 The command runs once per process (memoized) via the argv-only subprocess
 chokepoint - no shell, no injection. A failed/empty/timed-out command yields no

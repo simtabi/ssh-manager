@@ -87,9 +87,12 @@ else is in the [documentation index](#documentation).
 ### Recipes
 
 - [Two GitHub accounts on one machine](docs/recipes/two-github-accounts.md) — one hostname, two identities, neither able to act as the other.
+- [Keep keys in 1Password](docs/recipes/keep-keys-in-1password.md) — private keys generated and rotated inside a vault; only the `.pub` on disk.
+- [Use a GitHub machine user](docs/recipes/github-machine-user.md) — one bot key with read access to every org repo, rotated in one command.
 - [Group profiles into categories](docs/recipes/group-profiles-into-categories.md) — `internal`, `clients`, `others`: one directory and one `config` file each.
 - [Onboard an existing `~/.ssh`](docs/recipes/onboard-an-existing-ssh-dir.md) — bring a hand-built setup under management without regenerating anything.
 - [Rotate a key with no downtime](docs/recipes/rotate-a-key.md) — stage, verify, commit; and how to step back.
+- [Rotate or repair many keys at once](docs/recipes/rotate-many-keys.md) — a category or everything in one batch, and rebuilding `.pub` files.
 - [Work against a sandbox](docs/recipes/dev-mode.md) — exercise every verb without touching your real `~/.ssh`.
 - [Back up, and restore onto a new machine](docs/recipes/back-up-and-restore.md) — the only path that recovers the same keys.
 - [Recover from a locked-out server](docs/recipes/recover-from-lockout.md) — break-glass with no working SSH.

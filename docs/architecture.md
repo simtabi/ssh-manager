@@ -244,6 +244,21 @@ layering test fails any `filepath.Join` that builds `profiles/<computed>` by han
 That is the defect categories expose: a hand-built path is right for a flat
 profile and silently one directory too high for a categorized one.
 
+### Why can keys live in 1Password, and why per profile?
+
+A key file on disk is only as safe as the disk, and every copy of `~/.ssh` (a
+backup, a bundle, a laptop) carries it. With `key_store: 1password` the private
+key is generated inside 1Password and never read back: sshmgr writes only the
+public half, and ssh reaches the key through the 1Password agent, selected by
+that `.pub` with `IdentitiesOnly`. Rotation, the part people skip, stays one
+command, and the vault keeps every predecessor in its Archive.
+
+The store is a profile setting, not a host one, because a key is shared by its
+profile's hosts: a per-host field could have two hosts disagree about where one
+key lives. Nothing else about a key changes with its store: its name, its
+inventory record and its `IdentityFile` identity are the same, so moving a
+profile between stores is a rotation, not a migration of state.
+
 ### Why is there no single service object?
 
 v1 had a `SshManagerService` facade: 1356 lines, 54

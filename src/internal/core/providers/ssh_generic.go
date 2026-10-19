@@ -125,8 +125,9 @@ func (g GenericSSH) Verify(t Target) bool {
 	if t.IdentityPath == "" {
 		return false
 	}
-	args := append([]string{"ssh", "-i", t.IdentityPath, "-o", "BatchMode=yes",
-		"-o", "IdentitiesOnly=yes", "-o", "StrictHostKeyChecking=accept-new"}, g.knownHostsOpts(t)...)
+	args := append([]string{"ssh"}, t.identityOpts()...)
+	args = append(args, "-o", "BatchMode=yes", "-o", "StrictHostKeyChecking=accept-new")
+	args = append(args, g.knownHostsOpts(t)...)
 	if t.Port != 22 {
 		args = append(args, "-p", strconv.Itoa(t.Port))
 	}

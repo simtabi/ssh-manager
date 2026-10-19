@@ -17,6 +17,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/providers"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/log"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/netcheck"
@@ -91,11 +92,12 @@ type Rotator struct {
 	m   *manifest.Manifest
 	inv *inventory.Inventory
 	ks  *keystore.KeyStore
+	op  *opstore.Client // for profiles whose key_store is 1password
 }
 
 // New builds a Rotator.
 func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Rotator {
-	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New()}
+	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New(), op: opstore.New()}
 }
 
 // profileAndHosts resolves a key selector to its owning profile and the hosts
@@ -130,6 +132,7 @@ func (r *Rotator) target(h manifest.Host, profile, pubPath, pubText, identPath s
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		PubkeyPath: pubPath, PubkeyText: pubText, TokenEnv: deref(h.TokenEnv),
 		IdentityPath: identPath, KnownHosts: filepath.Join(r.p.SSHDir, "known_hosts"),
+		IdentityAgent: r.agentFor(profile, identPath),
 	}
 }
 
@@ -153,6 +156,9 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
+	}
+	if r.m.Profiles[profile].InOnePassword() {
+		return r.rotateOnePassword(profile, keyName, hosts, allowUnverified)
 	}
 	pdir := r.dir(profile)
 	curPriv := filepath.Join(pdir, keyName)
@@ -339,6 +345,9 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	if err != nil {
 		return RotateReport{}, err
 	}
+	if r.m.Profiles[profile].InOnePassword() {
+		return r.rollbackOnePassword(profile, keyName, hosts)
+	}
 	pdir := r.dir(profile)
 	oldPriv := filepath.Join(pdir, "old", keyName)
 	oldPub := oldPriv + ".pub"
@@ -385,6 +394,22 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	_ = perms.SetPerms(curPriv, perms.PrivateKeyMode)
 	_ = perms.SetPerms(curPub, perms.PublicKeyMode)
 
+	return r.finishRollback(profile, keyName, hosts, curPub, curPriv, curPubText, report)
+}
+
+// preservePair copies the keypair at src to dst without disturbing src.
+//
+// A hard link, not a copy: the two names share one inode, so the source keeps
+// working while the archive exists and no private key bytes are written a second
+// time. src and dst are both inside one profile directory, so a link is
+// essentially always possible; a filesystem that refuses one (a bind mount over
+// old/, say) falls back to copying, since preserving the outgoing key matters
+// more than how it is preserved.
+// finishRollback re-deploys the restored key to every target, revokes the
+// rolled-back one, and settles the inventory, once the local files hold the
+// restored key. identPath is what a verify login uses.
+func (r *Rotator) finishRollback(profile, keyName string, hosts []manifest.Host,
+	curPub, curPriv, curPubText string, report RotateReport) (RotateReport, error) {
 	restoredPubText := readFile(curPub)
 	var results []TargetResult
 	var unreached []string
@@ -437,14 +462,6 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	return report, nil
 }
 
-// preservePair copies the keypair at src to dst without disturbing src.
-//
-// A hard link, not a copy: the two names share one inode, so the source keeps
-// working while the archive exists and no private key bytes are written a second
-// time. src and dst are both inside one profile directory, so a link is
-// essentially always possible; a filesystem that refuses one (a bind mount over
-// old/, say) falls back to copying, since preserving the outgoing key matters
-// more than how it is preserved.
 func preservePair(srcPriv, dstPriv string) error {
 	for _, ext := range []string{"", ".pub"} {
 		src, dst := srcPriv+ext, dstPriv+ext

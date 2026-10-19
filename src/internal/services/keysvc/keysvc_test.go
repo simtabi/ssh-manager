@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
@@ -305,3 +306,47 @@ func TestTwoRecordsAtOnePathResolveTheSameWayEveryTime(t *testing.T) {
 }
 
 func ptr(s string) *string { return &s }
+
+func refsOf(rows []Row) string {
+	var out []string
+	for _, r := range rows {
+		out = append(out, r.Ref.String())
+	}
+	return strings.Join(out, ",")
+}
+
+func TestSelectResolvesABatchAndRejectsWhatItCannot(t *testing.T) {
+	s := fixture(t)
+	all, err := s.Select(Selection{All: true})
+	if err != nil || len(all) != 3 {
+		t.Fatalf("--all = %v, %v; want every key", refsOf(all), err)
+	}
+	// Overlapping selectors yield each key once, in manifest order.
+	got, err := s.Select(Selection{Selectors: []string{"gh", "work", "work/work_gh-ed25519"}})
+	if err != nil || refsOf(got) != "work/work_gh-ed25519,work/work_spare-rsa" {
+		t.Errorf("overlapping selectors = %q, %v", refsOf(got), err)
+	}
+	for name, sel := range map[string]Selection{
+		"empty":               {},
+		"all plus a selector": {All: true, Selectors: []string{"work"}},
+		"a typo":              {Selectors: []string{"wrok"}},
+		"an unknown category": {Category: "nope"},
+	} {
+		if _, err := s.Select(sel); err == nil {
+			t.Errorf("%s: want an error, not a batch", name)
+		}
+	}
+}
+
+func TestSelectByCategory(t *testing.T) {
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(`{"version":1,"profiles":{
+	  "a":{"category":"orgs","hosts":[{"alias":"x","hostname":"h","user":"u","key_name":"a_x-ed25519"}]},
+	  "b":{"category":"clients","hosts":[{"alias":"y","hostname":"h","user":"u","key_name":"b_y-ed25519"}]}}}`), &m); err != nil {
+		t.Fatal(err)
+	}
+	got, err := New(&m, inventory.New(), t.TempDir()).Select(Selection{Category: "orgs"})
+	if err != nil || refsOf(got) != "a/a_x-ed25519" {
+		t.Errorf("category orgs = %q, %v", refsOf(got), err)
+	}
+}

@@ -178,6 +178,10 @@ func showKey(out io.Writer, keys *keysvc.Service, ref manifest.KeyRef, indent st
 		{d.PrivatePath, d.PrivateOnDisk, uint32(d.PrivateMode)},
 		{d.PublicPath, d.PublicOnDisk, uint32(d.PublicMode)},
 	} {
+		if f.path == d.PrivatePath && d.InOnePassword() && !f.onDisk {
+			line("    private key in 1Password, vault %s (never on disk)", d.Vault)
+			continue
+		}
 		if !f.onDisk {
 			line("    %s  (absent)", f.path)
 			continue

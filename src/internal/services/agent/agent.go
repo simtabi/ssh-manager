@@ -61,6 +61,9 @@ func Load(m *manifest.Manifest, sshDir, profile string, add func(string) bool) (
 		if rk.Profile != profile {
 			continue
 		}
+		if m.Profiles[rk.Profile].InOnePassword() {
+			continue // the 1Password agent serves it; there is no private key file to add
+		}
 		priv := m.KeyPath(sshDir, manifest.KeyRef{Profile: rk.Profile, KeyName: rk.KeyName})
 		if seen[priv] {
 			continue

@@ -130,3 +130,72 @@ func TestGlobProfileTreeSeesBothLayoutsAndNotArchives(t *testing.T) {
 		t.Errorf("old = %s, want %s", got, want)
 	}
 }
+
+func TestKeyStoreValidation(t *testing.T) {
+	bad := map[string]string{
+		"unknown store":       `{"version":1,"profiles":{"p":{"key_store":"vault","hosts":[]}}}`,
+		"1password, no vault": `{"version":1,"profiles":{"p":{"key_store":"1password","hosts":[]}}}`,
+		"vault without store": `{"version":1,"profiles":{"p":{"op_vault":"Simtabi","hosts":[]}}}`,
+	}
+	for name, doc := range bad {
+		if _, err := loadJSON(t, doc); err == nil {
+			t.Errorf("%s: loaded, want a validation error", name)
+		}
+	}
+	m, err := loadJSON(t, `{"version":1,"profiles":{"bot":{"key_store":"1password","op_vault":"Simtabi","hosts":[]},"f":{"hosts":[]}}}`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !m.Profiles["bot"].InOnePassword() || m.Profiles["f"].InOnePassword() || !UsesOnePassword(m) {
+		t.Error("InOnePassword / UsesOnePassword disagree with the manifest")
+	}
+	if got := m.IdentityFile("bot", "k"); got != "~/.ssh/profiles/bot/k" {
+		t.Errorf("IdentityFile = %q: the key's identity must not change with its store", got)
+	}
+}
+
+func TestOnePasswordAgentSocketPerPlatform(t *testing.T) {
+	cases := map[string]string{
+		"darwin":  "~/Library/Group Containers/2BUA8C4S2C.com.1password/t/agent.sock",
+		"linux":   "~/.1password/agent.sock",
+		"freebsd": "~/.1password/agent.sock",
+		"windows": "",
+	}
+	for goos, want := range cases {
+		if got := onePasswordAgentFor(goos); got != want {
+			t.Errorf("%s: %q, want %q", goos, got, want)
+		}
+	}
+	m, _ := loadJSON(t, `{"version":1,"defaults":{"onepassword_agent":"~/.1password/agent.sock"},"profiles":{}}`)
+	if got := m.Defaults.OnePasswordAgentSocket(); got != "~/.1password/agent.sock" {
+		t.Errorf("override ignored: %q", got)
+	}
+}
+
+func TestOnePasswordKeysMustBeDistinctAndEd25519(t *testing.T) {
+	shared := `{"version":1,"profiles":{
+	  "a":{"key_store":"1password","op_vault":"Simtabi","hosts":[{"alias":"x","hostname":"h","user":"u","key_name":"bot_github-ed25519"}]},
+	  "b":{"key_store":"1password","op_vault":"simtabi","hosts":[{"alias":"y","hostname":"h","user":"u","key_name":"bot_github-ed25519"}]}}}`
+	if _, err := loadJSON(t, shared); err == nil || !strings.Contains(err.Error(), "share one key") {
+		t.Errorf("same key name, same vault: err = %v", err)
+	}
+	// Different vaults, or one side on disk, keep them apart.
+	for _, ok := range []string{
+		strings.Replace(shared, `"op_vault":"simtabi"`, `"op_vault":"Other"`, 1),
+		strings.Replace(shared, `"b":{"key_store":"1password","op_vault":"simtabi",`, `"b":{`, 1),
+	} {
+		if _, err := loadJSON(t, ok); err != nil {
+			t.Errorf("should load: %v", err)
+		}
+	}
+	rsa := `{"version":1,"defaults":{"key_type":"rsa"},"profiles":{
+	  "a":{"key_store":"1password","op_vault":"V","hosts":[{"alias":"x","hostname":"h","user":"u","key_name":"a_x-rsa"}]}}}`
+	if _, err := loadJSON(t, rsa); err == nil || !strings.Contains(err.Error(), "ed25519") {
+		t.Errorf("rsa default on a 1Password profile: err = %v", err)
+	}
+	sk := `{"version":1,"profiles":{"a":{"key_store":"1password","op_vault":"V",
+	  "keys":[{"name":"a_hw-ed25519-sk","type":"ed25519-sk"}],"hosts":[]}}}`
+	if _, err := loadJSON(t, sk); err == nil {
+		t.Error("a declared ed25519-sk key on a 1Password profile should be rejected")
+	}
+}
