@@ -23,6 +23,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
 )
 
@@ -93,8 +94,8 @@ func FindTempArtifacts(sshDir string) []string {
 	})
 	profiles := filepath.Join(sshDir, "profiles")
 	if fi, err := os.Lstat(profiles); err == nil && fi.IsDir() && fi.Mode()&os.ModeSymlink == 0 {
-		stagings, _ := filepath.Glob(filepath.Join(profiles, "*", ".staging"))
-		minting, _ := filepath.Glob(filepath.Join(profiles, "*", ".mint-*"))
+		stagings := manifest.GlobProfileTree(sshDir, ".staging")
+		minting := manifest.GlobProfileTree(sshDir, ".mint-*")
 		stagings = append(stagings, minting...)
 		sort.Strings(stagings)
 		for _, s := range stagings {

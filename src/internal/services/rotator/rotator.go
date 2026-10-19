@@ -118,7 +118,7 @@ func (r *Rotator) profileAndHosts(selector string) (string, string, []manifest.H
 }
 
 func (r *Rotator) dir(profile string) string {
-	return filepath.Join(r.p.SSHDir, "profiles", profile)
+	return r.m.ProfileDir(r.p.SSHDir, profile)
 }
 
 func (r *Rotator) provider(h manifest.Host) providers.Provider {
@@ -292,7 +292,7 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 
 func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, results []TargetResult) {
 	ident := r.m.IdentityFile(profile, keyName)
-	oldIdent := fmt.Sprintf("~/.ssh/profiles/%s/old/%s", profile, keyName)
+	oldIdent := r.m.IdentityFile(profile, "old/"+keyName)
 	// Drop any stale record still at the single /old/ slot (a prior predecessor).
 	for fp, rec := range r.inv.Keys {
 		if rec.Path == oldIdent && fp != report.OldFingerprint {

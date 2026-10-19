@@ -250,18 +250,15 @@ func (s *Service) manifestKeyFinding(row keysvc.Row, state string) Finding {
 // key with no public half is the most dangling thing in the tree, and requiring
 // the .pub made exactly that case invisible.
 func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
-	profiles := filepath.Join(s.sshDir, "profiles")
-	entries, err := filepath.Glob(filepath.Join(profiles, "*", "*"))
-	if err != nil {
-		return nil
-	}
-	seen := map[manifest.KeyRef]bool{}
+	// Both layouts: profiles/<profile>/* and profiles/<category>/<profile>/*.
+	entries := manifest.GlobProfileTree(s.sshDir, "*")
+	seen := map[string]bool{}
 	var out []Finding
 	for _, path := range entries {
 		base := filepath.Base(path)
 		fi, err := os.Lstat(path)
 		// Directories are old/, .staging and .mint-* - archives and residue, both
-		// somebody else's business.
+		// somebody else's business - or, in a category, the profiles themselves.
 		if err != nil || fi.IsDir() || skipName(base) {
 			continue
 		}
@@ -269,11 +266,30 @@ func (s *Service) untracked(owned map[manifest.KeyRef]bool) []Finding {
 			Profile: filepath.Base(filepath.Dir(path)),
 			KeyName: strings.TrimSuffix(base, ".pub"),
 		}
-		if owned[ref] || seen[ref] {
+		// Ownership is by location, not by name alone: a declared key sitting in
+		// another directory than the manifest resolves is one sshmgr cannot find,
+		// which is what happens when profiles are moved into a category by hand.
+		expected := s.m.KeyPath(s.sshDir, ref)
+		misplaced := filepath.Dir(path) != filepath.Dir(expected)
+		if owned[ref] && !misplaced {
 			continue
 		}
-		seen[ref] = true
-		rel := filepath.ToSlash(filepath.Join("profiles", ref.Profile, ref.KeyName))
+		rel, _ := filepath.Rel(s.sshDir, filepath.Join(filepath.Dir(path), ref.KeyName))
+		rel = filepath.ToSlash(rel)
+		if seen[rel] {
+			continue
+		}
+		seen[rel] = true
+		if owned[ref] {
+			want, _ := filepath.Rel(s.sshDir, expected)
+			out = append(out, Finding{
+				State: Untracked, Subject: rel,
+				Detail: "the manifest places this key at " + filepath.ToSlash(want),
+				Fix: "move it there, or set profile " + ref.Profile +
+					"'s category to match where it is",
+			})
+			continue
+		}
 		detail := "no profile declares it"
 		if _, ok := s.m.Profiles[ref.Profile]; !ok {
 			detail = "profile " + ref.Profile + " is not in the manifest"

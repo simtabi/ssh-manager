@@ -137,7 +137,7 @@ func (s *Service) DeleteProfile(name string, opt Options) (Result, error) {
 	res := Result{
 		Removed: "profile " + name, Revoked: del.Revoked, PrunedRecords: del.PrunedKeys,
 	}
-	if err := s.finish(&res, files, filepath.Join(s.p.SSHDir, "profiles", name), opt); err != nil {
+	if err := s.finish(&res, files, before.ProfileDir(s.p.SSHDir, name), opt); err != nil {
 		return res, err
 	}
 	return res, nil
@@ -276,7 +276,7 @@ func (s *Service) DeleteKey(ref manifest.KeyRef, opt Options) (Result, error) {
 	// No config re-render and no known_hosts pruning: a deletable key is by
 	// definition wired to no host, so neither the rendered config nor any pin
 	// mentions it.
-	if err := s.purgeOrKeep(&res, s.keyFiles(row), filepath.Join(s.p.SSHDir, "profiles", ref.Profile), opt); err != nil {
+	if err := s.purgeOrKeep(&res, s.keyFiles(row), m.ProfileDir(s.p.SSHDir, ref.Profile), opt); err != nil {
 		return res, err
 	}
 	return res, nil

@@ -2,7 +2,6 @@ package cli
 
 import (
 	"fmt"
-	"path/filepath"
 	"strings"
 
 	"github.com/spf13/cobra"
@@ -48,7 +47,7 @@ func newDiffCmd() *cobra.Command {
 					continue // hosts sharing one key are one key to mint
 				}
 				seen[ref] = true
-				priv := filepath.Join(p.SSHDir, "profiles", ref.Profile, ref.KeyName)
+				priv := m.KeyPath(p.SSHDir, ref)
 				if fs.Exists(priv) {
 					present++
 				} else {

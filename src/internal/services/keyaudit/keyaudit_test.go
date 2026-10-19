@@ -401,3 +401,48 @@ func TestEveryStateAKeyCanBeInCarriesADetailAndAFix(t *testing.T) {
 		}
 	}
 }
+
+const categorizedManifestJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519", "rotate_after_days": 365},
+  "profiles": {
+    "work": {"key_scope": "per_service",
+      "hosts": [{"alias": "gh", "hostname": "github.com", "user": "git", "key_name": "work_gh-ed25519"}]},
+    "adelsaiq": {"category": "clients", "key_scope": "per_service",
+      "hosts": [{"alias": "gh-client", "hostname": "github.com", "user": "git", "key_name": "client_gh-ed25519"}]}
+  }
+}`
+
+func TestCategorizedKeyInPlaceIsTracked(t *testing.T) {
+	f := newFixtureFrom(t, categorizedManifestJSON)
+	f.writeKey(t, "clients/adelsaiq", "client_gh-ed25519", true)
+	f.record(t, "SHA256:client", "~/.ssh/profiles/clients/adelsaiq/client_gh-ed25519")
+
+	rep := audit(t, f, false)
+	if got := subjects(rep, Untracked); len(got) != 0 {
+		t.Fatalf("untracked = %v, want none: the key is where the category puts it", got)
+	}
+	if got := subjects(rep, Missing); len(got) != 0 {
+		t.Fatalf("missing = %v, want none", got)
+	}
+}
+
+// Moving a profile into a category by hand, without telling the manifest, left
+// every key "missing" with nothing pointing at where it went.
+func TestKeyMovedIntoACategoryByHandIsReportedWhereItIs(t *testing.T) {
+	f := newFixtureFrom(t, hostOnlyManifestJSON)
+	// The manifest's work profile is flat; the user moved its key under internal/.
+	if err := os.RemoveAll(filepath.Join(f.ssh, "profiles", "work")); err != nil {
+		t.Fatal(err)
+	}
+	f.writeKey(t, "internal/work", "work_gh-ed25519", true)
+
+	rep := audit(t, f, false)
+	got := rep.ByState(Untracked)
+	if len(got) != 1 || got[0].Subject != "profiles/internal/work/work_gh-ed25519" {
+		t.Fatalf("untracked = %v, want the moved key at its new location", subjects(rep, Untracked))
+	}
+	if !strings.Contains(got[0].Detail, "profiles/work/work_gh-ed25519") {
+		t.Errorf("the detail should say where the manifest expects it: %q", got[0].Detail)
+	}
+}

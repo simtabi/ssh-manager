@@ -75,11 +75,18 @@ func TestInferProviderAndProfileFromIdentity(t *testing.T) {
 	if p := inferProvider("example.com"); p != nil {
 		t.Errorf("unknown host should infer no provider, got %v", *p)
 	}
-	if got := profileFromIdentity("~/.ssh/profiles/simtabi/k"); got != "simtabi" {
-		t.Errorf("profileFromIdentity = %q want simtabi", got)
+	cases := []struct{ path, profile, category string }{
+		{"~/.ssh/profiles/simtabi/k", "simtabi", ""},
+		{"~/.ssh/id_ed25519", "imported", ""},
+		{"~/.ssh/profiles/clients/adelsaiq/k", "adelsaiq", "clients"},
+		// A flat profile's rotation archive is three deep too, but not a category.
+		{"~/.ssh/profiles/work/old/k", "work", ""},
 	}
-	if got := profileFromIdentity("~/.ssh/id_ed25519"); got != "imported" {
-		t.Errorf("profileFromIdentity = %q want imported", got)
+	for _, c := range cases {
+		p, cat := profileFromIdentity(c.path)
+		if p != c.profile || cat != c.category {
+			t.Errorf("profileFromIdentity(%q) = (%q, %q) want (%q, %q)", c.path, p, cat, c.profile, c.category)
+		}
 	}
 }
 

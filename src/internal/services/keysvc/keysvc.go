@@ -15,7 +15,6 @@ package keysvc
 
 import (
 	"os"
-	"path/filepath"
 	"sort"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
@@ -140,7 +139,7 @@ func (s *Service) row(ref manifest.KeyRef) (Row, error) {
 		aliases = append(aliases, h.Alias)
 	}
 	_, declared := s.m.KeySpecFor(ref)
-	priv := filepath.Join(s.sshDir, "profiles", ref.Profile, ref.KeyName)
+	priv := s.m.KeyPath(s.sshDir, ref)
 	ident := s.m.IdentityFile(ref.Profile, ref.KeyName)
 	privMode, privOK := lmode(priv)
 	pubMode, pubOK := lmode(priv + ".pub")

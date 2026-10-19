@@ -112,7 +112,7 @@ func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory, emitUseK
 }
 
 func (r *Reconciler) privPath(profile, keyName string) string {
-	return filepath.Join(r.p.SSHDir, "profiles", profile, keyName)
+	return r.m.KeyPath(r.p.SSHDir, manifest.KeyRef{Profile: profile, KeyName: keyName})
 }
 
 // Reconcile rebuilds the tree (mints missing keys, renders config, fixes perms,
@@ -337,7 +337,7 @@ func (r *Reconciler) ensureTree() error {
 		remember(ref.Profile)
 	}
 	for _, pname := range order {
-		if err := fs.EnsureDir(filepath.Join(ssh, "profiles", pname), perms.DirMode); err != nil {
+		if err := fs.EnsureDir(r.m.ProfileDir(ssh, pname), perms.DirMode); err != nil {
 			return err
 		}
 	}

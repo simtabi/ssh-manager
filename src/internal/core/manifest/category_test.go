@@ -2,6 +2,7 @@ package manifest
 
 import (
 	"encoding/json"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -94,5 +95,38 @@ func TestCategoryValidation(t *testing.T) {
 	ok := `{"version":1,"profiles":{"internal":{"category":"internal","hosts":[]}}}`
 	if _, err := loadJSON(t, ok); err != nil {
 		t.Errorf("self-named categorized profile rejected: %v", err)
+	}
+}
+
+func TestGlobProfileTreeSeesBothLayoutsAndNotArchives(t *testing.T) {
+	ssh := t.TempDir()
+	for _, rel := range []string{
+		"profiles/work/a.pub",                 // flat
+		"profiles/work/old/a.pub",             // flat archive - not a category
+		"profiles/work/.staging/a.pub",        // flat staging - not a category
+		"profiles/clients/adelsaiq/b.pub",     // categorized
+		"profiles/clients/adelsaiq/old/b.pub", // categorized archive - too deep
+	} {
+		p := filepath.Join(ssh, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, nil, 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	rels := func(paths []string) string {
+		var out []string
+		for _, p := range paths {
+			r, _ := filepath.Rel(ssh, p)
+			out = append(out, filepath.ToSlash(r))
+		}
+		return strings.Join(out, ",")
+	}
+	if got, want := rels(GlobProfileTree(ssh, "*.pub")), "profiles/clients/adelsaiq/b.pub,profiles/work/a.pub"; got != want {
+		t.Errorf("*.pub = %s, want %s", got, want)
+	}
+	if got, want := rels(GlobProfileTree(ssh, "old")), "profiles/clients/adelsaiq/old,profiles/work/old"; got != want {
+		t.Errorf("old = %s, want %s", got, want)
 	}
 }

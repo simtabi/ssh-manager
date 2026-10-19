@@ -2,7 +2,8 @@
 // It parses an ssh config (following relative
 // Include directives) into profiles + hosts, fingerprints any private keys it can
 // find into the inventory, and adopts non-canonical keys into the profiles/ layout.
-// Profile assignment derives from an IdentityFile under profiles/<profile>/, else
+// Profile assignment derives from an IdentityFile under profiles/<profile>/ or
+// profiles/<category>/<profile>/ (which also carries the category over), else
 // "imported".
 package importer
 
@@ -33,6 +34,7 @@ type ParsedHost struct {
 	Port         int
 	IdentityFile string // "" if none
 	Profile      string
+	Category     string // "" unless the IdentityFile sat under profiles/<category>/<profile>/
 	Extra        []kv
 }
 
@@ -136,7 +138,7 @@ func applyOption(h *ParsedHost, keyword, value string) {
 		}
 	case "identityfile":
 		h.IdentityFile = value
-		h.Profile = profileFromIdentity(value)
+		h.Profile, h.Category = profileFromIdentity(value)
 	default:
 		if manifest.IsDangerousOption(keyword) {
 			return // drop command/config-executing directives
@@ -147,14 +149,24 @@ func applyOption(h *ParsedHost, keyword, value string) {
 	}
 }
 
-func profileFromIdentity(identityFile string) string {
+// profileFromIdentity reads the profile (and category, if any) off a key path
+// under profiles/: profiles/<profile>/<key> or
+// profiles/<category>/<profile>/<key>. A flat profile's rotation archive,
+// profiles/<profile>/old/<key>, is three segments deep too and is not a
+// category.
+func profileFromIdentity(identityFile string) (profile, category string) {
 	parts := strings.Split(filepath.ToSlash(identityFile), "/")
 	for i, p := range parts {
-		if p == "profiles" && i+1 < len(parts) {
-			return parts[i+1]
+		if p != "profiles" || i+1 >= len(parts) {
+			continue
 		}
+		rest := parts[i+1:]
+		if len(rest) == 3 && rest[1] != "old" {
+			return rest[1], rest[0]
+		}
+		return rest[0], ""
 	}
-	return "imported"
+	return "imported", ""
 }
 
 func parseIncludes(pattern, baseDir string, seen map[string]bool) []*ParsedHost {
@@ -224,6 +236,7 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 	m := manifest.Starter(im.emitUseKeychain) // defaults with the right global options
 	order := []string{}
 	byProfile := map[string][]manifest.Host{}
+	category := map[string]string{} // profile -> the first category its keys were found under
 	type rh struct {
 		h   *ParsedHost
 		res resolution
@@ -257,17 +270,20 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 		if _, ok := byProfile[h.Profile]; !ok {
 			order = append(order, h.Profile)
 		}
+		if category[h.Profile] == "" {
+			category[h.Profile] = h.Category
+		}
 		byProfile[h.Profile] = append(byProfile[h.Profile], host)
 	}
 	for _, name := range order {
-		m.SetProfile(name, manifest.Profile{KeyScope: "per_service", Hosts: byProfile[name]})
+		m.SetProfile(name, manifest.Profile{Category: category[name], KeyScope: "per_service", Hosts: byProfile[name]})
 	}
 
 	inv := inventory.New()
 	adopted := 0
 	for _, r := range resolved {
 		ident := m.IdentityFile(r.h.Profile, r.res.keyName)
-		if !dryRun && r.res.adoptFrom != "" && im.adoptKey(r.res.adoptFrom, r.h.Profile, r.res.keyName) {
+		if !dryRun && r.res.adoptFrom != "" && im.adoptKey(m, r.res.adoptFrom, r.h.Profile, r.res.keyName) {
 			adopted++
 		}
 		if r.res.probe != "" {
@@ -325,19 +341,15 @@ func (im *Importer) resolveKey(h *ParsedHost) resolution {
 }
 
 func underProfile(real, profile string) bool {
-	parts := strings.Split(filepath.ToSlash(real), "/")
-	for i, p := range parts {
-		if p == "profiles" && i+1 < len(parts) {
-			return parts[i+1] == profile
-		}
-	}
-	return false
+	got, _ := profileFromIdentity(real)
+	return got == profile && strings.Contains(filepath.ToSlash(real), "/profiles/")
 }
 
-// adoptKey copies an existing keypair into profiles/<profile>/<keyName>.
-// Non-destructive: skips if the destination already exists.
-func (im *Importer) adoptKey(srcPriv, profile, keyName string) bool {
-	dstPriv := filepath.Join(im.p.SSHDir, "profiles", profile, keyName)
+// adoptKey copies an existing keypair into the profile's directory
+// (profiles/[<category>/]<profile>/<keyName>). Non-destructive: skips if the
+// destination already exists.
+func (im *Importer) adoptKey(m *manifest.Manifest, srcPriv, profile, keyName string) bool {
+	dstPriv := m.KeyPath(im.p.SSHDir, manifest.KeyRef{Profile: profile, KeyName: keyName})
 	if exists(dstPriv) || !exists(srcPriv) {
 		return false
 	}

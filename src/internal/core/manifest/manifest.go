@@ -601,7 +601,10 @@ func checkAliasCollisions(m *Manifest) error {
 //     its key directory, so its keys and the category's config and profile
 //     directories would land in one place;
 //   - a categorized profile named "config" would need profiles/<category>/config
-//     as a directory, where the category's rendered config file already is.
+//     as a directory, where the category's rendered config file already is;
+//   - a categorized profile named "old" puts its keys at
+//     profiles/<category>/old/<key>, the exact shape of a flat profile's
+//     rotation archive, so they would be read as retired keys.
 func checkCategories(m *Manifest) error {
 	for _, name := range m.sortedProfileNames() {
 		c := m.Profiles[name].Category
@@ -611,9 +614,9 @@ func checkCategories(m *Manifest) error {
 		if err := safeSegment("category", c); err != nil {
 			return err
 		}
-		if name == "config" {
-			return fmt.Errorf("profile %q cannot have a category: its directory would be "+
-				"profiles/%s/config, the file that category's Host blocks render into", name, c)
+		if name == "config" || name == "old" {
+			return fmt.Errorf("profile %q cannot have a category: profiles/%s/%s is reserved "+
+				"(config is the category's rendered file, old/ is a rotation archive)", name, c, name)
 		}
 		if other, ok := m.Profiles[c]; ok && other.Category == "" {
 			return fmt.Errorf("category %q (profile %q) collides with the uncategorized profile %q: "+
@@ -752,6 +755,36 @@ func (m *Manifest) ProfileDir(sshDir, profileName string) string {
 // KeyPath is the absolute path to a key's private half under sshDir.
 func (m *Manifest) KeyPath(sshDir string, ref KeyRef) string {
 	return filepath.Join(m.ProfileDir(sshDir, ref.Profile), ref.KeyName)
+}
+
+// GlobProfileTree matches the pattern tail inside every profile directory on
+// disk, in both layouts: profiles/<profile>/<tail> and
+// profiles/<category>/<profile>/<tail>. It needs no manifest, because the
+// scans that use it (doctor, snapshots, keyaudit) also look for what the
+// manifest has forgotten.
+//
+// A two-level match whose middle segment is "old" or dot-prefixed is dropped:
+// that is a flat profile's rotation archive or staging directory, not a
+// categorized profile, and a flat-only glob never saw inside them either.
+// The result is sorted.
+func GlobProfileTree(sshDir string, tail ...string) []string {
+	root := filepath.Join(sshDir, "profiles")
+	flat, _ := filepath.Glob(filepath.Join(append([]string{root, "*"}, tail...)...))
+	nested, _ := filepath.Glob(filepath.Join(append([]string{root, "*", "*"}, tail...)...))
+	out := append([]string{}, flat...)
+	for _, p := range nested {
+		rel, err := filepath.Rel(root, p)
+		if err != nil {
+			continue
+		}
+		mid := strings.Split(filepath.ToSlash(rel), "/")[1]
+		if mid == "old" || strings.HasPrefix(mid, ".") {
+			continue
+		}
+		out = append(out, p)
+	}
+	sort.Strings(out)
+	return out
 }
 
 // CategoryConfigRel is the forward-slash path, relative to ~/.ssh, of the file
