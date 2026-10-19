@@ -169,7 +169,10 @@ scoops:
     homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
     description: "Profile-based SSH key and config lifecycle manager."
     license: MIT
-    skip_upload: '{{ envOrDefault "SKIP_WINDOWS_PKGS" "true" }}'
+    # Scoop publishes on its own switch: SKIP_SCOOP, else SKIP_WINDOWS_PKGS, else skipped. `or` takes the
+    # first non-empty value, so a variable CI sets to empty falls through instead of publishing
+    # (envOrDefault returns an empty value as set; measured with GoReleaser 2.18.3).
+    skip_upload: '{{ or (envOrDefault "SKIP_SCOOP" "") (envOrDefault "SKIP_WINDOWS_PKGS" "") "true" }}'
 
 # Winget (Microsoft's default Windows package manager). Publishes a manifest to
 # a simtabi/winget-pkgs fork and opens a PR to microsoft/winget-pkgs. Package id

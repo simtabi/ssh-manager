@@ -102,6 +102,8 @@ jobs:
           # Scoop/Winget publishing is skipped until the bucket/fork exist. Set
           # repo variable SKIP_WINDOWS_PKGS to "false" to enable it.
           SKIP_WINDOWS_PKGS: ${{ vars.SKIP_WINDOWS_PKGS || 'true' }}
+          # Scoop's own switch; empty falls back to SKIP_WINDOWS_PKGS (see the GoReleaser config).
+          SKIP_SCOOP: ${{ vars.SKIP_SCOOP }}
 
       # Sign a build-provenance attestation for every released artifact. The
       # checksums file lists them all, so `gh attestation verify <file>
