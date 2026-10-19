@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"regexp"
 	"sort"
 	"strings"
@@ -228,7 +229,14 @@ func (k *KeySpec) UnmarshalJSON(b []byte) error {
 }
 
 // Profile groups hosts that share an identity, plus the keys it owns.
+//
+// Category optionally files the profile under a grouping directory -
+// profiles/<category>/<profile>/ instead of profiles/<profile>/ - and moves its
+// Host blocks out of the root config into profiles/<category>/config, which the
+// root config Includes. Empty keeps the flat layout and inline rendering, so a
+// manifest written before categories existed behaves exactly as it did.
 type Profile struct {
+	Category string    `json:"category,omitempty"`
 	KeyScope string    `json:"key_scope"`
 	KeyName  *string   `json:"key_name,omitempty"`
 	Keys     []KeySpec `json:"keys,omitempty"`
@@ -246,12 +254,13 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 }
 
 // MarshalJSON emits key_scope, key_name (null when unset), and hosts ([] when
-// none) in declaration order, matching those files. keys is the one field
-// emitted only when non-empty: it is a v2 addition with no counterpart there, and
-// omitting it keeps a manifest that declares no keys - i.e. every manifest
-// written before this field existed - byte-identical across a load/save cycle.
+// none) in declaration order, matching those files. category and keys are
+// emitted only when set: both are v2 additions with no counterpart there, and
+// omitting them keeps a manifest that uses neither - i.e. every manifest
+// written before these fields existed - byte-identical across a load/save cycle.
 func (p Profile) MarshalJSON() ([]byte, error) {
 	type wire struct {
+		Category string    `json:"category,omitempty"`
 		KeyScope string    `json:"key_scope"`
 		KeyName  *string   `json:"key_name"`
 		Keys     []KeySpec `json:"keys,omitempty"`
@@ -261,7 +270,7 @@ func (p Profile) MarshalJSON() ([]byte, error) {
 	if hosts == nil {
 		hosts = []Host{}
 	}
-	return json.Marshal(wire{KeyScope: p.KeyScope, KeyName: p.KeyName, Keys: p.Keys, Hosts: hosts})
+	return json.Marshal(wire{Category: p.Category, KeyScope: p.KeyScope, KeyName: p.KeyName, Keys: p.Keys, Hosts: hosts})
 }
 
 // ExpiryCheck is the notifier policy.
@@ -584,6 +593,36 @@ func checkAliasCollisions(m *Manifest) error {
 	return nil
 }
 
+// checkCategories rejects a category that would share a directory with
+// something else. A category is a path segment, and two layouts meet under
+// profiles/:
+//
+//   - an uncategorized profile named like a category owns profiles/<name>/ as
+//     its key directory, so its keys and the category's config and profile
+//     directories would land in one place;
+//   - a categorized profile named "config" would need profiles/<category>/config
+//     as a directory, where the category's rendered config file already is.
+func checkCategories(m *Manifest) error {
+	for _, name := range m.sortedProfileNames() {
+		c := m.Profiles[name].Category
+		if c == "" {
+			continue
+		}
+		if err := safeSegment("category", c); err != nil {
+			return err
+		}
+		if name == "config" {
+			return fmt.Errorf("profile %q cannot have a category: its directory would be "+
+				"profiles/%s/config, the file that category's Host blocks render into", name, c)
+		}
+		if other, ok := m.Profiles[c]; ok && other.Category == "" {
+			return fmt.Errorf("category %q (profile %q) collides with the uncategorized profile %q: "+
+				"both would own profiles/%s/ - give %q a category or rename one", c, name, c, c, c)
+		}
+	}
+	return nil
+}
+
 // checkDeclaredKeys validates one profile's keys list. Names are path segments
 // (they become file names under profiles/<profile>/) and unique within the
 // profile - not globally, since a profile models an org and the same person's
@@ -616,6 +655,9 @@ func (m *Manifest) validate() error {
 		return err
 	}
 	if err := checkAliasCollisions(m); err != nil {
+		return err
+	}
+	if err := checkCategories(m); err != nil {
 		return err
 	}
 	for name, p := range m.Profiles {
@@ -686,9 +728,56 @@ func (m *Manifest) ResolvedKeyName(profileName string, host Host) (string, error
 	return key.DeriveKeyName(profileName, host.Alias, m.Defaults.KeyType)
 }
 
+// ProfileRel is a profile's key directory relative to ~/.ssh, in forward-slash
+// form: profiles/<category>/<profile> when the profile has a category, else
+// profiles/<profile>. An undeclared profile resolves to the flat form, which is
+// where every key lived before categories existed.
+//
+// This is the one place the layout is decided. Every path to a key, its .pub,
+// or its old/ directory goes through ProfileRel or ProfileDir; a hand-built
+// filepath.Join(sshDir, "profiles", profile) is the defect a categorized
+// profile exposes, because it silently points one directory too high.
+func (m *Manifest) ProfileRel(profileName string) string {
+	if c := m.Profiles[profileName].Category; c != "" {
+		return "profiles/" + c + "/" + profileName
+	}
+	return "profiles/" + profileName
+}
+
+// ProfileDir is ProfileRel as an absolute path under sshDir.
+func (m *Manifest) ProfileDir(sshDir, profileName string) string {
+	return filepath.Join(sshDir, filepath.FromSlash(m.ProfileRel(profileName)))
+}
+
+// KeyPath is the absolute path to a key's private half under sshDir.
+func (m *Manifest) KeyPath(sshDir string, ref KeyRef) string {
+	return filepath.Join(m.ProfileDir(sshDir, ref.Profile), ref.KeyName)
+}
+
+// CategoryConfigRel is the forward-slash path, relative to ~/.ssh, of the file
+// holding a category's Host blocks.
+func CategoryConfigRel(category string) string {
+	return "profiles/" + category + "/config"
+}
+
+// Categories returns the distinct categories in use, in first-seen manifest
+// (file) order, so the root config Includes them in a stable order.
+func (m *Manifest) Categories() []string {
+	var out []string
+	seen := map[string]bool{}
+	for _, name := range m.ProfileNames() {
+		c := m.Profiles[name].Category
+		if c != "" && !seen[c] {
+			seen[c] = true
+			out = append(out, c)
+		}
+	}
+	return out
+}
+
 // IdentityFile is the rendered ~ form path for a key (always forward slashes).
 func (m *Manifest) IdentityFile(profileName, keyName string) string {
-	return sshToken + "/profiles/" + profileName + "/" + keyName
+	return sshToken + "/" + m.ProfileRel(profileName) + "/" + keyName
 }
 
 // KeyRef names one key: the profile that owns it plus the file name inside that
