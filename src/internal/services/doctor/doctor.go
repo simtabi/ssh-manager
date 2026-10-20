@@ -19,6 +19,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keyaudit"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
@@ -52,6 +53,9 @@ type Report struct {
 	// OnePassword lists what stops a 1Password profile from working: no op
 	// CLI, or no agent socket. Empty when no profile uses 1Password.
 	OnePassword []string
+	// StaleProxy lists rendered VM ProxyCommands whose sshmgr binary no longer exists (an upgrade
+	// moved it); `sshmgr config render` rewrites them.
+	StaleProxy []string
 }
 
 // OK is the overall verdict.
@@ -61,7 +65,7 @@ type Report struct {
 // result nothing acts on is not a check. Which states are fatal is keyaudit's
 // call, not this one's (--strict makes all of them fatal).
 func (r Report) OK() bool {
-	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync || len(r.OnePassword) > 0 {
+	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync || len(r.OnePassword) > 0 || len(r.StaleProxy) > 0 {
 		return false
 	}
 	if !r.Dangling.OK() {
@@ -95,6 +99,9 @@ func (r Report) Format() string {
 	lines = append(lines, "agent: "+r.AgentStatus)
 	for _, issue := range r.OnePassword {
 		lines = append(lines, "1Password: "+issue)
+	}
+	for _, issue := range r.StaleProxy {
+		lines = append(lines, "vm proxy: "+issue+" - run `sshmgr config render`")
 	}
 	lines = append(lines, "known_hosts: "+presentAbsent(r.KnownHosts))
 	if len(r.UnpinnedHosts) > 0 {
@@ -184,6 +191,7 @@ func (r Report) JSON() ([]byte, error) {
 		DuplicateKeys      []string       `json:"duplicate_keys"`
 		UnpinnedHosts      []string       `json:"unpinned_hosts"`
 		AliasCollisions    []string       `json:"alias_collisions"`
+		StaleProxy         []string       `json:"stale_proxy"`
 		StrandedLegacyHome *string        `json:"stranded_legacy_home"`
 	}
 	nz := func(s []string) []string {
@@ -203,7 +211,8 @@ func (r Report) JSON() ([]byte, error) {
 		PermIssues: nz(r.PermIssues), OldKeys: old, StaleOldKeys: nz(r.StaleOldKeys),
 		OrphanKeys: nz(r.OrphanKeys), DanglingKeys: danglingRows(r.Dangling),
 		DuplicateKeys: nz(r.DuplicateKeys), UnpinnedHosts: nz(r.UnpinnedHosts),
-		AliasCollisions: nz(r.AliasCollisions), StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
+		AliasCollisions: nz(r.AliasCollisions), StaleProxy: nz(r.StaleProxy),
+		StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
 	})
 }
 
@@ -273,6 +282,7 @@ func (s *Service) Run(strict bool) Report {
 		rep.UnpinnedHosts = s.unpinnedHosts(ssh)
 		rep.AliasCollisions = aliasCollisions(s.m)
 		rep.OnePassword = onePasswordIssues(s.m)
+		rep.StaleProxy = staleProxies(ssh, s.m)
 	}
 	return rep
 }
@@ -605,3 +615,38 @@ func sortedIntKeys(m map[string]int) []string {
 }
 
 func jsonIndent(v any) ([]byte, error) { return json.MarshalIndent(v, "", "  ") }
+
+// staleProxies reads the rendered configs (root and every category's) for sshmgr's VM ProxyCommands
+// and reports each whose binary path is gone. A bare "sshmgr" resolves through PATH.
+func staleProxies(ssh string, m *manifest.Manifest) []string {
+	files := []string{filepath.Join(ssh, "config")}
+	for _, c := range m.Categories() {
+		files = append(files, filepath.Join(ssh, filepath.FromSlash(manifest.CategoryConfigRel(c))))
+	}
+	var out []string
+	for _, f := range files {
+		b, err := os.ReadFile(f)
+		if err != nil {
+			continue
+		}
+		for _, line := range strings.Split(string(b), "\n") {
+			k, v, ok := strings.Cut(strings.TrimSpace(line), " ")
+			if !ok || !strings.EqualFold(k, "ProxyCommand") {
+				continue
+			}
+			bin := renderer.ProxyBinary(strings.TrimSpace(v))
+			if bin == "" {
+				continue
+			}
+			if !strings.ContainsAny(bin, `/\`) {
+				if _, err := exec.LookPath(bin); err == nil {
+					continue
+				}
+			} else if fi, err := os.Stat(bin); err == nil && !fi.IsDir() {
+				continue
+			}
+			out = append(out, bin+" (in "+f+") does not exist")
+		}
+	}
+	return sortedUnique(out)
+}
