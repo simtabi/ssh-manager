@@ -159,6 +159,8 @@ type Host struct {
 	VPNName     *string        `json:"vpn_name,omitempty"`
 	VPNURL      *string        `json:"vpn_url,omitempty"`
 	RawOptions  OrderedOptions `json:"raw_options,omitempty"`
+	// VM marks a local VM whose address the hypervisor supplies at connect time.
+	VM *VMSpec `json:"vm,omitempty"`
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -188,6 +190,7 @@ func (h Host) MarshalJSON() ([]byte, error) {
 		VPNName     *string        `json:"vpn_name"`
 		VPNURL      *string        `json:"vpn_url"`
 		RawOptions  OrderedOptions `json:"raw_options"`
+		VM          *VMSpec        `json:"vm,omitempty"` // omitted when unset: older files stay byte-identical
 	}
 	tags := h.Tags
 	if tags == nil {
@@ -197,6 +200,7 @@ func (h Host) MarshalJSON() ([]byte, error) {
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		Provider: h.Provider, TokenEnv: h.TokenEnv, KeyName: h.KeyName, Tags: tags,
 		RequiresVPN: h.RequiresVPN, VPNName: h.VPNName, VPNURL: h.VPNURL, RawOptions: h.RawOptions,
+		VM: h.VM,
 	})
 }
 
@@ -315,6 +319,8 @@ type Defaults struct {
 	// key_store "1password" renders as its IdentityAgent. Empty = the
 	// platform's standard path (see OnePasswordAgentSocket).
 	OnePasswordAgent string `json:"onepassword_agent,omitempty"`
+	// Git configures `sshmgr git` and the rendered `Host github.com` block.
+	Git *GitDefaults `json:"git,omitempty"`
 }
 
 func newDefaults() Defaults {
@@ -346,6 +352,7 @@ func (d Defaults) MarshalJSON() ([]byte, error) {
 		ExpiryCheck      ExpiryCheck    `json:"expiry_check"`
 		GlobalOptions    OrderedOptions `json:"global_options"`
 		OnePasswordAgent string         `json:"onepassword_agent,omitempty"`
+		Git              *GitDefaults   `json:"git,omitempty"`
 	}
 	warn := d.WarnBeforeDays
 	if warn == nil {
@@ -354,7 +361,7 @@ func (d Defaults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire{
 		KeyType: d.KeyType, KeyScope: d.KeyScope, RotateAfterDays: d.RotateAfterDays,
 		WarnBeforeDays: warn, ExpiryCheck: d.ExpiryCheck, GlobalOptions: d.GlobalOptions,
-		OnePasswordAgent: d.OnePasswordAgent,
+		OnePasswordAgent: d.OnePasswordAgent, Git: d.Git,
 	})
 }
 
@@ -788,6 +795,9 @@ func (m *Manifest) validate() error {
 	if err := checkKeyStores(m); err != nil {
 		return err
 	}
+	if err := checkGit(m); err != nil {
+		return err
+	}
 	for name, p := range m.Profiles {
 		if err := safeSegment("profile name", name); err != nil {
 			return err
@@ -819,6 +829,9 @@ func (m *Manifest) validate() error {
 				return err
 			}
 			if err := checkOptions("raw_options", h.RawOptions); err != nil {
+				return err
+			}
+			if err := checkVM(name, h); err != nil {
 				return err
 			}
 		}

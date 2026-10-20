@@ -56,6 +56,35 @@
               "integer"
             ]
           }
+        },
+        "onepassword_agent": {
+          "type": "string",
+          "description": "1Password SSH agent socket for key_store 1password profiles; empty = the platform default."
+        },
+        "git": {
+          "type": "object",
+          "additionalProperties": false,
+          "description": "sshmgr git: default remote mode, default identity, and owner-to-profile map.",
+          "properties": {
+            "mode": {
+              "enum": [
+                "profile",
+                "ssh",
+                "https"
+              ]
+            },
+            "profile": {
+              "type": "string",
+              "description": "Default identity; its GitHub key is bound to the rendered Host github.com."
+            },
+            "orgs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "string"
+              },
+              "description": "GitHub owner -> profile."
+            }
+          }
         }
       }
     },
@@ -151,6 +180,72 @@
                       "integer"
                     ]
                   }
+                },
+                "vm": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "hypervisor",
+                    "name"
+                  ],
+                  "description": "A local VM: its address comes from the hypervisor at connect time.",
+                  "properties": {
+                    "hypervisor": {
+                      "enum": [
+                        "parallels",
+                        "vmpal",
+                        "vmware",
+                        "utm",
+                        "lima",
+                        "orbstack",
+                        "podman"
+                      ]
+                    },
+                    "name": {
+                      "type": "string"
+                    }
+                  }
+                }
+              }
+            }
+          },
+          "category": {
+            "type": "string",
+            "description": "Groups the profile under profiles/<category>/."
+          },
+          "key_store": {
+            "enum": [
+              "file",
+              "1password"
+            ]
+          },
+          "op_vault": {
+            "type": "string",
+            "description": "1Password vault for key_store 1password."
+          },
+          "keys": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": false,
+              "required": [
+                "name"
+              ],
+              "properties": {
+                "name": {
+                  "type": "string"
+                },
+                "type": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "rotate_after_days": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ]
                 }
               }
             }
