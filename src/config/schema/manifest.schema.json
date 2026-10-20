@@ -196,9 +196,7 @@
                         "vmpal",
                         "vmware",
                         "utm",
-                        "lima",
-                        "orbstack",
-                        "podman"
+                        "lima"
                       ]
                     },
                     "name": {

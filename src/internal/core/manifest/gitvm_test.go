@@ -78,6 +78,7 @@ func TestGitAndVMValidation(t *testing.T) {
 		{"alias github.com shadowed", `"alias": "github-imanimanyara"`, `"alias": "github.com"`, "clashes with the Host github.com"},
 		{"unknown hypervisor", `"hypervisor": "parallels"`, `"hypervisor": "virtualbox"`, "vm.hypervisor"},
 		{"empty vm name", `"name": "Ubuntu 24.04"`, `"name": " "`, "vm.name is empty"},
+		{"own-key hypervisor as a host", `"hypervisor": "parallels"`, `"hypervisor": "orbstack"`, "own SSH access"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
