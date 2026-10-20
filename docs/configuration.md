@@ -134,6 +134,28 @@ guarantees each alias offers only its own key and trusts only its own host keys.
 | `expiry_check.desktop_notify` | `true` | allow the scheduled desktop notification |
 | `global_options` | `{}` | ssh options emitted under `Host *` (e.g. `AddKeysToAgent`, macOS `UseKeychain`) |
 | `onepassword_agent` | platform default | the 1Password SSH agent socket for `key_store: 1password` profiles (see [Key stores](#key-stores)) |
+| `git.mode` | `profile` | default GitHub remote mode for `sshmgr git use`: `profile`, `ssh` or `https` |
+| `git.profile` | unset | the default identity: its GitHub key is bound to a rendered `Host github.com` (ssh mode), and it is used for owners `git.orgs` does not list. Unset, no `Host github.com` is rendered |
+| `git.orgs` | `{}` | GitHub owner → profile, for `sshmgr git` (see [tools/git.md](tools/git.md)) |
+
+All three `git` fields are optional and the key is omitted when unset, so a manifest without them renders
+and saves exactly as before. `ssh` mode needs `git.profile`, and no host may use the alias `github.com`
+while it is set.
+
+### `vm`
+
+A host with `vm` is a local VM. sshmgr renders `ProxyCommand "<sshmgr>" vm proxy <alias>` for it (the
+only ProxyCommand that can appear in the config; `raw_options` still may not set one), and resolves the
+VM's address through its hypervisor on each connection.
+
+```jsonc
+{"alias": "devbox", "hostname": "devbox", "user": "imani",
+ "vm": {"hypervisor": "parallels", "name": "Ubuntu 24.04"}}
+```
+
+`hypervisor` is one of `parallels`, `vmpal`, `vmware`, `utm`, `lima` (OrbStack and Podman keep their own
+SSH and are not hosts); `name` is the VM as the hypervisor lists it, spaces allowed. See
+[tools/vm.md](tools/vm.md).
 
 ### `provider` / `token_env`
 

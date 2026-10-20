@@ -104,7 +104,12 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 | `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name]` | Change a host in place. | U·F |
 | `host delete <profile> <alias> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a host; `--revoke` pulls the key off its targets, `--purge` deletes the key files if nothing else names them. | U·F |
 | `knownhosts init [PROFILE] [--all] [--force]` | Initialize the trust store (create the file + pin reachable hosts, TOFU, fingerprints reported) for one profile or, with `--all`, every host in the manifest. There is one hashed store, so a host used by two profiles is pinned once. | U·F |
-| `knownhosts pin [HOST] [--all]` | Seed per-profile `known_hosts` via `ssh-keyscan`, showing each fingerprint and asking first. | U·F |
+| `knownhosts pin [HOST] [--all]` | Pin into the one `known_hosts` via `ssh-keyscan`, showing each fingerprint and asking first. A host that returns no SSH key fails the command (named, with the reason) instead of reporting `pinned 0`. | U·F |
+| `git status [PATH...]` | Each checkout's GitHub remote mode (profile, ssh, https), owner/repo and profile. | U·F |
+| `git use [MODE] [PATH...] [--mode] [--profile] [--dry-run] [--yes]` | Point checkouts' origin at profile SSH, plain SSH or HTTPS; the new URL must pass `git ls-remote` before origin is rewritten. | U·F |
+| `vm list` | Every installed hypervisor's VMs, and which manifest host uses each; missing hypervisors say so. | U·F |
+| `vm add PROFILE ALIAS --hypervisor H --vm NAME -u USER` | Add a local VM as a host; its address is resolved at connect time through `ProxyCommand "<sshmgr>" vm proxy ALIAS`. | U·F |
+| `vm docker-context ALIAS` | Create or update a Docker context `ssh://ALIAS` for a VM host. | U·F |
 | `notify install\|test` | Scheduled desktop expiry reminders (launchd / systemd-user-or-cron / schtasks). | U·F |
 | `tui` (or a bare `sshmgr` on a terminal) | Interactive arrow-key UI over the whole facade. | U |
 

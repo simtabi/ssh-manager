@@ -6,6 +6,39 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **Git remote modes.** `sshmgr git status` shows how each checkout's GitHub
+  origin authenticates; `sshmgr git use profile|ssh|https [PATH...]` switches it:
+  the profile's own alias (`git@github-<profile>:owner/repo.git`, the default),
+  plain `git@github.com` through a rendered `Host github.com`, or HTTPS through
+  your credential helper. The mode comes from the argument, `--mode`,
+  `SSHMGR_GIT_MODE`, then `defaults.git.mode`; the owner picks the profile through
+  `defaults.git.orgs`, then `defaults.git.profile`, and several candidates are an
+  error rather than a guess. Each new URL must pass `git ls-remote` before origin
+  is rewritten; `--dry-run` changes nothing.
+- **Devboxes.** A host with `vm: {hypervisor, name}` is a local VM:
+  its block renders `ProxyCommand "<sshmgr>" vm proxy <alias>`, which asks
+  Parallels, VMPal, VMware, UTM or Lima for the VM's current address on each
+  connection and starts a stopped VM. `sshmgr vm list` shows every installed
+  hypervisor's VMs (OrbStack and Podman included, which keep their own SSH and
+  keys), `vm add` adds one as a host, and `vm docker-context` creates an
+  `ssh://<alias>` Docker context.
+- `doctor` fails when a rendered VM ProxyCommand names an sshmgr binary that no
+  longer exists (`stale_proxy` in `--json`); `config render` rewrites it.
+
+### Fixed
+
+- `knownhosts pin` reported `pinned 0 host key(s)` and exited 0 for a host that
+  returned no SSH key (a closed port, or a web server on 443). It now names each
+  such host with the reason, pins the rest, and exits non-zero; a missing
+  `ssh-keyscan` is reported too.
+- The manifest JSON schema rejected `category`, `key_store`, `op_vault`, `keys`
+  and `onepassword_agent`, which the code accepts; it now lists every field, and
+  a test compares the two.
+- The `knownhosts` docs and feature catalog still described per-profile trust
+  stores at mode 0644; there is one hashed store at 0600.
+
 ## [3.2.0] - 2026-10-19
 
 ### Added
