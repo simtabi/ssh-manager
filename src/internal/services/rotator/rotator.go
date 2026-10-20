@@ -32,6 +32,9 @@ type TargetResult struct {
 	Deployed bool
 	Verified bool
 	Revoked  bool
+	// ManageURL is where a manual (web-panel) target's keys are managed; set when the deploy was a
+	// paste, so a committed report can say where the old key still has to be removed by hand.
+	ManageURL string
 }
 
 // RotateReport summarizes a rotate/rollback run.
@@ -60,6 +63,10 @@ func (r RotateReport) Format() string {
 	for _, t := range r.Targets {
 		lines = append(lines, fmt.Sprintf("  %s (%s): deploy=%s verify=%s revoke=%s",
 			t.Alias, t.Provider, okFail(t.Deployed), yesNo(t.Verified), revokeFlag(t.Revoked)))
+		if r.Committed && !t.Revoked && t.ManageURL != "" {
+			lines = append(lines, fmt.Sprintf("    remove the old key (%s) from %s by hand: it still logs in until you do",
+				r.OldFingerprint, t.ManageURL))
+		}
 	}
 	if r.Message != "" {
 		lines = append(lines, "  "+r.Message)
@@ -93,11 +100,14 @@ type Rotator struct {
 	inv *inventory.Inventory
 	ks  *keystore.KeyStore
 	op  *opstore.Client // for profiles whose key_store is 1password
+	// manual waits for a pasted key on panel targets (nil: never asks); sshVerify proves it.
+	manual    ManualStep
+	sshVerify func(providers.Target) bool
 }
 
 // New builds a Rotator.
 func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Rotator {
-	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New(), op: opstore.New()}
+	return &Rotator{p: p, m: m, inv: inv, ks: keystore.New(), op: opstore.New(), sshVerify: defaultSSHVerify}
 }
 
 // profileAndHosts resolves a key selector to its owning profile and the hosts
@@ -206,7 +216,10 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 		tgt := r.target(h, profile, stagedPub, stagedPubText, stagedPriv)
 		out := prov.Deploy(tgt)
 		tr.Deployed = out.Method == "manual" || out.Verified
-		tr.Verified = prov.Verify(tgt)
+		tr.Verified = r.proveManual(h, prov, out, tgt, prov.Verify(tgt))
+		if out.Method == "manual" {
+			tr.ManageURL = prov.ManageURL(tgt)
+		}
 		results = append(results, tr)
 	}
 	report.Targets = results
