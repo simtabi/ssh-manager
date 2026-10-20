@@ -21,6 +21,7 @@ sshmgr doctor --strict  # every dangling-key state is fatal (CI)
 | `providers` | whether the catalog is the shipped default or a user file |
 | `agent` | whether `ssh-agent` is running and how many keys it holds |
 | `1Password` | when a profile uses `key_store: 1password`: that `op` is on PATH, the agent socket exists, and the agent serves the profile's vault (`agent.toml`) |
+| `vm proxy` | every sshmgr `ProxyCommand` in the rendered configs (VM hosts) names an sshmgr binary that still exists; an upgrade that moved it fails the verdict, and `sshmgr config render` rewrites the path |
 | `known_hosts` | whether the trust store exists, and which hosts are unpinned |
 | `config drift` | whether the rendered block still matches the manifest |
 | `perms` | every managed path whose mode is not what it should be |
@@ -60,7 +61,7 @@ sshmgr doctor --json | jq -e '.perm_issues | length == 0'
 
 Keys: `ok`, `home`, `ssh_dir`, `preflight_ok`, `providers_source`, `agent`,
 `known_hosts`, `config_in_sync`, `perm_issues`, `orphan_keys`, `duplicate_keys`,
-`unpinned_hosts`, `alias_collisions`, `old_keys`, `stale_old_keys`,
+`unpinned_hosts`, `alias_collisions`, `stale_proxy`, `old_keys`, `stale_old_keys`,
 `dangling_keys`, `stranded_legacy_home`.
 
 Diagnostics go to stderr, so the document on stdout is always parseable.

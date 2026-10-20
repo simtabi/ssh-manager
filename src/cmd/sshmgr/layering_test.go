@@ -253,6 +253,12 @@ func TestTheToolRunsOnlyTheBinariesItDeclares(t *testing.T) {
 		"icacls",
 		// macOS: opens a provider's key page when a deploy must be done by hand.
 		"open",
+		// git: `sshmgr git` reads and rewrites origin, after proving the new URL with ls-remote.
+		"git",
+		// docker: `sshmgr vm docker-context` creates or updates an ssh:// context.
+		"docker",
+		// Hypervisor CLIs (`sshmgr vm`), each optional: a missing one is listed as not installed.
+		"prlctl", "vmpal", "vmrun", "utmctl", "limactl", "orb", "podman",
 		// Itself: the scheduled notifier runs `sshmgr audit --notify`, and it
 		// prefers an installed sshmgr on PATH over the running binary's own path
 		// so the job survives the binary moving.
@@ -267,6 +273,19 @@ func TestTheToolRunsOnlyTheBinariesItDeclares(t *testing.T) {
 		ast.Inspect(f, func(n ast.Node) bool {
 			call, ok := n.(*ast.CallExpr)
 			if !ok {
+				return true
+			}
+			// The hypervisor drivers resolve their CLI through lookup(name, fallbackPath...)
+			// and run it from a variable, which the exec.* match below cannot see. Read the
+			// bare names from lookup's literal arguments, so they are pinned too.
+			if id, isIdent := call.Fun.(*ast.Ident); isIdent && id.Name == "lookup" {
+				for _, a := range call.Args {
+					if lit, isLit := a.(*ast.BasicLit); isLit && lit.Kind == token.STRING {
+						if name, err := strconv.Unquote(lit.Value); err == nil && !strings.ContainsAny(name, "/\\") {
+							seen[name] = append(seen[name], path)
+						}
+					}
+				}
 				return true
 			}
 			sel, ok := call.Fun.(*ast.SelectorExpr)

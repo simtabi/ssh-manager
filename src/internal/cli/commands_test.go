@@ -205,6 +205,22 @@ func TestCommandSurfaceC29KnownHosts(t *testing.T) {
 			t.Error("a per-profile trust store was created; there is one store now")
 		}
 	})
+
+	// It used to print "pinned 0 host key(s)" and exit 0 for a host that served no SSH key, which
+	// read as success and left the host untrusted.
+	t.Run("C29/pin fails when no host key comes back", func(t *testing.T) {
+		needBin(t, "ssh-keyscan")
+		editHome(t)
+		run(t, "profile", "add", "work")
+		run(t, "host", "add", "work", "gh", "-H", "127.0.0.1", "-u", "git", "-p", "1")
+		out, err := runErr(t, "knownhosts", "pin", "gh", "--yes")
+		if err == nil {
+			t.Fatalf("pin of a closed port succeeded:\n%s", out)
+		}
+		if !strings.Contains(out, "no SSH host key") || !strings.Contains(err.Error(), "gh") {
+			t.Errorf("err=%v out=%q: want the host named and the reason", err, out)
+		}
+	})
 }
 
 // C15/C16 `rotate` / `rollback`

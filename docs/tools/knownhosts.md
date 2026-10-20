@@ -80,7 +80,7 @@ easy to diagnose.
 ## `sshmgr knownhosts pin [HOST] [--all]`
 
 Scans a host with `ssh-keyscan`, shows each key's type + SHA256 fingerprint, and
-(after you confirm) writes it into the right profile's `known_hosts` (perms 644):
+(after you confirm) writes it into the one hashed `~/.ssh/known_hosts` (0600):
 
 ```sh
 sshmgr knownhosts pin github.com         # pin one host (grouped under the profile that uses it)
@@ -93,9 +93,24 @@ You're shown the fingerprint for **each** scanned key and asked to trust it -
 compare it against the host's published value before saying yes. `--yes`/`-y`
 trusts all scanned keys without prompting (for automation).
 
-Because each profile pins independently, the same hostname reached under two
-identities (e.g. two GitHub accounts via host aliases) is trusted separately and
-can't leak between them.
+A host that answers with **no SSH host key** fails the command: a closed or
+filtered port, or a service that is not SSH (a web server on 443, say), used to
+report `pinned 0 host key(s)` and exit 0, which read as success and left the host
+untrusted. Now each such host is named with the reason, the rest are still
+pinned, and the exit status is non-zero:
+
+```text
+unc: sc.its.unc.edu:443: no SSH host key came back (port closed or filtered, or not an SSH server); check the hostname and port
+pinned 0 host key(s) into known_hosts
+Error: no SSH host key from 1 host(s): unc
+```
+
+A missing `ssh-keyscan` is reported the same way. Declining every key at the
+prompt is not a failure: that is your answer, and the exit status is 0.
+
+Two identities reaching the same hostname (two GitHub accounts through host
+aliases) share the one pin for that host; what keeps them apart is each alias's
+`IdentityFile` with `IdentitiesOnly yes`, not the trust store.
 
 ---
 

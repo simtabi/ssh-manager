@@ -136,7 +136,7 @@ func TestDoctorJSONShape(t *testing.T) {
 		t.Fatalf("doctor --json not valid JSON: %v", err)
 	}
 	// Empty lists/maps must serialize as []/{}, not null (matches as_dict).
-	for _, k := range []string{"perm_issues", "orphan_keys", "duplicate_keys", "unpinned_hosts", "alias_collisions"} {
+	for _, k := range []string{"perm_issues", "orphan_keys", "duplicate_keys", "unpinned_hosts", "alias_collisions", "stale_proxy"} {
 		if _, ok := doc[k].([]any); !ok {
 			t.Errorf("%s should be a JSON array, got %T", k, doc[k])
 		}

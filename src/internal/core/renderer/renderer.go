@@ -53,6 +53,8 @@ type RenderHost struct {
 	IdentityAgent string
 	KnownHosts    string
 	RawOptions    manifest.OrderedOptions
+	// ProxyCommand is set by sshmgr for a VM host (never from raw_options, which may not hold one).
+	ProxyCommand string
 }
 
 const identitiesOnlyKey = "IdentitiesOnly"
@@ -114,6 +116,9 @@ func writeHostBlock(b *strings.Builder, h RenderHost) {
 	}
 	b.WriteString("    IdentitiesOnly " + identitiesOnly(h.RawOptions) + "\n")
 	b.WriteString("    UserKnownHostsFile " + h.KnownHosts + "\n")
+	if h.ProxyCommand != "" {
+		b.WriteString("    ProxyCommand " + h.ProxyCommand + "\n")
+	}
 	for _, k := range h.RawOptions.Keys() {
 		if strings.EqualFold(k, identitiesOnlyKey) {
 			continue // already emitted next to the IdentityFile it constrains
@@ -196,6 +201,16 @@ func RenderRootConfig(m *manifest.Manifest, emitUseKeychain bool) (string, error
 		}
 		writeProfile(&b, pname, byProfile[pname])
 	}
+	// Host github.com sits after every profile block and before Host *, the only other block that
+	// could match it.
+	gh, err := gitHubBlock(m)
+	if err != nil {
+		return "", err
+	}
+	if gh != nil {
+		b.WriteString(gitBanner(m.Defaults.Git.Profile) + "\n")
+		writeHostBlock(&b, *gh)
+	}
 	writeGlobalBlock(&b, m.Defaults.GlobalOptions, emitUseKeychain)
 	b.WriteString(ManagedEnd + "\n")
 	return b.String(), nil
@@ -239,6 +254,7 @@ func hostsByProfile(m *manifest.Manifest) (map[string][]RenderHost, error) {
 			IdentityAgent: agent,
 			KnownHosts:    m.KnownHostsFile(),
 			RawOptions:    rk.Host.RawOptions,
+			ProxyCommand:  proxyFor(rk.Host),
 		})
 	}
 	return byProfile, nil
@@ -281,6 +297,7 @@ func RenderHostBlockFor(m *manifest.Manifest, profile string, host manifest.Host
 		IdentityAgent: agent,
 		KnownHosts:    m.KnownHostsFile(),
 		RawOptions:    host.RawOptions,
+		ProxyCommand:  proxyFor(host),
 	})
 	return b.String(), nil
 }

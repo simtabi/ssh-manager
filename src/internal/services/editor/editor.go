@@ -371,6 +371,8 @@ type HostFields struct {
 	TokenEnv *string
 	KeyName  *string
 	Tags     []string
+	// VM marks the host as a local VM whose address the hypervisor supplies at connect time.
+	VM *manifest.VMSpec
 }
 
 // AddHost adds a host to a profile.
@@ -394,6 +396,7 @@ func (e *Editor) AddHost(profile, alias string, f HostFields) error {
 	host := manifest.Host{
 		Alias: alias, Hostname: deref(f.Hostname), User: deref(f.User), Port: port,
 		Provider: f.Provider, TokenEnv: f.TokenEnv, KeyName: f.KeyName, Tags: f.Tags,
+		VM: f.VM,
 	}
 	p := m.Profiles[profile]
 	p.Hosts = append(p.Hosts, host)
