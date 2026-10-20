@@ -121,6 +121,16 @@ var goOnly = map[string]string{
 	"git use --dry-run": "git remote modes - show the rewrite, touch nothing",
 	"git use --yes":     "confirm-before-changing",
 
+	// Devboxes (3.3.0): a VM's address comes from its hypervisor at connect time.
+	"vm":                  "devboxes - group",
+	"vm list":             "devboxes - every hypervisor's VMs and the host using each",
+	"vm add":              "devboxes - add a VM as a host",
+	"vm add --hypervisor": "devboxes - which hypervisor",
+	"vm add --vm":         "devboxes - the VM's name",
+	"vm add --user":       "devboxes - guest user",
+	"vm add --key-name":   "devboxes - key override, as host add",
+	"vm docker-context":   "devboxes - Docker context ssh://<alias>",
+
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
 
