@@ -76,6 +76,7 @@ func newVMListCmd() *cobra.Command {
 
 func newVMAddCmd() *cobra.Command {
 	var hv, vmName, user, keyName string
+	var yes bool
 	c := &cobra.Command{
 		Use:   "add <profile> <alias>",
 		Short: "Add a VM as a host: its address comes from the hypervisor at connect time",
@@ -83,6 +84,10 @@ func newVMAddCmd() *cobra.Command {
 		RunE: func(c *cobra.Command, args []string) error {
 			if hv == manifest.HypervisorOrbStack || hv == manifest.HypervisorPodman {
 				return fmt.Errorf("%s manages its own SSH access and keys; use `sshmgr vm docker-context` instead of a host", hv)
+			}
+			if err := confirmChange(c, fmt.Sprintf("vm add records %s as a %s VM host and re-renders ~/.ssh/config.",
+				args[1], hv), yes); err != nil {
+				return err
 			}
 			p, err := resolvePaths(c)
 			if err != nil {
@@ -108,6 +113,7 @@ func newVMAddCmd() *cobra.Command {
 	c.Flags().StringVar(&vmName, "vm", "", "the VM's name as the hypervisor lists it (`sshmgr vm list`)")
 	c.Flags().StringVarP(&user, "user", "u", "", "guest user")
 	c.Flags().StringVar(&keyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
+	c.Flags().BoolVarP(&yes, "yes", "y", false, "add without confirming (implied when there is no terminal)")
 	_ = c.MarkFlagRequired("hypervisor")
 	_ = c.MarkFlagRequired("vm")
 	_ = c.MarkFlagRequired("user")

@@ -129,6 +129,7 @@ var goOnly = map[string]string{
 	"vm add --vm":         "devboxes - the VM's name",
 	"vm add --user":       "devboxes - guest user",
 	"vm add --key-name":   "devboxes - key override, as host add",
+	"vm add --yes":        "confirm-before-changing",
 	"vm docker-context":   "devboxes - Docker context ssh://<alias>",
 
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
