@@ -2,6 +2,7 @@ package cli
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -104,8 +105,17 @@ func newKnownHostsCmd() *cobra.Command {
 				return fmt.Errorf("no target")
 			}
 			byProfile := map[string][]string{}
+			// A target that returns no key is a failure, not "pinned 0": a reachable non-SSH port
+			// (a web server on 443) used to report success and leave the host untrusted.
+			var unscanned []string
 			for _, t := range targets {
-				for _, sk := range svc.Scan(t.Hostname, t.Port) {
+				keys, scanErr := svc.ScanChecked(t.Hostname, t.Port)
+				if scanErr != nil {
+					_, _ = fmt.Fprintf(c.ErrOrStderr(), "%s: %v\n", t.Alias, scanErr)
+					unscanned = append(unscanned, t.Alias)
+					continue
+				}
+				for _, sk := range keys {
 					label := t.Profile
 					if label == "" {
 						label = "global"
@@ -128,6 +138,9 @@ func newKnownHostsCmd() *cobra.Command {
 				return err
 			}
 			_, _ = fmt.Fprintf(out, "pinned %d host key(s) into known_hosts\n", total)
+			if len(unscanned) > 0 {
+				return fmt.Errorf("no SSH host key from %d host(s): %s", len(unscanned), strings.Join(unscanned, ", "))
+			}
 			return nil
 		},
 	}

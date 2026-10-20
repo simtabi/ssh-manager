@@ -58,9 +58,25 @@ func (s *Service) Path() string {
 
 // Scan ssh-keyscans a host and fingerprints each key (no writes).
 func (s *Service) Scan(host string, port int) []ScannedKey {
+	keys, _ := s.ScanChecked(host, port)
+	return keys
+}
+
+// ScanChecked is Scan that says why nothing came back: ssh-keyscan is missing, or the host
+// answered with no SSH host key (a closed or filtered port, or a non-SSH service such as a web
+// server). A caller that pins must not report success for either.
+func (s *Service) ScanChecked(host string, port int) ([]ScannedKey, error) {
 	if _, err := exec.LookPath("ssh-keyscan"); err != nil {
-		return nil
+		return nil, fmt.Errorf("ssh-keyscan not found on PATH; install OpenSSH's client tools")
 	}
+	keys := s.keyscan(host, port)
+	if len(keys) == 0 {
+		return nil, fmt.Errorf("%s:%d: no SSH host key came back (port closed or filtered, or not an SSH server); check the hostname and port", host, port)
+	}
+	return keys, nil
+}
+
+func (s *Service) keyscan(host string, port int) []ScannedKey {
 	args := []string{"-T", "5"}
 	if port != 22 {
 		args = append(args, "-p", strconv.Itoa(port))
