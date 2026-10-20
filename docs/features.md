@@ -72,7 +72,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | Command | What it does | Tests |
 |---|---|---|
 | `deploy <key> [target]` | Install the public key on its target via the host's provider (GitHub/GitLab CLI, cloud-VPS REST, `generic-ssh` `ssh-copy-id`, or web-panel/manual) and record it. **Exits ≠0 if a target is unreachable.** | U·E·F |
-| `rotate <key> [--yes] [--allow-unverified] [--passphrase]` | Zero-downtime staged rotation: stage → deploy → verify → archive (≤1 predecessor). Aborts cleanly (pulling the staged key back) if a target can't be verified or is unreachable. | U·E·F |
+| `rotate <key> [--yes] [--allow-unverified] [--passphrase]` | Zero-downtime staged rotation: stage → deploy → verify → archive (≤1 predecessor). Aborts cleanly (pulling the staged key back) if a target can't be verified or is unreachable. A hosting-panel target (Ploi, Forge, cPanel) waits at a terminal for the pasted key, then logs in with it before committing. | U·E·F |
 | `rotate [selectors...] [--category] [--all] [--dry-run]` | Rotate a batch: several keys, profiles or aliases, a category, or every key a host uses. One confirmation, backup and snapshot; each key rotates on its own and a failure leaves only that key untouched. | U |
 | `rollback <key> [--yes]` | Restore the single `/old/` predecessor (re-deploy is best-effort; skips unreachable hosts). | U·E·F |
 | `load <profile>` | Add the profile's keys to the agent (Keychain on macOS). | U·F |

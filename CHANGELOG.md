@@ -29,6 +29,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Hosting panel targets no longer force an unverified rotation.** A
+  `ploi`, `forge` or `cpanel` target only accepts a pasted key, and `rotate`
+  either aborted or, with `--allow-unverified`, committed before the key was
+  pasted, so SSH to that server failed until it was. At a terminal, `rotate` now
+  shows the staged public key and where it goes, waits for the paste, and logs
+  in with the staged key; only a working login counts as verified. The committed
+  report says where the old key still has to be removed. Without a terminal,
+  nothing changes.
 - `knownhosts pin` reported `pinned 0 host key(s)` and exited 0 for a host that
   returned no SSH key (a closed port, or a web server on 443). It now names each
   such host with the reason, pins the rest, and exits non-zero; a missing
