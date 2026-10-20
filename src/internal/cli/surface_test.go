@@ -111,6 +111,16 @@ var goOnly = map[string]string{
 	"key regen-pub --dry-run":  "regen-pub - report only",
 	"key regen-pub --yes":      "confirm-before-changing",
 
+	// Git remote modes (3.3.0): profile SSH by default, plain SSH or HTTPS on demand,
+	// switched per checkout with an ls-remote check before origin is rewritten.
+	"git":               "git remote modes - group",
+	"git status":        "git remote modes - each checkout's mode, owner and profile",
+	"git use":           "git remote modes - point origin at profile, ssh or https",
+	"git use --mode":    "git remote modes - the mode when not given as the first argument",
+	"git use --profile": "git remote modes - override the owner-to-profile mapping",
+	"git use --dry-run": "git remote modes - show the rewrite, touch nothing",
+	"git use --yes":     "confirm-before-changing",
+
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
 
