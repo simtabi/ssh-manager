@@ -330,10 +330,51 @@ func (b *Bundler) decrypt(bundlePath, identityFile string) ([]member, error) {
 	return members, nil
 }
 
+// profilesPrefix is the only subtree of ~/.ssh that writeTarGz walks.
+const profilesPrefix = sshPrefix + "profiles/"
+
+// checkMember reports whether name is something writeTarGz could have written,
+// and is the restore-side mirror of it: change one and the other must follow.
+//
+// It is an allow-list rather than a deny-list because age encrypts but does not
+// authenticate the sender. Anyone holding the public recipient can forge a
+// bundle that decrypts cleanly with the owner's identity, so a valid decryption
+// says nothing about who made it. A member like ssh/authorized_keys (a login for
+// the forger) or ssh/config (a ProxyCommand run on the next ssh) is entirely
+// inside ~/.ssh, so the os.Root containment in layDown has no objection to it;
+// only knowing exactly what a real bundle holds does.
+func checkMember(name string) error {
+	if rel, ok := strings.CutPrefix(name, profilesPrefix); ok && rel != "" {
+		// writeTarGz skips .staging, so a member inside one is not ours.
+		if hasStaging(rel) {
+			return fmt.Errorf("refusing member bundle never writes: %s", name)
+		}
+		return nil
+	}
+	if base, ok := strings.CutPrefix(name, configPrefix); ok {
+		// Exact names, not path.Base: the config members are flat, and taking
+		// the base name of config/x/.env would have let .env back in.
+		for _, c := range configMembers {
+			if base == c {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("refusing member bundle never writes: %s", name)
+}
+
 func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, error)) (RestoreResult, error) {
 	res := RestoreResult{}
 	sorted := append([]member(nil), members...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].name < sorted[j].name })
+	// Vet every member before writing any. Checking inside the write loop would
+	// lay down the members that sort ahead of a forged one, so a refused restore
+	// would still have changed the tree.
+	for _, m := range sorted {
+		if err := checkMember(m.name); err != nil {
+			return res, err
+		}
+	}
 	// One root per destination, opened once. Every write below goes through one
 	// of them, so a member can only ever land inside the directory it is routed
 	// to - enforced by the kernel on the resolved path, not by us on the
@@ -367,15 +408,12 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 			root, rel = sshRoot, strings.TrimPrefix(m.name, sshPrefix)
 			label = rel
 		case strings.HasPrefix(m.name, configPrefix):
-			// Flat by construction, and pinning the base name keeps a crafted
-			// member from escaping the config dir.
-			root, rel = configRoot, path.Base(m.name)
+			// checkMember has pinned this to a flat, known name already.
+			root, rel = configRoot, strings.TrimPrefix(m.name, configPrefix)
 			label = configPrefix + rel
 		default:
-			// A bundle only ever holds those two roots. Anything else means the
-			// archive was tampered with - including a traversal like
-			// "ssh/../../x", which path.Clean has already stripped the prefix
-			// from. Refusing beats silently skipping part of a restore.
+			// Unreachable once checkMember has passed every member; kept so a
+			// future change to the allow-list cannot fall through to a write.
 			return res, fmt.Errorf("refusing unexpected member in bundle: %s", m.name)
 		}
 		if err := writeBytesAtomicIn(root, rel, m.data); err != nil {

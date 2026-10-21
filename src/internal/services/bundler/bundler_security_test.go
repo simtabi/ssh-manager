@@ -335,3 +335,98 @@ func TestRestoreWillNotWriteThroughASymlinkOutOfTheDestination(t *testing.T) {
 			"%s = %q\nRestore returned: %v", victim, got, restoreErr)
 	}
 }
+
+// age encrypts but does not authenticate the sender: anyone holding the public
+// recipient can build a bundle that decrypts cleanly with the victim's
+// identity. So restore must lay down only the members bundle itself writes. A
+// forged ssh/authorized_keys grants the forger a login, and a forged ssh/config
+// runs their ProxyCommand on the next ssh - both sit inside ~/.ssh, so the
+// os.Root containment never sees anything wrong with them.
+func TestRestoreRefusesMembersBundleNeverWrites(t *testing.T) {
+	for _, forged := range [][]string{
+		{"ssh/authorized_keys"},
+		{"ssh/config"},
+		{"ssh/rc"},
+		{"ssh/known_hosts"},
+		{"ssh/environment"},
+		{"ssh/profiles"},                   // a file where the profiles dir belongs
+		{"ssh/profiles/work/.staging/key"}, // bundle skips staging residue
+		{"config/.env"},                    // NEVER bundled
+		{"config/sub/manifest.json"},       // bundle's config members are flat
+		{"config/settings.json"},           // not one of the three models
+		// A legitimate member sorts first, so a restore that checks as it
+		// writes would already have touched disk before reaching the bad one.
+		{"ssh/profiles/work/work_a-ed25519", "ssh/rc"},
+		{"config/manifest.json", "ssh/config"},
+	} {
+		t.Run(strings.Join(forged, "+"), func(t *testing.T) {
+			base := t.TempDir()
+			ssh := filepath.Join(base, ".ssh")
+			cfg := filepath.Join(base, "cfg")
+			crafted := writeArchive(t, t.TempDir(), forged...)
+
+			_, err := New(ssh, cfg, fakeCipher{}).Restore(crafted, "", fakeFP)
+			if err == nil {
+				t.Fatal("a member bundle never writes was accepted")
+			}
+			bad := forged[len(forged)-1]
+			if !strings.Contains(err.Error(), bad) {
+				t.Errorf("the error should name the offending member %q: %v", bad, err)
+			}
+			// Refused means nothing written, not the bad member skipped.
+			if left := tmpResidue(t, base); len(left) > 0 {
+				t.Errorf("a refused restore still wrote: %v", left)
+			}
+		})
+	}
+}
+
+// The allow-list must not reject anything bundle legitimately produces: every
+// file under profiles/ in both layouts (keys, .pub, old/ archives, the rendered
+// per-category config) and all three config models.
+func TestRestoreAcceptsEverythingBundleWrites(t *testing.T) {
+	ssh, cfg := writeSrc(t)
+	mk := func(p string) {
+		if err := os.MkdirAll(filepath.Dir(p), 0o700); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(filepath.Base(p)+"\n"), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	mk(filepath.Join(ssh, "profiles", "work", "old", "work_a-ed25519"))
+	mk(filepath.Join(ssh, "profiles", "clients", "acme", "acme_k-ed25519"))
+	mk(filepath.Join(ssh, "profiles", "clients", "acme", "acme_k-ed25519.pub"))
+	mk(filepath.Join(ssh, "profiles", "clients", "config"))
+	mk(filepath.Join(cfg, "providers.json"))
+	// Outside what bundle walks, so it must be neither bundled nor restored.
+	mk(filepath.Join(ssh, "authorized_keys"))
+
+	res, err := New(ssh, cfg, fakeCipher{}).Bundle("age1fake", t.TempDir(), "20260101")
+	if err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	ssh2, cfg2 := filepath.Join(base, ".ssh"), filepath.Join(base, "cfg")
+	rr, err := New(ssh2, cfg2, fakeCipher{}).Restore(res.AgePath, "", fakeFP)
+	if err != nil {
+		t.Fatalf("a genuine bundle was refused: %v\ncontents: %v", err, res.Contents)
+	}
+	if len(rr.Restored) != len(res.Contents) {
+		t.Errorf("restored %d of %d members: %v", len(rr.Restored), len(res.Contents), rr.Restored)
+	}
+	for _, c := range res.Contents {
+		var p string
+		if rel, ok := strings.CutPrefix(c, sshPrefix); ok {
+			p = filepath.Join(ssh2, filepath.FromSlash(rel))
+		} else {
+			p = filepath.Join(cfg2, strings.TrimPrefix(c, configPrefix))
+		}
+		if _, err := os.Stat(p); err != nil {
+			t.Errorf("%s was not laid back: %v", c, err)
+		}
+	}
+	if _, err := os.Stat(filepath.Join(ssh2, "authorized_keys")); err == nil {
+		t.Error("authorized_keys was restored, but bundle never writes it")
+	}
+}
