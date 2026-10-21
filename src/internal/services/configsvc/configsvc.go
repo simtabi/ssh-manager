@@ -38,22 +38,27 @@ func (s *Service) Rendered() (map[string]string, error) {
 	return renderer.RenderAll(s.manifest, s.emitUseKeychain)
 }
 
-// CheckResult reports config drift. InSync is the gate (ssh_errors don't count).
+// CheckResult reports config drift. InSync is the gate.
 type CheckResult struct {
 	FileDiffs map[string]string
 	Missing   []string
 	Orphan    []string
+	// SSHErrors is filled only when Check ran with validateSSH; callers that
+	// skip the ssh leg get an empty map and an InSync that ignores it.
 	SSHErrors map[string]string
 }
 
-// InSync reports whether the on-disk config matches the manifest.
+// InSync reports whether the on-disk config matches the manifest and, when it
+// was asked, whether ssh can parse it. A config ssh refuses breaks every host,
+// so it is never in sync even when every managed byte matches.
 func (r *CheckResult) InSync() bool {
-	return len(r.FileDiffs) == 0 && len(r.Missing) == 0 && len(r.Orphan) == 0
+	return len(r.FileDiffs) == 0 && len(r.Missing) == 0 && len(r.Orphan) == 0 &&
+		len(r.SSHErrors) == 0
 }
 
 // Format renders a human report.
 func (r *CheckResult) Format() string {
-	if r.InSync() && len(r.SSHErrors) == 0 {
+	if r.InSync() {
 		return "config: in sync with the manifest ✓"
 	}
 	var b strings.Builder
@@ -68,6 +73,12 @@ func (r *CheckResult) Format() string {
 	}
 	for _, a := range sortedKeys(r.SSHErrors) {
 		fmt.Fprintf(&b, "SSH -G   %s: %s\n", a, r.SSHErrors[a])
+	}
+	if len(r.FileDiffs) == 0 && len(r.Missing) == 0 && len(r.Orphan) == 0 {
+		// Only ssh failed: the managed block already matches, so rendering
+		// again would not help - the fault is in content sshmgr does not own.
+		b.WriteString("config: ssh cannot parse the config - fix the lines reported above")
+		return b.String()
 	}
 	b.WriteString("config: DRIFT detected - run: sshmgr config render")
 	return b.String()

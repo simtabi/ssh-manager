@@ -3,6 +3,7 @@ package configsvc
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
@@ -340,5 +341,54 @@ func TestRenderedCategoryFileIsPrunedWhenTheCategoryGoes(t *testing.T) {
 	}
 	if len(res.Pruned) != 1 || res.Pruned[0] != "profiles/internal/config" {
 		t.Fatalf("pruned = %v, want the dropped category's file", res.Pruned)
+	}
+}
+
+// `config check` promises a non-zero exit when the config is not fit to use. A
+// config ssh cannot parse is the worst case of that, so an ssh -G failure fails
+// InSync - it used to be reported and then ignored, exiting 0.
+func TestSSHErrorsFailInSync(t *testing.T) {
+	r := &CheckResult{SSHErrors: map[string]string{"gh": "config line 2: invalid quotes"}}
+	if r.InSync() {
+		t.Error("a config ssh rejects was reported in sync")
+	}
+	if !strings.Contains(r.Format(), "SSH -G   gh: config line 2: invalid quotes") {
+		t.Errorf("format lost the ssh error:\n%s", r.Format())
+	}
+}
+
+// End to end against the real ssh: the managed block matches the manifest byte
+// for byte, but hand-written content above it has a stray quote, so ssh refuses
+// the whole file. Without the ssh leg (validateSSH=false) nothing changes.
+func TestCheckFailsWhenSSHCannotParseTheConfig(t *testing.T) {
+	if _, err := exec.LookPath("ssh"); err != nil {
+		t.Skip("ssh not on PATH")
+	}
+	dir := t.TempDir()
+	svc := New(dir, load(t, manifestJSON), false)
+	if _, err := svc.Write(false); err != nil {
+		t.Fatal(err)
+	}
+	cfg := filepath.Join(dir, "config")
+	body, err := os.ReadFile(cfg)
+	if err != nil {
+		t.Fatal(err)
+	}
+	foreign := "Host broken\n    HostName \"unterminated\n\n"
+	if err := os.WriteFile(cfg, []byte(foreign+string(body)), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if !mustCheck(t, svc).InSync() {
+		t.Fatal("foreign content alone should not be drift")
+	}
+	res, err := svc.Check(true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.SSHErrors) == 0 {
+		t.Fatal("ssh -G accepted a config with an unterminated quote")
+	}
+	if res.InSync() {
+		t.Errorf("a config ssh cannot parse was reported in sync:\n%s", res.Format())
 	}
 }
