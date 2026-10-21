@@ -41,6 +41,8 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `config check` | Verify the on-disk config byte-for-byte matches a fresh render (exit ≠0 on drift). | U·E·F |
 | `config render [--dry-run]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
+| `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses a rendered file as its target. | U·F |
+| `termius export [--out PATH\|-] [--skip ALIAS] [--include-git] [--open]` | Write a Termius CSV import (group = profile, label = alias) and list the key to attach to each host; `--open` opens Termius on macOS. | U·F |
 | `import [path] [--force]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
 | `diff` | Preview manifest vs. on-disk reality (config + which keys are missing/present). | U·F |
 

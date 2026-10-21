@@ -8,6 +8,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Exports for other tools.** `sshmgr config export --flat` writes the whole
+  config as one file, every host inline with absolute key paths and no
+  `Include` or `Match`, for a tool that reads a single `ssh_config`.
+  `sshmgr termius export` writes a Termius CSV import (group = profile,
+  label = alias, tags, address, port, user; never a password) and lists the key
+  to attach to each host; `--open` opens Termius and shows the file on macOS,
+  `--skip` leaves a host out, and VM and git hosts are left out and reported.
+  Both write under `~/.config/ssh-manager/exports/` (0600) and refuse any file
+  `config render` owns as a target, so the split config is never changed.
+  Termius's own importer reads only the top-level `~/.ssh/config` and never
+  saw the hosts in category files.
 - **Git remote modes.** `sshmgr git status` shows how each checkout's GitHub
   origin authenticates; `sshmgr git use profile|ssh|https [PATH...]` switches it:
   the profile's own alias (`git@github-<profile>:owner/repo.git`, the default),
