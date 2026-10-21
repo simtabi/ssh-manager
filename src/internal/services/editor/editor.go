@@ -66,12 +66,30 @@ func (e *Editor) AddProfile(name, keyScope string, keyName *string) error {
 	if keyScope == "" {
 		keyScope = "per_service"
 	}
+	if err := needsSharedKeyName(name, keyScope, keyName, m.Defaults.KeyType); err != nil {
+		return err
+	}
 	m.SetProfile(name, manifest.Profile{KeyScope: keyScope, KeyName: keyName})
 	if err := e.save(m); err != nil {
 		return err
 	}
 	log.Audit(e.p.AuditLog(), "profile.add", log.Field{Key: "profile", Value: name})
 	return nil
+}
+
+// needsSharedKeyName refuses a shared profile with no key_name. Every host in a
+// shared profile resolves to that one name, so without it the profile can
+// never take a host: `host add` fails on it, after the profile was already
+// saved as if it were usable. The error suggests a name in the usual shape.
+func needsSharedKeyName(profile, scope string, keyName *string, keyType string) error {
+	if scope != "shared" || (keyName != nil && *keyName != "") {
+		return nil
+	}
+	if keyType == "" {
+		keyType = "ed25519"
+	}
+	return fmt.Errorf("a shared profile uses one key for every host, so it needs one: pass --key-name "+
+		"(for example --key-name %s-%s)", profile, keyType)
 }
 
 // EditProfile updates a profile's key_scope and/or key_name (nil/empty keeps).
@@ -90,6 +108,9 @@ func (e *Editor) EditProfile(name string, keyScope *string, keyName *string) err
 	}
 	if keyName != nil {
 		p.KeyName = keyName
+	}
+	if err := needsSharedKeyName(name, scope, p.KeyName, m.Defaults.KeyType); err != nil {
+		return err
 	}
 	// Mutate the loaded profile rather than rebuilding one from the fields this
 	// command knows about, so a field it does not edit (keys) survives the edit.

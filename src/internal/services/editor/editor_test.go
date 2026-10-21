@@ -442,3 +442,32 @@ func TestDeletingAHostDropsOnlyItsOwnDeployment(t *testing.T) {
 		t.Error("box's deployment was downgraded by another host's deletion")
 	}
 }
+
+// A shared profile resolves every host to its key_name, so one without a
+// key_name can never take a host: `host add` then fails on it. Refusing at add
+// and edit time keeps that broken state out of the manifest, and the error
+// names a usable key name.
+func TestSharedProfileNeedsAKeyName(t *testing.T) {
+	e, p := setup(t)
+	if err := e.AddProfile("team", "shared", nil); err == nil || !strings.Contains(err.Error(), "--key-name") {
+		t.Errorf("a shared profile without a key name was accepted: %v", err)
+	}
+	if _, ok := reload(t, p).Profiles["team"]; ok {
+		t.Error("the refused profile was saved")
+	}
+	name := "team-ed25519"
+	if err := e.AddProfile("team", "shared", &name); err != nil {
+		t.Fatalf("a shared profile with a key name was refused: %v", err)
+	}
+
+	shared := "shared"
+	if err := e.EditProfile("work", &shared, nil); err == nil || !strings.Contains(err.Error(), "--key-name") {
+		t.Errorf("switching to shared without a key name was accepted: %v", err)
+	}
+	if got := reload(t, p).Profiles["work"].KeyScope; got != "per_service" {
+		t.Errorf("the refused edit changed key_scope to %q", got)
+	}
+	if err := e.EditProfile("work", &shared, &name); err != nil {
+		t.Errorf("switching to shared with a key name was refused: %v", err)
+	}
+}

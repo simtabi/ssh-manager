@@ -205,7 +205,7 @@ func newTermiusCmd() *cobra.Command {
 		},
 	}
 	export.Flags().StringVarP(&out, "out", "o", "", "where to write (default ~/.config/ssh-manager/exports/termius-hosts.csv; - for stdout)")
-	export.Flags().BoolVar(&includeGit, "include-git", false, "also export git hosts (user git), which are not shells")
+	export.Flags().BoolVar(&includeGit, "include-git", false, "also export git hosts (user git, or a github or gitlab provider), which are not shells")
 	export.Flags().StringArrayVar(&skip, "skip", nil, "leave out this alias (repeatable)")
 	export.Flags().BoolVar(&open, "open", false, "macOS: open Termius and show the file in Finder")
 	cmd.AddCommand(export)
