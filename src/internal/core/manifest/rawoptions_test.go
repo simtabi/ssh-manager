@@ -7,7 +7,7 @@ import (
 
 // The importer carries every option it does not parse into raw_options, so a
 // manifest imported before this check existed can hold UserKnownHostsFile (and
-// a hand-edited one HostName, User, Port or IdentityFile). Such a manifest
+// a hand-edited one HostName, User or Port). Such a manifest
 // loads today, and refusing it now would lock the user out of every command
 // until they edited JSON by hand. It still loads; the overlap is reported.
 func TestRawOptionsThatDuplicateAManagedFieldStillLoadAndAreReported(t *testing.T) {
@@ -46,14 +46,16 @@ func TestRawOptionsThatDuplicateAManagedFieldStillLoadAndAreReported(t *testing.
 }
 
 func TestManagedHostOptionIsCaseInsensitiveAndLeavesOthersAlone(t *testing.T) {
-	for _, k := range []string{"HostName", "hostname", "USER", "Port", "IdentityFile", "UserKnownHostsFile"} {
+	for _, k := range []string{"HostName", "hostname", "USER", "Port", "UserKnownHostsFile"} {
 		if _, ok := ManagedHostOption(k); !ok {
 			t.Errorf("%s is set by the managed lines of every host block", k)
 		}
 	}
 	// IdentitiesOnly and IdentityAgent are deliberate per-host overrides, and
 	// ProxyJump/ForwardAgent are never emitted by the renderer.
-	for _, k := range []string{"IdentitiesOnly", "IdentityAgent", "ProxyJump", "ForwardAgent"} {
+	// IdentityFile is a list ssh tries in order, so a raw one adds a key rather
+	// than being ignored.
+	for _, k := range []string{"IdentitiesOnly", "IdentityAgent", "IdentityFile", "ProxyJump", "ForwardAgent"} {
 		if _, ok := ManagedHostOption(k); ok {
 			t.Errorf("%s is not a managed line; raw_options may set it", k)
 		}

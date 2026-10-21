@@ -601,9 +601,10 @@ func checkOptions(field string, opts OrderedOptions) error {
 // managedHostOptions are the keywords every rendered host block already sets
 // from a field of its own, each mapped to what to set instead. A raw_option for
 // one of them is never what ssh uses: ssh keeps the first value it obtains, and
-// the managed line comes first (IdentityFile, a list, would add a second key
-// instead). IdentitiesOnly and IdentityAgent are absent on purpose - a raw
-// value for those replaces the managed line, as a per-host override.
+// the managed line comes first. IdentitiesOnly and IdentityAgent are absent on
+// purpose - a raw value for those replaces the managed line, as a per-host
+// override. So is IdentityFile: ssh tries every IdentityFile line, so a raw one
+// has always added a second key to offer, and dropping it would take that away.
 //
 // They are reported rather than rejected. The importer carries every option it
 // does not parse into raw_options, so manifests imported before this existed
@@ -613,7 +614,6 @@ var managedHostOptions = map[string]string{
 	"hostname":           `set "hostname" instead`,
 	"user":               `set "user" instead`,
 	"port":               `set "port" instead`,
-	"identityfile":       `set the profile's key_name / key_scope instead (sshmgr derives the key path)`,
 	"userknownhostsfile": `pin host keys with sshmgr knownhosts pin instead (sshmgr keeps every pin in ~/.ssh/known_hosts)`,
 }
 

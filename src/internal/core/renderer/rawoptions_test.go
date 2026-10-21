@@ -26,7 +26,6 @@ func TestRawOptionsNeverDuplicateAManagedLine(t *testing.T) {
 		"HostName":           "srv.example",
 		"User":               "deploy",
 		"Port":               "2222",
-		"IdentityFile":       "~/.ssh/profiles/work/work_srv-ed25519",
 		"UserKnownHostsFile": "~/.ssh/known_hosts",
 	} {
 		if n := countKeyword(got, kw); n != 1 {
@@ -36,6 +35,11 @@ func TestRawOptionsNeverDuplicateAManagedLine(t *testing.T) {
 			t.Errorf("%s should be the managed value %q:\n%s", kw, want, got)
 		}
 	}
+	// IdentityFile is a list in ssh: a raw one adds a second key to try after
+	// the managed one, and has always done so. It stays.
+	if n := countKeyword(got, "IdentityFile"); n != 2 {
+		t.Errorf("IdentityFile appears %d times, want the managed key then the raw one:\n%s", n, got)
+	}
 	if !strings.Contains(got, "    ForwardAgent no\n") {
 		t.Errorf("an option sshmgr does not manage must still render:\n%s", got)
 	}
@@ -43,7 +47,7 @@ func TestRawOptionsNeverDuplicateAManagedLine(t *testing.T) {
 		"hostname":           {"srv.example"},
 		"user":               {"deploy"},
 		"port":               {"2222"},
-		"identityfile":       {"~/.ssh/profiles/work/work_srv-ed25519"},
+		"identityfile":       {"~/.ssh/profiles/work/work_srv-ed25519", "~/.ssh/other"},
 		"userknownhostsfile": {"~/.ssh/known_hosts"},
 	})
 }
