@@ -28,12 +28,28 @@ const (
 
 var controlChars = regexp.MustCompile(`[\x00-\x1f\x7f]`)
 
+// optionKeyword is the shape of an ssh_config keyword. ssh splits a config line
+// on the first run of whitespace or '=', so a key with either in it ("ProxyCommand ",
+// "ProxyCommand=x") renders as a different keyword than the one the dangerous
+// check below looked up. Holding every key to this shape first is what makes
+// that lookup sound.
+var optionKeyword = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+// configSyntaxChars mean something to ssh's config parser, so none may appear in
+// an alias, hostname or user, which are rendered unquoted. A quote makes ssh
+// refuse the whole file ("invalid quotes"), taking every host offline; '#'
+// starts a comment, '!' negates a Host pattern, ',' and '=' separate lists and
+// keywords.
+const configSyntaxChars = `"'#!,=`
+
 // dangerousOptions run a command, load an object, or pull in further config and
 // are never allowed in raw_options / global_options (ProxyJump is a host, allowed).
+// XAuthLocation is the path of the xauth program ssh runs for X11 forwarding.
 var dangerousOptions = map[string]bool{
 	"proxycommand": true, "localcommand": true, "permitlocalcommand": true,
 	"remotecommand": true, "match": true, "include": true,
 	"knownhostscommand": true, "pkcs11provider": true, "securitykeyprovider": true,
+	"xauthlocation": true,
 }
 
 // IsDangerousOption reports whether an SSH option key can execute commands / pull
@@ -547,6 +563,16 @@ func safeValue(field, value string) error {
 			return fmt.Errorf("%s=%q must not contain whitespace", field, value)
 		}
 	}
+	return rejectConfigSyntax(field, value)
+}
+
+// rejectConfigSyntax refuses a value carrying any of configSyntaxChars. Applied
+// to the alias, hostname and user, which are written into a Host block as-is.
+func rejectConfigSyntax(field, value string) error {
+	if strings.ContainsAny(value, configSyntaxChars) {
+		return fmt.Errorf("%s=%q must not contain any of %s "+
+			"(ssh's config parser reads them as syntax)", field, value, configSyntaxChars)
+	}
 	return nil
 }
 
@@ -555,6 +581,9 @@ func checkOptions(field string, opts OrderedOptions) error {
 		v := opts.vals[k]
 		if err := rejectControl(fmt.Sprintf("%s key %q", field, k), k); err != nil {
 			return err
+		}
+		if !optionKeyword.MatchString(k) {
+			return fmt.Errorf("%s key %q is not an ssh keyword (letters and digits only)", field, k)
 		}
 		if err := rejectControl(fmt.Sprintf("%s[%s]", field, k), v); err != nil {
 			return err
@@ -815,6 +844,11 @@ func (m *Manifest) validate() error {
 		}
 		for _, h := range p.Hosts {
 			if err := safeSegment("alias", h.Alias); err != nil {
+				return err
+			}
+			// safeSegment already refuses '*' and '?'; an alias is also a Host
+			// pattern, so the parser's own syntax is refused on top.
+			if err := rejectConfigSyntax("alias", h.Alias); err != nil {
 				return err
 			}
 			if h.KeyName != nil {

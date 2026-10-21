@@ -630,3 +630,81 @@ func TestManifestSaveIsAtomicAndReassertsMode(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// The dangerous-option check is a lookup on the lowercased key, so a key that is
+// not a bare keyword slipped past it: ssh splits a config line on whitespace or
+// '=', and "ProxyCommand " or "ProxyCommand=x" rendered as a working
+// ProxyCommand. Every option key must be a bare ssh keyword first.
+func TestOptionKeysMustBeBareKeywords(t *testing.T) {
+	for _, key := range []string{"ProxyCommand ", " ProxyCommand", "ProxyCommand=x",
+		"Proxy Command", "ProxyCommand\\tx", "1Port", "", "Host-Name", "Port:"} {
+		global := `{"defaults":{"global_options":{"` + key + `":"x"}},"profiles":{}}`
+		if _, err := loadJSON(t, global); err == nil {
+			t.Errorf("global_options key %q was accepted", key)
+		}
+		host := `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"u",
+			"raw_options":{"` + key + `":"x"}}]}}}`
+		if _, err := loadJSON(t, host); err == nil {
+			t.Errorf("raw_options key %q was accepted", key)
+		}
+	}
+	// Ordinary keywords, including ones with digits, stay valid.
+	if _, err := loadJSON(t, `{"defaults":{"global_options":{"ServerAliveInterval":60}},
+		"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"u",
+		"raw_options":{"Port":2222,"ProxyJump":"bastion","PKCS11Provider2":"x"}}]}}}`); err != nil {
+		t.Errorf("ordinary option keys were rejected: %v", err)
+	}
+}
+
+// XAuthLocation names a program ssh executes (xauth, for X11 forwarding), so it
+// belongs with the other command-running options.
+func TestXAuthLocationIsDangerous(t *testing.T) {
+	if !IsDangerousOption("XAuthLocation") {
+		t.Error("XAuthLocation is not reported dangerous")
+	}
+	if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"u",
+		"raw_options":{"XAuthLocation":"/tmp/evil"}}]}}}`); err == nil {
+		t.Error("XAuthLocation was accepted in raw_options")
+	}
+}
+
+// Quotes make ssh refuse the whole config ("invalid quotes"), which takes every
+// host offline, not just the one that carried them. '#' starts a comment, '!'
+// negates a Host pattern, ',' and '=' are list and keyword separators: none has
+// a place in an alias, a hostname or a user.
+func TestAliasHostnameUserRejectConfigSyntax(t *testing.T) {
+	for _, value := range []string{`a\"b`, "a'b", "#x", "a#b", "!neg", "a,b", "a=b"} {
+		for field, js := range map[string]string{
+			"alias":    `{"alias":"` + value + `","hostname":"h","user":"u"}`,
+			"hostname": `{"alias":"a","hostname":"` + value + `","user":"u"}`,
+			"user":     `{"alias":"a","hostname":"h","user":"` + value + `"}`,
+		} {
+			if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[`+js+`]}}}`); err == nil {
+				t.Errorf("%s %q was accepted", field, value)
+			}
+		}
+	}
+}
+
+// The values real manifests carry keep validating: IPs, dotted FQDNs, dashed
+// aliases, short user names.
+func TestOrdinaryHostValuesStillValidate(t *testing.T) {
+	js := `{"profiles":{"p":{"hosts":[
+		{"alias":"oribi-web","hostname":"143.198.186.131","user":"ploi"},
+		{"alias":"github-imanimanyara","hostname":"github.com","user":"git"},
+		{"alias":"unc-sc","hostname":"sc.its.unc.edu","user":"uncgit"},
+		{"alias":"v6","hostname":"2001:db8::1","user":"deploy_bot"}]}}}`
+	if _, err := loadJSON(t, js); err != nil {
+		t.Errorf("an ordinary manifest was rejected: %v", err)
+	}
+}
+
+// The starter manifest `sshmgr init` writes must pass its own validation on
+// every platform.
+func TestStarterManifestValidates(t *testing.T) {
+	for _, keychain := range []bool{true, false} {
+		if err := Starter(keychain).Validate(); err != nil {
+			t.Errorf("Starter(%v) is invalid: %v", keychain, err)
+		}
+	}
+}
