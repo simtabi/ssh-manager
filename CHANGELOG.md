@@ -47,6 +47,40 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Audit of 2026-10-21: security.** Dev mode no longer lets `rotate`,
+  `rollback`, the TUI deploy or `--revoke` reach real servers, and dev-mode
+  `migrate` no longer moves the real `~/.sshmgr` into the sandbox. `restore`
+  lays down only the members `bundle` writes, so a forged bundle cannot replace
+  `authorized_keys` or `config`. Option keys must be bare ssh keywords
+  (`ProxyCommand=x` and `"ProxyCommand "` bypassed the dangerous-option check)
+  and `XAuthLocation` is refused. Caller headers are dropped on a cross-origin
+  redirect, and a pagination link that leaves the API origin is refused rather
+  than sent the token. Import splits `Keyword=value`, so `ProxyCommand=...`
+  is dropped like the plain form.
+- **Audit of 2026-10-21: correctness.** A rollback checks every server before
+  moving a key and swaps the pair into `old/`, so an unreachable target no
+  longer destroys the rotated-in key, and an incomplete rollback exits non-zero.
+  Mutating commands take the lock before reading state, so concurrent runs no
+  longer drop each other's inventory records. Hostnames match known_hosts
+  case-insensitively (`clean` had pruned a live pin) and `@revoked` lines no
+  longer count as pinned. Aliases, hostnames and users that ssh reads as syntax
+  (`"`, `'`, `#`, `!`, `,`, `=`) are refused, and `config check` fails when ssh
+  cannot parse the config. Import resolves hosts the way ssh does: first value
+  wins, `Host *` applies, quotes are removed, and the same alias in two
+  profiles imports once instead of saving an invalid manifest. 1Password
+  rollback works after a second vault rotation. Keys minted before a failed
+  mint, keys on disk with no record, and the key `keygen --force` replaces all
+  keep their inventory records; `deploy` records the manifest's key type and
+  rotation. `rotate <profile|alias>` works, a shared profile needs a key name,
+  and an unknown command is reported ahead of its flags.
+- **Audit of 2026-10-21: what ssh would not use.** `config check` and `doctor`
+  report a hand-written Host block above the managed block that shadows a
+  managed alias (ssh reads it first), instead of calling the config in sync;
+  sshmgr still never edits content outside its block. A raw option that repeats
+  a line sshmgr writes (HostName, User, Port, UserKnownHostsFile) is no longer
+  rendered as a second, ignored line, and `doctor` names the field to use. A
+  `snapshots restore` keeps a `.pub` that would not match the private key on
+  disk, says so, and now works in dev mode.
 - **Hosting panel targets no longer force an unverified rotation.** A
   `ploi`, `forge` or `cpanel` target only accepts a pasted key, and `rotate`
   either aborted or, with `--allow-unverified`, committed before the key was
