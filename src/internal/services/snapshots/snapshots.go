@@ -9,6 +9,10 @@
 // Restoring therefore overwrites what the archive holds and removes nothing; key
 // files are only ever destroyed by an explicit purge, which takes its own
 // encrypted backup.
+//
+// The same exclusion means a restore can split a keypair: the archive holds a
+// .pub whose private half may since have been replaced on disk. A .pub is only
+// written beside a private key it is proven to belong to; see foreignPub.
 package snapshots
 
 import (
@@ -23,7 +27,10 @@ import (
 	"strings"
 	"time"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/authkeys"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/keystore"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/perms"
 )
 
@@ -245,33 +252,105 @@ func List(snapshotsDir string) []string {
 //
 // It overwrites the files the archive holds and deletes nothing else. Wiping the
 // directory first, as an exact restore would, is no longer possible: snapshots
-// exclude private keys, so it would destroy every key in the tree.
+// exclude private keys, so it would destroy every key in the tree. For the same
+// reason a .pub that does not belong to the private key now on disk is left as
+// it is (see foreignPub); RestoreByIDIn reports which.
 func Restore(tarball, sshDir string) error {
+	_, err := restore(tarball, sshDir, "")
+	return err
+}
+
+// restore is Restore with the dev-mode sandbox admitted when devRoot is set. It
+// returns the .pub files it left alone, relative to sshDir and slash-separated.
+func restore(tarball, sshDir, devRoot string) ([]string, error) {
 	if _, err := os.Stat(tarball); err != nil {
-		return fmt.Errorf("snapshot not found: %s", tarball)
+		return nil, fmt.Errorf("snapshot not found: %s", tarball)
 	}
-	if filepath.Base(sshDir) != ".ssh" {
+	if err := checkTarget(sshDir, devRoot); err != nil {
+		return nil, err
+	}
+	parent := filepath.Dir(sshDir)
+	skipped, err := extractTarGz(tarball, parent, foreignPub(parent))
+	if err != nil {
+		return nil, fmt.Errorf("snapshot is corrupt or not a valid archive: %s: %w", tarball, err)
+	}
+	prefix := filepath.Base(sshDir) + "/"
+	for i, name := range skipped {
+		skipped[i] = strings.TrimPrefix(name, prefix)
+	}
+	return skipped, nil
+}
+
+// checkTarget refuses to restore over anything but a .ssh, or the dev sandbox's
+// own ssh dir. Extraction is rooted at the target's parent, so aiming it at an
+// arbitrary directory would scatter the archive across that directory's siblings.
+//
+// The sandbox is admitted because the layout says it is one, not because of its
+// name: outside dev mode a directory called "ssh" is as arbitrary as any other,
+// and in dev mode it must be exactly <devRoot>/ssh, which ResolveDev has already
+// checked cannot overlap the real tree.
+func checkTarget(sshDir, devRoot string) error {
+	sandbox := devRoot != "" &&
+		filepath.Clean(sshDir) == filepath.Join(filepath.Clean(devRoot), paths.DevSSHDir)
+	if filepath.Base(sshDir) != ".ssh" && !sandbox {
 		return fmt.Errorf("refusing to restore over a non-.ssh path: %s", sshDir)
 	}
 	if fi, err := os.Lstat(sshDir); err == nil && fi.Mode()&os.ModeSymlink != 0 {
 		return fmt.Errorf("refusing to restore over a symlinked %s (it could point outside the managed tree)", sshDir)
 	}
-	parent := filepath.Dir(sshDir)
-	if err := extractTarGz(tarball, parent); err != nil {
-		return fmt.Errorf("snapshot is corrupt or not a valid archive: %s: %w", tarball, err)
-	}
 	return nil
 }
 
-func extractTarGz(tarball, destParent string) error {
+// foreignPub reports whether an archived .pub would land beside a private key it
+// does not belong to, and so must not be written.
+//
+// Snapshots never hold private keys, so a key regenerated after the snapshot
+// would otherwise get its predecessor's public half back. That pair fails
+// validate, and deploy would install a key nothing here can use while leaving
+// the real one unauthorised. The .pub on disk was written with the key that is
+// there now; the snapshot's copy describes a key that is gone.
+//
+// A .pub restores as before when nothing can contradict it: no private key on
+// disk (a 1Password profile keeps only the .pub locally), or the archive carries
+// the private key too (a legacy snapshot, whose pair travels together). With a
+// private key present, the .pub must derive from it. An encrypted key cannot be
+// derived without its passphrase, so its .pub restores only if it is the one
+// already on disk: validate reports an absent .pub, but not a wrong one.
+func foreignPub(destParent string) func(name string, data []byte, archived map[string]bool) bool {
+	ks := keystore.New()
+	return func(name string, data []byte, archived map[string]bool) bool {
+		privName, ok := strings.CutSuffix(name, ".pub")
+		if !ok || archived[privName] {
+			return false
+		}
+		priv := filepath.Join(destParent, filepath.FromSlash(privName))
+		if fi, err := os.Stat(priv); err != nil || !fi.Mode().IsRegular() {
+			return false
+		}
+		want := authkeys.KeyBody(string(data))
+		if want == "" {
+			return true
+		}
+		if cur, err := os.ReadFile(priv + ".pub"); err == nil && authkeys.KeyBody(string(cur)) == want {
+			return false
+		}
+		got, _, _ := ks.PublicFromPrivate(priv)
+		return authkeys.KeyBody(got) != want
+	}
+}
+
+// extractTarGz lays tarball over destParent. A regular member for which skip
+// returns true is not written, and its name is returned. skip is given the set
+// of regular members, so it can tell which files the archive carries together.
+func extractTarGz(tarball, destParent string, skip func(name string, data []byte, archived map[string]bool) bool) ([]string, error) {
 	f, err := os.Open(tarball)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = f.Close() }()
 	gz, err := gzip.NewReader(f)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = gz.Close() }()
 	tr := tar.NewReader(gz)
@@ -288,7 +367,7 @@ func extractTarGz(tarball, destParent string) error {
 			break
 		}
 		if err != nil {
-			return err
+			return nil, err
 		}
 		// Validate the name before it is joined to anything. Checking where the
 		// path landed afterwards is equivalent when written correctly, but this
@@ -296,19 +375,25 @@ func extractTarGz(tarball, destParent string) error {
 		// and what a static analyser can follow.
 		name := path.Clean(filepath.ToSlash(hdr.Name))
 		if path.IsAbs(name) || name == ".." || strings.HasPrefix(name, "../") {
-			return fmt.Errorf("refusing path traversal in archive: %s", hdr.Name)
+			return nil, fmt.Errorf("refusing path traversal in archive: %s", hdr.Name)
 		}
 		var data []byte
 		if hdr.Typeflag == tar.TypeReg {
 			data, err = io.ReadAll(tr)
 			if err != nil {
-				return err
+				return nil, err
 			}
 		}
 		members = append(members, member{hdr, name, data})
 	}
+	archived := map[string]bool{}
+	for _, m := range members {
+		if m.hdr.Typeflag == tar.TypeReg {
+			archived[m.name] = true
+		}
+	}
 	if err := os.MkdirAll(destParent, 0o700); err != nil {
-		return err
+		return nil, err
 	}
 
 	// Every write goes through os.Root, which confines it to destParent in the
@@ -325,34 +410,39 @@ func extractTarGz(tarball, destParent string) error {
 	// ones start getting waved through.
 	root, err := os.OpenRoot(destParent)
 	if err != nil {
-		return err
+		return nil, err
 	}
 	defer func() { _ = root.Close() }()
 
+	var skipped []string
 	for _, m := range members {
 		mode := os.FileMode(m.hdr.Mode).Perm()
 		switch m.hdr.Typeflag {
 		case tar.TypeDir:
 			if err := root.MkdirAll(m.name, mode); err != nil {
-				return err
+				return nil, err
 			}
 		case tar.TypeReg:
+			if skip != nil && skip(m.name, m.data, archived) {
+				skipped = append(skipped, m.name)
+				continue
+			}
 			if dir := path.Dir(m.name); dir != "." {
 				if err := root.MkdirAll(dir, 0o700); err != nil {
-					return err
+					return nil, err
 				}
 			}
 			// Unlink first: the destination may already exist, possibly as a
 			// symlink or read-only, and writing through either is wrong.
 			if err := root.Remove(m.name); err != nil && !os.IsNotExist(err) {
-				return err
+				return nil, err
 			}
 			if err := root.WriteFile(m.name, m.data, mode); err != nil {
-				return err
+				return nil, err
 			}
 		}
 	}
-	return nil
+	return skipped, nil
 }
 
 // Prune keeps the keep most-recent snapshots and removes the rest, returning how
@@ -376,10 +466,42 @@ func Prune(snapshotsDir string, keep int) int {
 // is itself reversible, then re-asserting perms. Returns the chosen snapshot path.
 // The advisory lock and the pre-restore snapshot are the CLI's mutation guard,
 // upstream of this, so they are not duplicated here.
+//
+// It does not admit the dev sandbox and does not report skipped .pub files; a
+// caller holding a resolved layout uses RestoreByIDIn.
 func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, error) {
+	res, err := restoreByID(sshDir, snapshotsDir, "", retain, id)
+	if err != nil {
+		return "", err
+	}
+	return res.Snapshot, nil
+}
+
+// Result is the outcome of RestoreByIDIn.
+type Result struct {
+	// Snapshot is the archive restored from.
+	Snapshot string
+	// Skipped lists the .pub files left as they were because they do not belong
+	// to the private key on disk, relative to the ssh dir.
+	Skipped []string
+}
+
+// RestoreByIDIn is RestoreByID for a resolved layout: it restores p.SSHDir from
+// p.SnapshotsDir(), admits the sandbox's ssh dir when p is a dev layout, and
+// reports the .pub files it did not overwrite.
+func RestoreByIDIn(p paths.Paths, retain int, id string) (Result, error) {
+	return restoreByID(p.SSHDir, p.SnapshotsDir(), p.DevRoot, retain, id)
+}
+
+func restoreByID(sshDir, snapshotsDir, devRoot string, retain int, id string) (Result, error) {
+	// Refuse before the pre-restore snapshot: taking one for a restore that is
+	// then refused can prune a snapshot the user still wanted.
+	if err := checkTarget(sshDir, devRoot); err != nil {
+		return Result{}, err
+	}
 	snaps := List(snapshotsDir)
 	if len(snaps) == 0 {
-		return "", fmt.Errorf("no snapshots to restore from")
+		return Result{}, fmt.Errorf("no snapshots to restore from")
 	}
 	chosen := snaps[len(snaps)-1]
 	if id != "" {
@@ -390,7 +512,7 @@ func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, er
 			}
 		}
 		if match == "" {
-			return "", fmt.Errorf("no snapshot matching %q", id)
+			return Result{}, fmt.Errorf("no snapshot matching %q", id)
 		}
 		chosen = match
 	}
@@ -398,23 +520,24 @@ func RestoreByID(sshDir, snapshotsDir string, retain int, id string) (string, er
 	// Restore from a temp copy that pruning cannot reach.
 	tmp, err := os.MkdirTemp("", "sshmgr-restore-")
 	if err != nil {
-		return "", err
+		return Result{}, err
 	}
 	defer func() { _ = os.RemoveAll(tmp) }()
 	safe := filepath.Join(tmp, filepath.Base(chosen))
 	if err := copyFile(chosen, safe); err != nil {
-		return "", err
+		return Result{}, err
 	}
 	if _, err := Snapshot(sshDir, snapshotsDir, retain, ""); err != nil {
-		return "", err
+		return Result{}, err
 	}
-	if err := Restore(safe, sshDir); err != nil {
-		return "", err
+	skipped, err := restore(safe, sshDir, devRoot)
+	if err != nil {
+		return Result{}, err
 	}
 	for _, mp := range perms.IterManagedPaths(sshDir) {
 		_ = perms.SetPerms(mp.Path, mp.Mode)
 	}
-	return chosen, nil
+	return Result{Snapshot: chosen, Skipped: skipped}, nil
 }
 
 func copyFile(src, dst string) error {
