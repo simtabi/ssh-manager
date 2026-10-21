@@ -56,6 +56,13 @@ type Report struct {
 	// StaleProxy lists rendered VM ProxyCommands whose sshmgr binary no longer exists (an upgrade
 	// moved it); `sshmgr config render` rewrites them.
 	StaleProxy []string
+	// ShadowedHosts lists managed aliases a foreign block above the managed
+	// block overrides: ssh reads it first, so the manifest's values never
+	// apply. sshmgr does not edit that content, so the user has to.
+	ShadowedHosts []string
+	// RawOptionOverlaps lists raw_options keys that duplicate a managed line.
+	// The rendered config already resolves the managed value; this is advice.
+	RawOptionOverlaps []string
 }
 
 // OK is the overall verdict.
@@ -65,7 +72,8 @@ type Report struct {
 // result nothing acts on is not a check. Which states are fatal is keyaudit's
 // call, not this one's (--strict makes all of them fatal).
 func (r Report) OK() bool {
-	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync || len(r.OnePassword) > 0 || len(r.StaleProxy) > 0 {
+	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync || len(r.OnePassword) > 0 || len(r.StaleProxy) > 0 ||
+		len(r.ShadowedHosts) > 0 {
 		return false
 	}
 	if !r.Dangling.OK() {
@@ -125,6 +133,20 @@ func (r Report) Format() string {
 			lines = append(lines, "  "+a)
 		}
 		lines = append(lines, "  -> give each host a distinct, profile-prefixed alias")
+	}
+	if len(r.ShadowedHosts) > 0 {
+		lines = append(lines, "WARNING: a block above sshmgr's managed block matches a managed "+
+			"alias - ssh applies the FIRST value it finds, so the manifest does not apply:")
+		for _, s := range r.ShadowedHosts {
+			lines = append(lines, "  "+s)
+		}
+		lines = append(lines, "  -> "+configsvc.ShadowFix)
+	}
+	if len(r.RawOptionOverlaps) > 0 {
+		lines = append(lines, "raw_options that duplicate a field sshmgr manages:")
+		for _, s := range r.RawOptionOverlaps {
+			lines = append(lines, "  "+s)
+		}
 	}
 	drift := "none"
 	if !r.ConfigInSync {
@@ -197,6 +219,8 @@ func (r Report) JSON() ([]byte, error) {
 		UnpinnedHosts      []string       `json:"unpinned_hosts"`
 		AliasCollisions    []string       `json:"alias_collisions"`
 		StaleProxy         []string       `json:"stale_proxy"`
+		ShadowedHosts      []string       `json:"shadowed_hosts"`
+		RawOptionOverlaps  []string       `json:"raw_option_overlaps"`
 		StrandedLegacyHome *string        `json:"stranded_legacy_home"`
 	}
 	nz := func(s []string) []string {
@@ -217,6 +241,7 @@ func (r Report) JSON() ([]byte, error) {
 		OrphanKeys: nz(r.OrphanKeys), DanglingKeys: danglingRows(r.Dangling),
 		DuplicateKeys: nz(r.DuplicateKeys), UnpinnedHosts: nz(r.UnpinnedHosts),
 		AliasCollisions: nz(r.AliasCollisions), StaleProxy: nz(r.StaleProxy),
+		ShadowedHosts: nz(r.ShadowedHosts), RawOptionOverlaps: nz(r.RawOptionOverlaps),
 		StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
 	})
 }
@@ -274,8 +299,14 @@ func (s *Service) Run(strict bool) Report {
 	rep.OldKeys, rep.StaleOldKeys = archivedKeys(ssh, OldKeyMaxAge(nil), time.Now())
 	if s.m != nil {
 		if chk, err := configsvc.New(ssh, s.m, s.emitUseKeychain).Check(false); err == nil {
-			rep.ConfigInSync = chk.InSync()
+			// Drift is what `config render` fixes; shadowing is reported on its
+			// own line because render cannot fix it.
+			rep.ConfigInSync = chk.BlockInSync()
+			for _, sh := range chk.Shadowed {
+				rep.ShadowedHosts = append(rep.ShadowedHosts, sh.String())
+			}
 		}
+		rep.RawOptionOverlaps = manifest.RawOptionOverlaps(s.m)
 		rep.Dangling = s.dangling(strict)
 		// orphan_keys stays in the JSON as the untracked view of the same audit:
 		// same meaning as before, now without the .pub requirement that hid the

@@ -598,6 +598,64 @@ func checkOptions(field string, opts OrderedOptions) error {
 	return nil
 }
 
+// managedHostOptions are the keywords every rendered host block already sets
+// from a field of its own, each mapped to what to set instead. A raw_option for
+// one of them is never what ssh uses: ssh keeps the first value it obtains, and
+// the managed line comes first (IdentityFile, a list, would add a second key
+// instead). IdentitiesOnly and IdentityAgent are absent on purpose - a raw
+// value for those replaces the managed line, as a per-host override.
+//
+// They are reported rather than rejected. The importer carries every option it
+// does not parse into raw_options, so manifests imported before this existed
+// hold UserKnownHostsFile today; refusing them would stop every command from
+// loading the manifest at all.
+var managedHostOptions = map[string]string{
+	"hostname":           `set "hostname" instead`,
+	"user":               `set "user" instead`,
+	"port":               `set "port" instead`,
+	"identityfile":       `set the profile's key_name / key_scope instead (sshmgr derives the key path)`,
+	"userknownhostsfile": `pin host keys with sshmgr knownhosts pin instead (sshmgr keeps every pin in ~/.ssh/known_hosts)`,
+}
+
+// ManagedHostOption reports whether a raw_options key duplicates a line the
+// renderer writes for every host, and what to set instead. Case-insensitive,
+// as ssh reads keywords.
+func ManagedHostOption(key string) (useInstead string, ok bool) {
+	useInstead, ok = managedHostOptions[strings.ToLower(key)]
+	return useInstead, ok
+}
+
+// RawOptionOverlaps lists, as "profile/alias: ..." lines in manifest order, each
+// raw_options key that duplicates a managed line. The renderer emits only the
+// managed value (bar a raw Port at the default port), so these keys read as if
+// they applied when they do not.
+func RawOptionOverlaps(m *Manifest) []string {
+	var out []string
+	for _, pname := range m.ProfileNames() {
+		for _, h := range m.Profiles[pname].Hosts {
+			for _, k := range h.RawOptions.Keys() {
+				use, ok := ManagedHostOption(k)
+				if !ok {
+					continue
+				}
+				if strings.EqualFold(k, "port") && (h.Port == 0 || h.Port == 22) {
+					// No managed Port line is written at the default, so this
+					// one does apply - but sshmgr's own pinning and deploys read
+					// the field and would talk to port 22.
+					out = append(out, fmt.Sprintf("%s/%s: raw_options %q is the port ssh uses, but sshmgr "+
+						"reads the port field and would pin and deploy on 22 - move it to \"port\" instead",
+						pname, h.Alias, k))
+					continue
+				}
+				out = append(out, fmt.Sprintf("%s/%s: raw_options %q duplicates a line sshmgr writes "+
+					"for every host, so ssh never uses it - remove it and %s",
+					pname, h.Alias, k, use))
+			}
+		}
+	}
+	return out
+}
+
 func checkKeyScope(value string) error {
 	if !keyScopes[value] {
 		return fmt.Errorf("key_scope must be one of [per_service shared] (got %q)", value)

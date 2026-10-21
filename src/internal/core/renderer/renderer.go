@@ -107,7 +107,8 @@ func writeHostBlock(b *strings.Builder, h RenderHost) {
 	b.WriteString("Host " + h.Alias + "\n")
 	b.WriteString("    HostName " + h.Hostname + "\n")
 	b.WriteString("    User " + h.User + "\n")
-	if h.Port != 0 && h.Port != 22 {
+	portWritten := h.Port != 0 && h.Port != 22
+	if portWritten {
 		b.WriteString("    Port " + strconv.Itoa(h.Port) + "\n")
 	}
 	b.WriteString("    IdentityFile " + h.IdentityFile + "\n")
@@ -122,6 +123,15 @@ func writeHostBlock(b *strings.Builder, h RenderHost) {
 	for _, k := range h.RawOptions.Keys() {
 		if strings.EqualFold(k, identitiesOnlyKey) {
 			continue // already emitted next to the IdentityFile it constrains
+		}
+		// A keyword a managed line above already set would never be read: ssh
+		// keeps the first value (and IdentityFile would add a second key). It is
+		// left out so the block shows the one value ssh uses; doctor reports it.
+		// The one exception is Port at its default, where no managed line is
+		// written and the raw value is the only one - and always has applied.
+		if _, managed := manifest.ManagedHostOption(k); managed &&
+			(portWritten || !strings.EqualFold(k, "Port")) {
+			continue
 		}
 		b.WriteString("    " + k + " " + h.RawOptions.Get(k) + "\n")
 	}
