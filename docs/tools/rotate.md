@@ -32,9 +32,34 @@ whole operation is reversible with `sshmgr snapshots restore` as well.
 ## Verification & manual targets
 
 Each target must verify before commit. Automated providers (generic SSH, GitHub
-with a token) verify by logging in / `ssh -T`. A **manual / web-panel** target
-(e.g. ploi) can't auto-verify, so rotation **aborts by default** - finish the
-paste in the panel and re-run with `--allow-unverified` to accept it.
+with a token) verify by logging in / `ssh -T`.
+
+A **hosting panel** target (`ploi`, `forge`, `cpanel`) takes the key by hand.
+At a terminal, `rotate` stops there, shows the staged public key and where it
+goes, and waits:
+
+```text
+oribi-web: this target takes the key by hand. paste simtabi_oribi-web-ed25519.pub at https://ploi.io/servers
+
+ssh-ed25519 AAAAC3Nza... simtabi/oribi-web 2026-10-20
+
+  Pasted it? sshmgr will now log in with the new key to prove it [y/N]
+```
+
+After `y` it logs in **with the staged key itself**; only a working login
+counts as verified, and only then does the new key replace the old one. If the
+login fails, or you answer `n`, the staged key is discarded and the old key
+stays active. Once committed, the report names where the **old** key still has
+to be removed from the panel: until you do, it still logs in.
+
+Without a terminal (a script, CI), such a target cannot verify, so rotation
+aborts. `--allow-unverified` commits anyway, before anything proves the key
+works, so SSH to that server fails until the key is pasted or you
+`sshmgr rollback`. Prefer running it at a terminal.
+
+A git host on the manual path (`gitea`, `bitbucket` and the other `vcs`
+web-panel entries) is never proven by logging in, because it refuses a shell
+even for a valid key; it still needs `--allow-unverified`.
 
 ## Rotating a batch
 

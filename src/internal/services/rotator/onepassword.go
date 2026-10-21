@@ -102,7 +102,10 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 		tgt := r.target(h, profile, stagedPub, stagedPubText, stagedPub)
 		out := prov.Deploy(tgt)
 		tr.Deployed = out.Method == "manual" || out.Verified
-		tr.Verified = prov.Verify(tgt)
+		tr.Verified = r.proveManual(h, prov, out, tgt, prov.Verify(tgt))
+		if out.Method == "manual" {
+			tr.ManageURL = prov.ManageURL(tgt)
+		}
 		results = append(results, tr)
 	}
 	report.Targets = results

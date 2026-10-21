@@ -19,8 +19,18 @@ so there is always exactly one step back:
 sshmgr rollback work/work_gh-ed25519
 ```
 
-For a target that cannot self-verify — a web panel, a provider with no read API —
-rotation would abort every time. Say so explicitly:
+For a hosting panel target (Ploi, Forge, cPanel), run it at a terminal with the
+panel open: `rotate` shows the new public key, waits while you paste it, then
+logs in with it before replacing the old key. Remove the old key from the panel
+afterwards; the report says where.
+
+```sh
+sshmgr rotate simtabi/simtabi_oribi-web-ed25519
+```
+
+A target that cannot be proven at all (a git web panel, a provider with no read
+API) aborts every time; say so explicitly, knowing the new key is committed
+before anything proves it:
 
 ```sh
 sshmgr rotate work/work_gh-ed25519 --allow-unverified

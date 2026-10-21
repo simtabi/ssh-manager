@@ -8,6 +8,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keysvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/rotator"
 )
@@ -75,7 +76,7 @@ func rotateOne(c *cobra.Command, key string, allowUnverified, passphrase, yes, n
 		pw = secret
 	}
 	snapshotBeforeMutation(p)
-	report, err := rotator.New(p, m, inv).Rotate(key, allowUnverified, pw)
+	report, err := withManualPaste(c, rotator.New(p, m, inv)).Rotate(key, allowUnverified, pw)
 	if err != nil {
 		return err
 	}
@@ -151,7 +152,7 @@ func rotateMany(c *cobra.Command, sel keysvc.Selection, allowUnverified, passphr
 		pw = secret
 	}
 	snapshotBeforeMutation(p)
-	rot := rotator.New(p, m, inv)
+	rot := withManualPaste(c, rotator.New(p, m, inv))
 	var failed []string
 	for _, n := range names {
 		report, err := rot.Rotate(n, allowUnverified, pw)
@@ -215,4 +216,19 @@ func newRollbackCmd() *cobra.Command {
 	}
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
+}
+
+// withManualPaste makes rotate wait at a web-panel target (Ploi and the like): it shows the staged
+// public key and where it goes, waits until the user says it is pasted, and the rotator then proves it
+// by logging in with the staged key before anything is committed. With no terminal to ask at, rotate
+// keeps its old behaviour: such a target cannot verify, so it aborts unless --allow-unverified.
+func withManualPaste(c *cobra.Command, r *rotator.Rotator) *rotator.Rotator {
+	if !platform.StdinIsTerminal() {
+		return r
+	}
+	return r.WithManualStep(func(alias, where, pubkey string) bool {
+		out := c.OutOrStdout()
+		_, _ = fmt.Fprintf(out, "\n%s: this target takes the key by hand. %s\n\n%s\n\n", alias, where, strings.TrimSpace(pubkey))
+		return confirm(c, "  Pasted it? sshmgr will now log in with the new key to prove it")
+	})
 }
