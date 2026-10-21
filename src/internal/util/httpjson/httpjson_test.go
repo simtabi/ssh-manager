@@ -1,7 +1,10 @@
 package httpjson
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
@@ -275,4 +278,102 @@ func TestRedirectPolicyRefusesDowngradeAndStripsCredentials(t *testing.T) {
 			t.Error("an endless redirect chain should be stopped")
 		}
 	})
+}
+
+// roundTripFunc is an http.RoundTripper backed by a function, so a test can
+// drive the real client - redirect handling included - without opening a
+// listening socket.
+type roundTripFunc func(*http.Request) (*http.Response, error)
+
+func (f roundTripFunc) RoundTrip(r *http.Request) (*http.Response, error) { return f(r) }
+
+func fakeResponse(r *http.Request, status int, body string, h http.Header) *http.Response {
+	if h == nil {
+		h = http.Header{}
+	}
+	return &http.Response{StatusCode: status, Header: h, Request: r,
+		Body: io.NopCloser(strings.NewReader(body))}
+}
+
+// useTransport points the package client at rt for the duration of a test.
+func useTransport(t *testing.T, rt http.RoundTripper) {
+	t.Helper()
+	orig := client.Transport
+	client.Transport = rt
+	t.Cleanup(func() { client.Transport = orig })
+}
+
+// runCred is a credential value generated per run, so no secret-shaped literal
+// sits in the source for a scanner to report.
+func runCred(t *testing.T) string {
+	t.Helper()
+	b := make([]byte, 16)
+	if _, err := rand.Read(b); err != nil {
+		t.Fatal(err)
+	}
+	return hex.EncodeToString(b)
+}
+
+// The generic `rest` adapter lets a user name the auth header (auth_header_name)
+// and add any extra_headers, so a fixed list of "credential" header names cannot
+// be complete: Auth-API-Token or X-Api-Key would ride a 302 to another host.
+// Every header the caller supplied has to be dropped once a redirect leaves the
+// origin. Driven through the real client, because what matters is what the
+// second host receives, not what CheckRedirect returns.
+func TestCrossOriginRedirectDropsEveryCallerHeader(t *testing.T) {
+	cred := runCred(t)
+	var landed http.Header
+	useTransport(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Host == "api.example.com" {
+			return fakeResponse(r, http.StatusFound, "",
+				http.Header{"Location": {"https://collector.example.net/keys"}}), nil
+		}
+		landed = r.Header.Clone()
+		return fakeResponse(r, http.StatusOK, `{}`, nil), nil
+	}))
+
+	_, err := RequestJSON("GET", "https://api.example.com/keys", map[string]string{
+		"Auth-API-Token": cred,
+		"X-Api-Key":      cred,
+		"Authorization":  "Bearer " + cred,
+	}, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if landed == nil {
+		t.Fatal("the redirect was not followed; the test proves nothing")
+	}
+	for name, vals := range landed {
+		for _, v := range vals {
+			if strings.Contains(v, cred) {
+				t.Errorf("%s carried the credential to another origin", name)
+			}
+		}
+	}
+	if landed.Get("Accept") != "application/json" {
+		t.Errorf("Accept = %q; the client's own content negotiation should survive", landed.Get("Accept"))
+	}
+}
+
+// Same-origin redirects keep every header: an API moving /keys to /keys/ must
+// not lose its auth, whatever the header is called.
+func TestSameOriginRedirectKeepsCallerHeaders(t *testing.T) {
+	cred := runCred(t)
+	var landed http.Header
+	useTransport(t, roundTripFunc(func(r *http.Request) (*http.Response, error) {
+		if r.URL.Path == "/keys" {
+			return fakeResponse(r, http.StatusMovedPermanently, "",
+				http.Header{"Location": {"https://api.example.com:443/keys/"}}), nil
+		}
+		landed = r.Header.Clone()
+		return fakeResponse(r, http.StatusOK, `{}`, nil), nil
+	}))
+
+	if _, err := RequestJSON("GET", "https://api.example.com/keys",
+		map[string]string{"Auth-API-Token": cred}, nil); err != nil {
+		t.Fatal(err)
+	}
+	if landed.Get("Auth-API-Token") != cred {
+		t.Error("a same-origin redirect should keep a custom auth header")
+	}
 }

@@ -1,7 +1,7 @@
 // Package httpjson is a minimal JSON-over-HTTP client for the REST provider
 // adapters. Dependency-free (net/http), with bearer/
 // custom-header auth, retry-with-backoff on 429/5xx for idempotent methods, and a
-// safe redirect policy (refuse https->http; drop credential headers cross-origin).
+// safe redirect policy (refuse https->http; drop caller headers cross-origin).
 package httpjson
 
 import (
@@ -23,7 +23,14 @@ var sleep = time.Sleep
 
 var retryStatus = map[int]bool{429: true, 500: true, 502: true, 503: true, 504: true}
 var idempotent = map[string]bool{"GET": true, "HEAD": true, "PUT": true, "DELETE": true}
-var sensitiveHeaders = map[string]bool{"authorization": true, "x-auth-token": true, "cookie": true}
+
+// crossOriginSafe is the allowlist of headers a redirect may carry to another
+// origin: the client's own content negotiation, nothing the caller supplied. It
+// is an allowlist, not a list of credential names, because the generic `rest`
+// adapter takes its auth header name and extra_headers from user config - a
+// denylist of Authorization/X-Auth-Token/Cookie forwarded Auth-API-Token or
+// X-Api-Key to whatever host a 302 named.
+var crossOriginSafe = map[string]bool{"accept": true, "content-type": true}
 
 // HTTPError is a failed REST call (non-2xx, or transport error after retries).
 type HTTPError struct{ Msg string }
@@ -32,8 +39,10 @@ func (e *HTTPError) Error() string { return e.Msg }
 
 func errf(format string, a ...any) error { return &HTTPError{Msg: fmt.Sprintf(format, a...)} }
 
-// client follows redirects but refuses an https->non-https downgrade and strips
-// credential headers when a redirect crosses origin.
+// client follows redirects but refuses an https->non-https downgrade and, when a
+// redirect crosses origin (scheme+host+port), strips every header outside
+// crossOriginSafe. Same-origin redirects keep everything, so an API that moves
+// /keys to /keys/ still sees its auth.
 var client = &http.Client{
 	Timeout: 30 * time.Second,
 	CheckRedirect: func(req *http.Request, via []*http.Request) error {
@@ -46,7 +55,7 @@ var client = &http.Client{
 		}
 		if origin(prev) != origin(req.URL) {
 			for h := range req.Header {
-				if sensitiveHeaders[strings.ToLower(h)] {
+				if !crossOriginSafe[strings.ToLower(h)] {
 					req.Header.Del(h)
 				}
 			}
