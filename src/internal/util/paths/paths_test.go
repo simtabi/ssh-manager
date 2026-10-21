@@ -289,3 +289,30 @@ func readEnvNamesFromSource(t *testing.T) map[string]bool {
 	}
 	return found
 }
+
+// A sandbox never reaches outside its root for a legacy home: dev-mode
+// `migrate` used to find the real ~/.sshmgr and move it into the sandbox.
+func TestDevModeFindsNoLegacyHomeOutsideItsRoot(t *testing.T) {
+	isolateHome(t)
+	home, _ := os.UserHomeDir()
+	if err := os.MkdirAll(filepath.Join(home, ".sshmgr"), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	root := t.TempDir()
+	p, err := ResolveDev(nil, "", root)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := p.FirstLegacyHome(); got != "" {
+		t.Errorf("dev mode found a legacy home outside its root: %s", got)
+	}
+	for _, c := range p.LegacyHomes() {
+		if rel, err := filepath.Rel(root, c); err != nil || strings.HasPrefix(rel, "..") {
+			t.Errorf("legacy candidate %s is outside the sandbox %s", c, root)
+		}
+	}
+	// Without dev mode the real one is still found, so migrate keeps working.
+	if got := Resolve(nil, "", "").FirstLegacyHome(); got == "" {
+		t.Error("outside dev mode ~/.sshmgr should still be found")
+	}
+}

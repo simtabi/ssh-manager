@@ -79,6 +79,9 @@ func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Deploye
 // Deploy installs key keyName on its target(s) (all hosts using it, or just
 // targetAlias) and records each deployment. Mirrors Deployer.deploy.
 func (d *Deployer) Deploy(selector, targetAlias string) (DeployReport, error) {
+	if err := d.p.RefuseOutsideSandbox("deploy"); err != nil {
+		return DeployReport{}, err
+	}
 	hosts, ref, err := d.targets(selector, targetAlias)
 	if err != nil {
 		return DeployReport{}, err

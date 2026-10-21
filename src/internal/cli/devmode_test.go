@@ -2,6 +2,7 @@ package cli
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -189,5 +190,54 @@ func filesystemRoot(t *testing.T) string {
 			return dir
 		}
 		dir = parent
+	}
+}
+
+// Dev mode sandboxes files, not servers: every verb that installs or removes a
+// key on a target must be refused there, however it is reached. deploy was;
+// rotate, rollback and the --revoke deletes reached the adapters, so a
+// sandboxed run could install a key on a real server and remove the old one.
+// A fake ssh-copy-id and ssh on PATH record any attempt to reach the target.
+func TestDevModeRefusesEveryVerbThatReachesATarget(t *testing.T) {
+	editHome(t)
+	bin := t.TempDir()
+	calls := filepath.Join(bin, "calls")
+	// ssh -G only resolves the local config (render and check use it), so it
+	// passes through to the real ssh; anything else is an attempt on a target.
+	realSSH, err := exec.LookPath("ssh")
+	if err != nil {
+		t.Skip("no ssh client")
+	}
+	for _, name := range []string{"ssh-copy-id", "ssh"} {
+		script := "#!/bin/sh\nif [ \"$1\" = -G ]; then exec " + realSSH + " \"$@\"; fi\n" +
+			"echo \"" + name + " $*\" >> " + calls + "\nexit 0\n"
+		if err := os.WriteFile(filepath.Join(bin, name), []byte(script), 0o755); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	sb := filepath.Join(t.TempDir(), "sandbox")
+	dev := func(args ...string) []string { return append([]string{"--dev-root", sb}, args...) }
+	run(t, dev("init")...)
+	run(t, dev("profile", "add", "work")...)
+	run(t, dev("host", "add", "work", "prod", "-H", "prod.example.com", "-u", "deploy")...)
+	run(t, dev("reconcile", "--yes", "--no-pin")...)
+
+	for _, args := range [][]string{
+		{"deploy", "work/work_prod-ed25519", "--yes"},
+		{"rotate", "work/work_prod-ed25519", "--yes", "--no-key-backup"},
+		{"rollback", "work/work_prod-ed25519", "--yes"},
+		{"key", "delete", "work/work_prod-ed25519", "--revoke", "--yes"},
+		{"host", "delete", "work", "prod", "--revoke", "--yes"},
+		{"profile", "delete", "work", "--revoke", "--yes"},
+	} {
+		out, err := runErr(t, dev(args...)...)
+		if err == nil || !strings.Contains(err.Error(), "dev mode") {
+			t.Errorf("%v in dev mode: want a dev-mode refusal, got %v\n%s", args, err, out)
+		}
+	}
+	if b, err := os.ReadFile(calls); err == nil {
+		t.Errorf("dev mode reached a target:\n%s", b)
 	}
 }

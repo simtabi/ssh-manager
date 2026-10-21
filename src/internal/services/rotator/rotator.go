@@ -163,6 +163,9 @@ func (r *Rotator) unreachable(hosts []manifest.Host) []string {
 // Rotate stages a fresh key, deploys+verifies it on every target, and commits only
 // if all verified (or allowUnverified and all deployed). Mirrors Rotator.rotate.
 func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase string) (RotateReport, error) {
+	if err := r.p.RefuseOutsideSandbox("rotate"); err != nil {
+		return RotateReport{}, err
+	}
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
@@ -354,6 +357,9 @@ func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, 
 // Rollback restores the single /old/ predecessor (plain reverse move), re-deploys
 // it, and revokes the rotated-in key. Mirrors Rotator.rollback.
 func (r *Rotator) Rollback(selector string) (RotateReport, error) {
+	if err := r.p.RefuseOutsideSandbox("rollback"); err != nil {
+		return RotateReport{}, err
+	}
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
