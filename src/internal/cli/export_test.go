@@ -91,6 +91,29 @@ func TestConfigExportRefusesTheRenderedConfigFiles(t *testing.T) {
 	if _, err := runErr(t, "termius", "export", "--out", filepath.Join(sshDir, "config")); err == nil {
 		t.Error("termius export over ~/.ssh/config was accepted")
 	}
+	// Anything inside ~/.ssh is refused, not only the rendered files: the trust
+	// store and keys live there too. Spelled with other case it is the same
+	// directory on a case-insensitive filesystem (APFS, NTFS), and a symlinked
+	// directory is the same directory too.
+	link := filepath.Join(t.TempDir(), "sshlink")
+	if err := os.Symlink(sshDir, link); err != nil {
+		t.Fatal(err)
+	}
+	targets := []string{
+		filepath.Join(sshDir, "known_hosts"),
+		filepath.Join(sshDir, "profiles", "orgs", "new-file"),
+		filepath.Join(link, "config"),
+	}
+	if caseInsensitiveFS(t, sshDir) {
+		targets = append(targets,
+			filepath.Join(sshDir, "Config"),
+			filepath.Join(filepath.Dir(sshDir), ".SSH", "config"))
+	}
+	for _, target := range targets {
+		if _, err := runErr(t, "config", "export", "--flat", "--out", target); err == nil {
+			t.Errorf("export into ~/.ssh via %s was accepted", target)
+		}
+	}
 	assertUntouched(t, sshDir, before)
 }
 
@@ -178,4 +201,12 @@ func TestTermiusExportToStdoutKeepsTheReportOnStderr(t *testing.T) {
 	if !strings.Contains(stderr.String(), "oribi-web") || !strings.Contains(stderr.String(), "github-me: --skip") {
 		t.Errorf("stderr should carry the report:\n%s", stderr.String())
 	}
+}
+
+// caseInsensitiveFS reports whether dir's filesystem folds case, so the
+// spelled-differently cases run only where they mean the same file.
+func caseInsensitiveFS(t *testing.T, dir string) bool {
+	t.Helper()
+	_, err := os.Stat(filepath.Join(filepath.Dir(dir), strings.ToUpper(filepath.Base(dir))))
+	return err == nil
 }

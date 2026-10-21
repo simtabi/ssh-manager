@@ -15,8 +15,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   label = alias, tags, address, port, user; never a password) and lists the key
   to attach to each host; `--open` opens Termius and shows the file on macOS,
   `--skip` leaves a host out, and VM and git hosts are left out and reported.
-  Both write under `~/.config/ssh-manager/exports/` (0600) and refuse any file
-  `config render` owns as a target, so the split config is never changed.
+  Both write under `~/.config/ssh-manager/exports/` (0600) and refuse any target
+  inside `~/.ssh` (checked by inode, so case and symlinks cannot get round it),
+  so the split config, keys and trust store are never changed.
   Termius's own importer reads only the top-level `~/.ssh/config` and never
   saw the hosts in category files.
 - **Git remote modes.** `sshmgr git status` shows how each checkout's GitHub

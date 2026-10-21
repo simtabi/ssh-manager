@@ -4,8 +4,8 @@ Two commands write a copy of the managed config for a tool that cannot read the 
 for anything that reads one `ssh_config`, and `termius export` for the Termius app.
 
 Both are opt-in and read-only towards `~/.ssh`. They write under `~/.config/ssh-manager/exports/` (mode 0600, since
-the files list every host and key path), and they refuse any target that `sshmgr config render` owns, however the
-path is spelled. The split config, `~/.ssh/config` and `profiles/<category>/config`, stays exactly as it was.
+the files list every host and key path), and they refuse any target inside `~/.ssh`, however the path is spelled: containment is
+checked by inode, so another case on APFS or a symlinked directory is caught too. The split config, `~/.ssh/config` and `profiles/<category>/config`, stays exactly as it was.
 
 ## Why a flat copy
 
