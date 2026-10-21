@@ -144,8 +144,8 @@ while it is set.
 
 ### `vm`
 
-A host with `vm` is a local VM. sshmgr renders `ProxyCommand "<sshmgr>" vm proxy <alias>` for it (the
-only ProxyCommand that can appear in the config; `raw_options` still may not set one), and resolves the
+A host with `vm` is a local VM. sshmgr renders `ProxyCommand "<sshmgr>" vm proxy <alias>` for it (one of
+the two ProxyCommands sshmgr writes, with `proxy` below; `raw_options` still may not set one), and resolves the
 VM's address through its hypervisor on each connection.
 
 ```jsonc
@@ -156,6 +156,22 @@ VM's address through its hypervisor on each connection.
 `hypervisor` is one of `parallels`, `vmpal`, `vmware`, `utm`, `lima` (OrbStack and Podman keep their own
 SSH and are not hosts); `name` is the VM as the hypervisor lists it, spaces allowed. See
 [tools/vm.md](tools/vm.md).
+
+### `proxy`
+
+A host with `proxy: {"kind": "cloudflared"}` is reached through Cloudflare Access. sshmgr renders
+`ProxyCommand "<cloudflared>" access ssh --hostname %h`, so `ssh <alias>` signs in through the browser and
+reaches the host with no SSH port open to the internet. `hostname` is the Access hostname.
+
+```jsonc
+{"alias": "oribi-web", "hostname": "ssh-web-00.simtabi.com", "user": "adm-imani",
+ "proxy": {"kind": "cloudflared"}}
+```
+
+Set it with `sshmgr host add|edit ... --proxy cloudflared` (`--proxy none` removes it). A host is a VM or
+proxied, not both. `doctor` reports a proxied host when `cloudflared` is not installed, and the Termius
+export skips it (Termius ignores ProxyCommand). See
+[Reach a server through Cloudflare Access](recipes/cloudflare-access.md).
 
 ### `provider` / `token_env`
 

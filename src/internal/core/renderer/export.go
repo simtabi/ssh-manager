@@ -145,6 +145,10 @@ func RenderTermiusCSV(m *manifest.Manifest, p ExportPaths, opts TermiusOptions) 
 		case h.VM != nil:
 			exp.Skipped = append(exp.Skipped, h.Alias+": a VM host is reached through a ProxyCommand, which Termius ignores")
 			continue
+		case h.Proxy != nil:
+			exp.Skipped = append(exp.Skipped, h.Alias+": reached through "+h.Proxy.Kind+
+				" (a ProxyCommand), which Termius ignores; connect with ssh instead")
+			continue
 		case isGitHost(h) && !opts.IncludeGit:
 			exp.Skipped = append(exp.Skipped, h.Alias+": a git host, not a shell (export it with --include-git)")
 			continue

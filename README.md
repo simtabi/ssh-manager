@@ -96,6 +96,7 @@ else is in the [documentation index](#documentation).
 - [Switch checkouts to profile SSH](docs/recipes/switch-git-remote-modes.md) — each owner's own key, every URL proven before it is written.
 - [Use a local VM as a devbox](docs/recipes/devbox-vm.md) — reach a VM by name whatever its IP, and point Docker at it.
 - [Import your hosts into Termius](docs/recipes/import-hosts-into-termius.md) — every host with its user and key, though Termius ignores `Include`.
+- [Reach a server through Cloudflare Access](docs/recipes/cloudflare-access.md) — `ssh <alias>` through `cloudflared`, with no SSH port open to the internet.
 - [Onboard an existing `~/.ssh`](docs/recipes/onboard-an-existing-ssh-dir.md) — bring a hand-built setup under management without regenerating anything.
 - [Rotate a key with no downtime](docs/recipes/rotate-a-key.md) — stage, verify, commit; and how to step back.
 - [Rotate or repair many keys at once](docs/recipes/rotate-many-keys.md) — a category or everything in one batch, and rebuilding `.pub` files.

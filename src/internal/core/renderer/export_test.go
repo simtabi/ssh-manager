@@ -199,3 +199,44 @@ func TestTermiusCSVGitProviderAndSkip(t *testing.T) {
 		t.Errorf("an unknown --skip alias should be an error naming it: %v", err)
 	}
 }
+
+// A Cloudflare Access host renders cloudflared as its ProxyCommand, quoted like
+// the VM one, and ssh substitutes %h with the host's HostName.
+func TestCloudflaredHostRendersItsProxyCommand(t *testing.T) {
+	prev := CloudflaredPath
+	CloudflaredPath = func() string { return "/opt/homebrew/bin/cloudflared" }
+	defer func() { CloudflaredPath = prev }()
+
+	m := mustManifest(t, `{"version":1,"profiles":{"simtabi":{"hosts":[
+		{"alias":"oribi-web","hostname":"ssh-web-00.simtabi.com","user":"adm-imani","proxy":{"kind":"cloudflared"}}]}}}`)
+	out, err := RenderRootConfig(m, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := `    ProxyCommand "/opt/homebrew/bin/cloudflared" access ssh --hostname %h` + "\n"
+	if !strings.Contains(out, want) {
+		t.Errorf("missing %q in:\n%s", want, out)
+	}
+	exp, err := RenderTermiusCSV(m, testExportPaths, TermiusOptions{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(exp.CSV, "oribi-web") || !strings.Contains(strings.Join(exp.Skipped, "\n"), "oribi-web") {
+		t.Errorf("Termius ignores ProxyCommand, so an Access host must be skipped and reported:\n%s %v", exp.CSV, exp.Skipped)
+	}
+}
+
+// doctor finds a cloudflared that is not installed through ProxyBinary, so it
+// must read the cloudflared ProxyCommand as well as the VM one.
+func TestProxyBinaryReadsBothRenderedProxies(t *testing.T) {
+	for value, want := range map[string]string{
+		`"/usr/local/bin/sshmgr" vm proxy devbox`:                  "/usr/local/bin/sshmgr",
+		`"/opt/homebrew/bin/cloudflared" access ssh --hostname %h`: "/opt/homebrew/bin/cloudflared",
+		`"cloudflared" access ssh --hostname %h`:                   "cloudflared",
+		`nc %h %p`:                                                 "",
+	} {
+		if got := ProxyBinary(value); got != want {
+			t.Errorf("ProxyBinary(%q) = %q, want %q", value, got, want)
+		}
+	}
+}

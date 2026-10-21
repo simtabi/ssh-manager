@@ -142,6 +142,12 @@ var goOnly = map[string]string{
 	"termius export --out":         "exports - target file, or - for stdout",
 	"termius export --include-git": "exports - also export git hosts, which are not shells",
 	"termius export --open":        "exports - macOS: open Termius and show the file in Finder",
+	"termius export --skip":        "exports - leave out a named host",
+
+	// Cloudflare Access (3.4.0): a host reached through cloudflared, rendered by sshmgr since
+	// raw_options may not set a ProxyCommand.
+	"host add --proxy":  "cloudflare access - route the host through cloudflared",
+	"host edit --proxy": "cloudflare access - set or remove (none) the proxy",
 
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",

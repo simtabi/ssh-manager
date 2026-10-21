@@ -101,6 +101,11 @@ func (r Report) Format() string {
 		lines = append(lines, "1Password: "+issue)
 	}
 	for _, issue := range r.StaleProxy {
+		if strings.Contains(issue, "cloudflared") {
+			lines = append(lines, "proxy: "+issue+" - install it (`brew install cloudflared`), then "+
+				"`sshmgr config render`")
+			continue
+		}
 		lines = append(lines, "vm proxy: "+issue+" - run `sshmgr config render`")
 	}
 	lines = append(lines, "known_hosts: "+presentAbsent(r.KnownHosts))

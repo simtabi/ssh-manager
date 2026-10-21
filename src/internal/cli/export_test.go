@@ -210,3 +210,22 @@ func caseInsensitiveFS(t *testing.T, dir string) bool {
 	_, err := os.Stat(filepath.Join(filepath.Dir(dir), strings.ToUpper(filepath.Base(dir))))
 	return err == nil
 }
+
+// --proxy cloudflared puts a host behind Cloudflare Access: the rendered block
+// runs cloudflared, ssh -G resolves it, and --proxy none takes it back off.
+func TestHostProxyCloudflared(t *testing.T) {
+	p := editHome(t)
+	run(t, "profile", "add", "simtabi")
+	run(t, "host", "add", "simtabi", "oribi-web", "-H", "ssh-web-00.simtabi.com", "-u", "adm-imani", "--proxy", "cloudflared")
+	cfg := configText(t, p)
+	if !strings.Contains(cfg, `access ssh --hostname %h`) {
+		t.Fatalf("no cloudflared ProxyCommand:\n%s", cfg)
+	}
+	if _, err := runErr(t, "host", "add", "simtabi", "x", "-H", "x.example", "-u", "u", "--proxy", "socks"); err == nil {
+		t.Error("an unknown proxy kind was accepted")
+	}
+	run(t, "host", "edit", "simtabi", "oribi-web", "--proxy", "none")
+	if strings.Contains(configText(t, p), "access ssh") {
+		t.Error("--proxy none should remove the ProxyCommand")
+	}
+}

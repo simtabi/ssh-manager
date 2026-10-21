@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Cloudflare Access hosts.** `sshmgr host add|edit ... --proxy cloudflared`
+  (manifest `proxy: {kind: cloudflared}`) renders
+  `ProxyCommand "<cloudflared>" access ssh --hostname %h`, so `ssh <alias>`
+  reaches a server through Cloudflare Access with no SSH port open. `doctor`
+  reports a proxied host when `cloudflared` is not installed; the Termius export
+  skips it, since Termius ignores ProxyCommand.
 - **Exports for other tools.** `sshmgr config export --flat` writes the whole
   config as one file, every host inline with absolute key paths and no
   `Include` or `Match`, for a tool that reads a single `ssh_config`.

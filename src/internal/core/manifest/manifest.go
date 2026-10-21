@@ -177,6 +177,8 @@ type Host struct {
 	RawOptions  OrderedOptions `json:"raw_options,omitempty"`
 	// VM marks a local VM whose address the hypervisor supplies at connect time.
 	VM *VMSpec `json:"vm,omitempty"`
+	// Proxy routes connections through a proxy command, e.g. Cloudflare Access.
+	Proxy *ProxySpec `json:"proxy,omitempty"`
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -207,6 +209,7 @@ func (h Host) MarshalJSON() ([]byte, error) {
 		VPNURL      *string        `json:"vpn_url"`
 		RawOptions  OrderedOptions `json:"raw_options"`
 		VM          *VMSpec        `json:"vm,omitempty"` // omitted when unset: older files stay byte-identical
+		Proxy       *ProxySpec     `json:"proxy,omitempty"`
 	}
 	tags := h.Tags
 	if tags == nil {
@@ -216,7 +219,7 @@ func (h Host) MarshalJSON() ([]byte, error) {
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		Provider: h.Provider, TokenEnv: h.TokenEnv, KeyName: h.KeyName, Tags: tags,
 		RequiresVPN: h.RequiresVPN, VPNName: h.VPNName, VPNURL: h.VPNURL, RawOptions: h.RawOptions,
-		VM: h.VM,
+		VM: h.VM, Proxy: h.Proxy,
 	})
 }
 
@@ -866,6 +869,9 @@ func (m *Manifest) validate() error {
 				return err
 			}
 			if err := checkVM(name, h); err != nil {
+				return err
+			}
+			if err := checkProxy(name, h); err != nil {
 				return err
 			}
 		}

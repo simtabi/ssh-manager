@@ -394,6 +394,16 @@ type HostFields struct {
 	Tags     []string
 	// VM marks the host as a local VM whose address the hypervisor supplies at connect time.
 	VM *manifest.VMSpec
+	// Proxy names a proxy kind ("cloudflared"); "none" or "" clears it. nil leaves it unchanged.
+	Proxy *string
+}
+
+// proxySpec turns a --proxy value into the manifest field: "none" or "" is no proxy.
+func proxySpec(kind string) *manifest.ProxySpec {
+	if kind == "" || kind == "none" {
+		return nil
+	}
+	return &manifest.ProxySpec{Kind: kind}
 }
 
 // AddHost adds a host to a profile.
@@ -418,6 +428,9 @@ func (e *Editor) AddHost(profile, alias string, f HostFields) error {
 		Alias: alias, Hostname: deref(f.Hostname), User: deref(f.User), Port: port,
 		Provider: f.Provider, TokenEnv: f.TokenEnv, KeyName: f.KeyName, Tags: f.Tags,
 		VM: f.VM,
+	}
+	if f.Proxy != nil {
+		host.Proxy = proxySpec(*f.Proxy)
 	}
 	p := m.Profiles[profile]
 	p.Hosts = append(p.Hosts, host)
@@ -456,6 +469,9 @@ func (e *Editor) EditHost(profile, alias string, f HostFields) error {
 	}
 	if f.KeyName != nil {
 		host.KeyName = f.KeyName
+	}
+	if f.Proxy != nil {
+		host.Proxy = proxySpec(*f.Proxy)
 	}
 	p := m.Profiles[profile]
 	p.Hosts[idx] = host
