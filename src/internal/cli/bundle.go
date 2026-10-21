@@ -142,6 +142,7 @@ func newRestoreCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			ident := identity
 			if ident == "" {
 				if env := os.Getenv("SSH_MANAGER_AGE_IDENTITY_FILE"); env != "" {

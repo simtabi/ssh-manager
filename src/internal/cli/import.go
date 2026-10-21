@@ -35,6 +35,7 @@ func newImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			if !dryRun {
 				if err := confirmChange(c,
 					"import replaces "+p.Manifest()+" with what it reads from "+configPath+

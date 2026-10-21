@@ -33,6 +33,7 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			f := editor.HostFields{
 				Hostname: &hostname, User: &user, Port: &port,
 				Provider: strPtrIf(c, "provider", provider),
@@ -74,6 +75,7 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			f := editor.HostFields{
 				Hostname: strPtrIf(c, "hostname", eHostname),
 				User:     strPtrIf(c, "user", eUser),
@@ -133,6 +135,7 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			out := c.OutOrStdout()
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {

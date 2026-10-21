@@ -449,6 +449,7 @@ func (t *tui) deploy() {
 	if !ok || k == tuiBack {
 		return
 	}
+	lockForMutation(t.p) // deploy records to the inventory: read it under the lock
 	inv, _ := inventory.Load(t.p.Inventory())
 	report, err := deployer.New(t.p, m, inv).Deploy(k, "")
 	if err != nil {

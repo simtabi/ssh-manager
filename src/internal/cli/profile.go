@@ -37,6 +37,7 @@ func newProfileCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			snapshotBeforeMutation(p)
 			ed := editor.New(p)
 			if err := ed.AddProfile(args[0], scope, strPtrIf(c, "key-name", keyName)); err != nil {
@@ -68,6 +69,7 @@ func newProfileCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			snapshotBeforeMutation(p)
 			ed := editor.New(p)
 			if c.Flags().Changed("category") {
@@ -138,6 +140,7 @@ func newProfileCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			out := c.OutOrStdout()
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
