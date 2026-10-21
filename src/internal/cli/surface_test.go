@@ -132,6 +132,17 @@ var goOnly = map[string]string{
 	"vm add --yes":        "confirm-before-changing",
 	"vm docker-context":   "devboxes - Docker context ssh://<alias>",
 
+	// Exports (3.4.0): copies for tools that cannot read the split config. Neither
+	// touches ~/.ssh; both refuse a file `config render` owns as their target.
+	"config export":                "exports - the config as one file for another tool",
+	"config export --flat":         "exports - every host inline, absolute paths, no Include",
+	"config export --out":          "exports - target file, or - for stdout",
+	"termius":                      "exports - group for the Termius app",
+	"termius export":               "exports - Termius CSV import plus the key to attach to each host",
+	"termius export --out":         "exports - target file, or - for stdout",
+	"termius export --include-git": "exports - also export git hosts, which are not shells",
+	"termius export --open":        "exports - macOS: open Termius and show the file in Finder",
+
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
 

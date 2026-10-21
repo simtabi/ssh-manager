@@ -81,6 +81,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newTuiCmd())        // native Go
 	root.AddCommand(newGitCmd())        // native Go
 	root.AddCommand(newVMCmd())         // native Go
+	root.AddCommand(newTermiusCmd())    // native Go
 	return root
 }
 

@@ -145,5 +145,6 @@ func newConfigCmd() *cobra.Command {
 		},
 	})
 
+	cmd.AddCommand(newConfigExportCmd())
 	return cmd
 }
