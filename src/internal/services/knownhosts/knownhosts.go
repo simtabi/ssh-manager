@@ -169,6 +169,10 @@ func (s *Service) Add(lines []string) (int, error) {
 		// A plaintext "host,ip" field becomes one line per name: a hashed field
 		// holds a single hash and cannot express a list.
 		for _, token := range parsed.tokens() {
+			// Hash the name ssh will look up, not the spelling it arrived in:
+			// ssh lowercases before hashing, so an HMAC of "Server.Example.com"
+			// is a pin no connection can ever match.
+			token = strings.ToLower(token)
 			if isPinned(pinned, token, parsed.keytype, parsed.key) {
 				continue
 			}
@@ -273,8 +277,16 @@ func HostInKnownHosts(path, token string) bool {
 			continue
 		}
 		hostField := fields[0]
-		if strings.HasPrefix(fields[0], "@") && len(fields) > 1 {
-			hostField = fields[1] // @cert-authority/@revoked shifts the host right
+		if strings.HasPrefix(fields[0], "@") {
+			// Only @cert-authority vouches for a host. @revoked says the opposite
+			// - this key must never be accepted - so counting it as pinned would
+			// tell doctor and auto-pin a host is trusted when ssh will refuse it.
+			// Any other marker is one this code does not understand, and an
+			// unknown line must not be read as trust either.
+			if fields[0] != "@cert-authority" || len(fields) < 2 {
+				continue
+			}
+			hostField = fields[1] // the marker shifts the host field right
 		}
 		if hostFieldMatches(hostField, token) {
 			return true
@@ -532,10 +544,7 @@ func (s *Service) AutoPin(m *manifest.Manifest, profiles map[string]bool, getenv
 		}
 		seen[key] = true
 		kh := s.Path()
-		token := h.Hostname
-		if h.Port != 22 {
-			token = fmt.Sprintf("[%s]:%d", h.Hostname, h.Port)
-		}
+		token := hostToken(h.Hostname, h.Port)
 		if HostInKnownHosts(kh, token) {
 			continue // already trusted - never override
 		}
@@ -559,10 +568,7 @@ func (s *Service) AutoPin(m *manifest.Manifest, profiles map[string]bool, getenv
 
 func (s *Service) initOne(profile, alias, hostname string, port int, force bool) HostPinResult {
 	kh := s.Path()
-	token := hostname
-	if port != 22 {
-		token = fmt.Sprintf("[%s]:%d", hostname, port)
-	}
+	token := hostToken(hostname, port)
 	if !force && HostInKnownHosts(kh, token) {
 		return HostPinResult{Profile: profile, Alias: alias, Hostname: hostname, Port: port, Status: "already-trusted"}
 	}
@@ -593,10 +599,7 @@ func liveTokens(m *manifest.Manifest) ([]string, error) {
 	seen := map[string]bool{}
 	var tokens []string
 	for _, rk := range resolved {
-		token := rk.Host.Hostname
-		if rk.Host.Port != 0 && rk.Host.Port != 22 {
-			token = fmt.Sprintf("[%s]:%d", rk.Host.Hostname, rk.Host.Port)
-		}
+		token := hostToken(rk.Host.Hostname, rk.Host.Port)
 		if !seen[token] {
 			seen[token] = true
 			tokens = append(tokens, token)

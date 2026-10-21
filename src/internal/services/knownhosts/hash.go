@@ -5,6 +5,7 @@ import (
 	"crypto/rand"
 	"crypto/sha1" //nolint:gosec // the known_hosts hash format is defined as HMAC-SHA1
 	"encoding/base64"
+	"fmt"
 	"strings"
 )
 
@@ -40,17 +41,40 @@ func hashHostFresh(token string) (string, error) {
 	return hashHost(token, salt), nil
 }
 
+// hostToken is the name ssh looks a host up by in known_hosts: hostname, or
+// [hostname]:port for a non-default port, lowercased.
+//
+// ssh lowercases the host name before it consults known_hosts, so a manifest
+// that spells it Server.Example.com reaches the same pin as server.example.com.
+// Building tokens from the raw spelling made such a live pin look unpinned to
+// doctor and dead to prune, which then deleted it. Lowercasing the whole token
+// is safe for the [host]:port form, whose only other characters are digits and
+// brackets.
+func hostToken(hostname string, port int) string {
+	host := strings.ToLower(hostname)
+	if port != 0 && port != 22 {
+		return fmt.Sprintf("[%s]:%d", host, port)
+	}
+	return host
+}
+
 // hostFieldMatches reports whether a known_hosts host field covers token.
 //
 // Both shapes have to be understood: a store can hold plaintext entries the user
 // or ssh itself wrote alongside hashed ones this tool writes, and a hashed entry
 // names exactly one host, so comma splitting applies only to plaintext.
+//
+// The token is lowercased here as well as where it is built, because callers
+// outside this package (doctor, show) pass names straight from the manifest.
+// ssh hashes the lowercased name, and compares plaintext patterns without regard
+// to case, so both comparisons follow it.
 func hostFieldMatches(field, token string) bool {
+	token = strings.ToLower(token)
 	if strings.HasPrefix(field, hashMagic) {
 		return hashedFieldMatches(field, token)
 	}
 	for _, h := range strings.Split(field, ",") {
-		if h == token {
+		if strings.EqualFold(h, token) {
 			return true
 		}
 	}
