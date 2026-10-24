@@ -105,6 +105,14 @@ jobs:
           # Scoop's own switch; empty falls back to SKIP_WINDOWS_PKGS (see the GoReleaser config).
           SKIP_SCOOP: ${{ vars.SKIP_SCOOP }}
 
+      # Set the body again from the same CHANGELOG section, so the release
+      # carries its notes even if a GoReleaser change stops honouring
+      # --release-notes - which is how v3.2.0 and v3.4.0 went out empty.
+      - name: Set the release body from CHANGELOG.md
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release edit "${GITHUB_REF_NAME}" --repo "${GITHUB_REPOSITORY}" --notes-file "${RUNNER_TEMP}/release_notes.md"
+
       # Sign a build-provenance attestation for every released artifact. The
       # checksums file lists them all, so `gh attestation verify <file>
       # --repo <owner>/<repo>` works for any downloaded binary or archive.
