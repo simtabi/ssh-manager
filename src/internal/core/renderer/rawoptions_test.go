@@ -108,12 +108,19 @@ func assertSSHResolves(t *testing.T, cfg, alias string, want map[string][]string
 			got[k] = append(got[k], v)
 		}
 	}
-	// ssh -G prints some paths with ~ expanded and others as written.
-	home, _ := os.UserHomeDir()
+	// ssh -G prints some paths with ~ expanded and others as written, and the
+	// expansion is the platform's: Git for Windows' ssh prints an MSYS path
+	// (/c/Users/runneradmin/.ssh/...) that matches neither ~ nor Go's home
+	// (C:\Users\...). Every path compared here is under ~/.ssh, so each is
+	// compared from its .ssh/ segment on.
 	norm := func(vs []string) string {
 		out := make([]string, len(vs))
 		for i, v := range vs {
-			out[i] = strings.Replace(v, "~/", home+"/", 1)
+			v = strings.ReplaceAll(v, `\`, "/")
+			if j := strings.Index(v, "/.ssh/"); j >= 0 {
+				v = v[j+1:]
+			}
+			out[i] = v
 		}
 		return strings.Join(out, "|")
 	}
