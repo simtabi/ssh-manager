@@ -81,6 +81,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   rendered as a second, ignored line, and `doctor` names the field to use. A
   `snapshots restore` keeps a `.pub` that would not match the private key on
   disk, says so, and now works in dev mode.
+- **Bundles no longer carry rendered config.** `bundle` leaves out the
+  `profiles/<category>/config` files and legacy `profiles/*/known_hosts` that
+  sshmgr renders, and `restore` skips them in older bundles (naming each) and
+  re-renders from the restored manifest. Before, a forged bundle could lay down
+  a category config with a ProxyCommand, which `~/.ssh/config` Includes. A key
+  that happens to be named `config` is still bundled and restored.
 - **Hosting panel targets no longer force an unverified rotation.** A
   `ploi`, `forge` or `cpanel` target only accepts a pasted key, and `rotate`
   either aborted or, with `--allow-unverified`, committed before the key was

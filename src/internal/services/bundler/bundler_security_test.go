@@ -10,6 +10,8 @@ import (
 	"runtime"
 	"strings"
 	"testing"
+
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
 )
 
 // tmpResidue lists every regular file currently under dir, so a test can assert
@@ -397,7 +399,12 @@ func TestRestoreAcceptsEverythingBundleWrites(t *testing.T) {
 	mk(filepath.Join(ssh, "profiles", "work", "old", "work_a-ed25519"))
 	mk(filepath.Join(ssh, "profiles", "clients", "acme", "acme_k-ed25519"))
 	mk(filepath.Join(ssh, "profiles", "clients", "acme", "acme_k-ed25519.pub"))
-	mk(filepath.Join(ssh, "profiles", "clients", "config"))
+	// The rendered category config is not bundled (it is re-rendered on
+	// restore), so the round trip below must not expect it back.
+	if err := os.WriteFile(filepath.Join(ssh, "profiles", "clients", "config"),
+		[]byte(renderer.ManagedHeader+"\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	mk(filepath.Join(cfg, "providers.json"))
 	// Outside what bundle walks, so it must be neither bundled nor restored.
 	mk(filepath.Join(ssh, "authorized_keys"))

@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
 )
 
 const ageHint = "install age: brew install age  (Linux: apt install age / get from FiloSottile/age)"
@@ -102,6 +104,9 @@ type FP struct{ Name, Fingerprint string }
 type RestoreResult struct {
 	Restored     []string
 	Fingerprints []FP
+	// Skipped lists rendered files an older (or forged) bundle carried, which
+	// restore does not lay down: the caller re-renders them from the manifest.
+	Skipped []string
 }
 
 // Format renders the restore summary (mirrors RestoreResult.format).
@@ -109,6 +114,9 @@ func (r RestoreResult) Format() string {
 	lines := []string{fmt.Sprintf("restore: laid down %d file(s)", len(r.Restored))}
 	for _, f := range r.Fingerprints {
 		lines = append(lines, "  "+f.Name+"  "+f.Fingerprint)
+	}
+	for _, s := range r.Skipped {
+		lines = append(lines, "  skipped "+s+" (rendered from the manifest, not taken from the bundle)")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -212,7 +220,7 @@ func (b *Bundler) writeTarGz(w io.Writer) ([]string, error) {
 		for _, p := range paths {
 			rel, _ := filepath.Rel(b.sshDir, p)
 			rel = filepath.ToSlash(rel)
-			if hasStaging(rel) {
+			if hasStaging(rel) || isRenderedFile(rel, p) {
 				continue
 			}
 			arc := sshPrefix + rel
@@ -239,6 +247,43 @@ func (b *Bundler) writeTarGz(w io.Writer) ([]string, error) {
 		return nil, err
 	}
 	return members, gz.Close()
+}
+
+// renderedSlot reports whether rel (relative to ~/.ssh) is where sshmgr puts a
+// file it renders rather than a key: profiles/<category>/config, which the
+// root config Includes, or a legacy per-profile profiles/<p>/known_hosts. A key
+// can carry either name too, which is why callers look at the content.
+func renderedSlot(rel string) bool {
+	parts := strings.Split(rel, "/")
+	return len(parts) == 3 && parts[0] == "profiles" && (parts[2] == "config" || parts[2] == "known_hosts")
+}
+
+// isRenderedFile reports whether the file at path, in a rendered slot, is one
+// sshmgr rendered: a legacy known_hosts, or a config carrying the managed
+// header. Rendered files are rebuilt from the manifest after a restore, so a
+// bundle does not carry them - carrying them is what let a forged bundle plant
+// a category config with a ProxyCommand. A key named config is still a key.
+func isRenderedFile(rel, path string) bool {
+	if !renderedSlot(rel) {
+		return false
+	}
+	if strings.HasSuffix(rel, "/known_hosts") {
+		return true
+	}
+	b, err := os.ReadFile(path)
+	return err == nil && renderer.IsManagedFile(string(b))
+}
+
+// looksLikeKey reports whether data is an SSH private or public key, the only
+// thing restore lays down in a rendered slot.
+func looksLikeKey(data []byte) bool {
+	s := strings.TrimSpace(string(data))
+	for _, prefix := range []string{"-----BEGIN ", "ssh-", "ecdsa-", "sk-ssh-", "sk-ecdsa-"} {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasStaging(rel string) bool {
@@ -401,6 +446,12 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 	defer func() { _ = configRoot.Close() }()
 
 	for _, m := range sorted {
+		// A rendered slot holding anything but a key came from an older bundle
+		// or a forged one. It is never trusted: the caller re-renders it.
+		if rel, ok := strings.CutPrefix(m.name, sshPrefix); ok && renderedSlot(rel) && !looksLikeKey(m.data) {
+			res.Skipped = append(res.Skipped, rel)
+			continue
+		}
 		var root *os.Root
 		var rel, label string
 		switch {
