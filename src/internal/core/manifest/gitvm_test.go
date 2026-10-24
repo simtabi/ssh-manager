@@ -93,7 +93,7 @@ func TestGitAndVMValidation(t *testing.T) {
 	}
 }
 
-// A manifest written before 3.3.0 must save back without a "git" or "vm" key: the new fields are
+// A manifest written before 3.4.0 must save back without a "git" or "vm" key: the new fields are
 // omitted when unset, so no existing file changes shape.
 func TestUnsetGitAndVMAddNoKeys(t *testing.T) {
 	m, err := loadJSON(t, categorizedManifest)

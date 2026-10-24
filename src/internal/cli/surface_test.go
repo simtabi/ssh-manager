@@ -111,7 +111,7 @@ var goOnly = map[string]string{
 	"key regen-pub --dry-run":  "regen-pub - report only",
 	"key regen-pub --yes":      "confirm-before-changing",
 
-	// Git remote modes (3.3.0): profile SSH by default, plain SSH or HTTPS on demand,
+	// Git remote modes (3.4.0): profile SSH by default, plain SSH or HTTPS on demand,
 	// switched per checkout with an ls-remote check before origin is rewritten.
 	"git":               "git remote modes - group",
 	"git status":        "git remote modes - each checkout's mode, owner and profile",
@@ -121,7 +121,7 @@ var goOnly = map[string]string{
 	"git use --dry-run": "git remote modes - show the rewrite, touch nothing",
 	"git use --yes":     "confirm-before-changing",
 
-	// Devboxes (3.3.0): a VM's address comes from its hypervisor at connect time.
+	// Devboxes (3.4.0): a VM's address comes from its hypervisor at connect time.
 	"vm":                  "devboxes - group",
 	"vm list":             "devboxes - every hypervisor's VMs and the host using each",
 	"vm add":              "devboxes - add a VM as a host",

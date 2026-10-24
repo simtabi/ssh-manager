@@ -6,6 +6,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [3.4.0] - 2026-10-24
+
+3.3.0 was never tagged; its changes (git remote modes, devboxes) ship in this release.
+
 ### Added
 
 - **Cloudflare Access hosts.** `sshmgr host add|edit ... --proxy cloudflared`
@@ -688,7 +692,8 @@ manifest - reproducible output, profile-based isolation, and safety guarantees
   Windows, plus CodeQL, secret scanning (gitleaks), and pre-commit. Releases
   build and attach artifacts to a GitHub Release on a `v*` tag.
 
-[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.2.0...HEAD
+[Unreleased]: https://github.com/simtabi/ssh-manager/compare/v3.4.0...HEAD
+[3.4.0]: https://github.com/simtabi/ssh-manager/compare/v3.2.0...v3.4.0
 [3.2.0]: https://github.com/simtabi/ssh-manager/compare/v3.1.1...v3.2.0
 [3.1.1]: https://github.com/simtabi/ssh-manager/compare/v3.1.0...v3.1.1
 [3.1.0]: https://github.com/simtabi/ssh-manager/compare/v3.0.0...v3.1.0
