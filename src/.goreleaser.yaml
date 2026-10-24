@@ -217,4 +217,8 @@ release:
     - glob: src/scripts/install.ps1
 
 changelog:
-  disable: true # release body comes from CHANGELOG.md via --release-notes
+  # Do not set disable: true. GoReleaser reads --release-notes inside its
+  # changelog pipe, so disabling the pipe dropped the notes and v3.2.0 and
+  # v3.4.0 published empty bodies. With --release-notes given, GoReleaser uses
+  # that file (the tagged CHANGELOG.md section) and generates nothing itself.
+  use: git

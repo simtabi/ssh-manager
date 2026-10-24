@@ -6,6 +6,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+
+- **Releases carry their notes again.** `changelog: disable: true` made
+  GoReleaser skip the pipe that reads `--release-notes`, so v3.2.0 and v3.4.0
+  were published with empty bodies while the run reported success. The config
+  no longer disables it, the release workflow sets the body from the tagged
+  CHANGELOG section after GoReleaser as a backstop, and a test fails if either
+  regresses.
+
 ## [3.4.0] - 2026-10-24
 
 3.3.0 was never tagged; its changes (git remote modes, devboxes) ship in this release.
