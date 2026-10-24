@@ -122,6 +122,11 @@ func New(p paths.Paths, emitUseKeychain bool) *Service {
 // config, its hosts' known_hosts pins (only those no surviving host still needs)
 // and, under Purge, its key files and directory.
 func (s *Service) DeleteProfile(name string, opt Options) (Result, error) {
+	if opt.Revoke {
+		if err := s.p.RefuseOutsideSandbox("--revoke"); err != nil {
+			return Result{}, err
+		}
+	}
 	before, err := manifest.Load(s.p.Manifest())
 	if err != nil {
 		return Result{}, err
@@ -164,6 +169,11 @@ func (s *Service) DeleteProfile(name string, opt Options) (Result, error) {
 // key left the manifest along with the host, its files are now tracked by
 // nothing, and Purge is what removes them.
 func (s *Service) DeleteHost(profile, alias string, opt Options) (Result, error) {
+	if opt.Revoke {
+		if err := s.p.RefuseOutsideSandbox("--revoke"); err != nil {
+			return Result{}, err
+		}
+	}
 	before, err := manifest.Load(s.p.Manifest())
 	if err != nil {
 		return Result{}, err
@@ -265,6 +275,11 @@ func keyNameOf(ref string) string {
 // editor.DeleteKey) - the config would otherwise keep pointing at a file that no
 // longer exists.
 func (s *Service) DeleteKey(ref manifest.KeyRef, opt Options) (Result, error) {
+	if opt.Revoke {
+		if err := s.p.RefuseOutsideSandbox("--revoke"); err != nil {
+			return Result{}, err
+		}
+	}
 	m, err := manifest.Load(s.p.Manifest())
 	if err != nil {
 		return Result{}, err

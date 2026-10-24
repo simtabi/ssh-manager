@@ -93,6 +93,7 @@ func newVMAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			// HostName is the alias: ProxyCommand ignores it, and a real address would only go stale.
 			alias := args[1]
 			f := editor.HostFields{

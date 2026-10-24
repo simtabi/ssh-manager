@@ -247,3 +247,131 @@ func TestFailedOnePasswordRotationNamesTheArchivedPredecessor(t *testing.T) {
 		t.Errorf("archived = %d, want the earlier predecessor and the staged key archived", archived())
 	}
 }
+
+// pubBody is the key material of an OpenSSH public key line, without the
+// comment, so a derived key compares equal to the file it came from.
+func pubBody(t *testing.T, line string) string {
+	t.Helper()
+	f := strings.Fields(line)
+	if len(f) < 2 {
+		t.Fatalf("not a public key: %q", line)
+	}
+	return f[0] + " " + f[1]
+}
+
+func derivedPub(t *testing.T, priv string) string {
+	t.Helper()
+	out, err := exec.Command("ssh-keygen", "-y", "-P", "", "-f", priv).Output()
+	if err != nil {
+		t.Fatalf("derive %s: %v", priv, err)
+	}
+	return pubBody(t, string(out))
+}
+
+// movedIntoOnePassword mints a file key, switches the profile to 1Password and
+// rotates twice, so the vault holds a predecessor of its own. It returns the
+// profile directory, the file-era public key and the public key the second
+// rotation retired (the one a rollback must bring back).
+func movedIntoOnePassword(t *testing.T) (p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory, dir, fileEraPub, vaultPredPub string) {
+	t.Helper()
+	fileJSON := strings.Replace(opManifestJSON, `"key_store":"1password","op_vault":"Simtabi",`, "", 1)
+	p, m, inv = opSetup(t, fileJSON)
+	if _, err := reconciler.New(p, m, inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	dir = filepath.Join(p.SSHDir, "profiles", "orgs", "bot")
+	pub := filepath.Join(dir, "bot_panel-ed25519.pub")
+	fileEraPub = pubBody(t, readFile(pub))
+	var switched manifest.Manifest
+	if err := json.Unmarshal([]byte(opManifestJSON), &switched); err != nil {
+		t.Fatal(err)
+	}
+	m.Profiles["bot"] = switched.Profiles["bot"]
+
+	if rep, err := New(p, m, inv).Rotate("bot_panel-ed25519", true, ""); err != nil || !rep.Committed {
+		t.Fatalf("first rotate: %v %+v", err, rep)
+	}
+	vaultPredPub = pubBody(t, readFile(pub))
+	if rep, err := New(p, m, inv).Rotate("bot_panel-ed25519", true, ""); err != nil || !rep.Committed {
+		t.Fatalf("second rotate: %v %+v", err, rep)
+	}
+	return p, m, inv, dir, fileEraPub, vaultPredPub
+}
+
+// Once the vault holds a predecessor of its own, the file-era key in old/ is
+// no longer the predecessor. It must not block rollback, and must stay
+// recoverable as a matching pair under a name that says what it is.
+func TestOnePasswordRollbackAfterTwoRotationsFromAFileKey(t *testing.T) {
+	titles, _ := opVault(t)
+	p, m, inv, dir, fileEraPub, vaultPredPub := movedIntoOnePassword(t)
+	oldDir := filepath.Join(dir, "old")
+
+	if _, err := os.Stat(filepath.Join(oldDir, "bot_panel-ed25519")); err == nil {
+		t.Error("the file-era private key is still at old/<key>, posing as the predecessor of a vault key")
+	}
+	retired := filepath.Join(oldDir, "bot_panel-ed25519.file-era")
+	if _, err := os.Stat(retired); err != nil {
+		t.Fatalf("the file-era private key was not kept aside: %v", err)
+	}
+	if got := derivedPub(t, retired); got != fileEraPub {
+		t.Error("the kept-aside private key is not the file-era key")
+	}
+	if got := pubBody(t, readFile(retired+".pub")); got != fileEraPub {
+		t.Error("the kept-aside pair does not match: its .pub is not the file-era public key")
+	}
+
+	rb, err := New(p, m, inv).Rollback("bot_panel-ed25519")
+	if err != nil || !rb.Committed {
+		t.Fatalf("rollback after two vault rotations: %v %+v", err, rb)
+	}
+	if got := pubBody(t, readFile(filepath.Join(dir, "bot_panel-ed25519.pub"))); got != vaultPredPub {
+		t.Error("rollback did not restore the vault predecessor's public key")
+	}
+	if got := strings.Join(titles(), ","); got != "bot_panel-ed25519" {
+		t.Errorf("after rollback, vault = %q, want only the restored key", got)
+	}
+	if _, err := os.Stat(retired); err != nil {
+		t.Errorf("rollback lost the kept-aside file-era key: %v", err)
+	}
+}
+
+// A profile rotated twice by an earlier sshmgr still has the stale file key at
+// old/<key>, next to a .pub that is the vault predecessor's. Rollback tells the
+// two apart by the key itself rather than refusing on the file's presence.
+func TestOnePasswordRollbackSetsAsideAStaleFileEraKey(t *testing.T) {
+	opVault(t)
+	p, m, inv, dir, fileEraPub, vaultPredPub := movedIntoOnePassword(t)
+	oldDir := filepath.Join(dir, "old")
+	// Recreate the state the earlier code left: the stale key at old/<key>.
+	stale := filepath.Join(oldDir, "bot_panel-ed25519")
+	if kept := filepath.Join(oldDir, "bot_panel-ed25519.file-era"); exists(kept) {
+		if err := os.Rename(kept, stale); err != nil {
+			t.Fatal(err)
+		}
+		_ = os.Remove(kept + ".pub")
+	}
+	if got := derivedPub(t, stale); got != fileEraPub {
+		t.Fatal("setup: old/<key> is not the file-era key")
+	}
+	if got := pubBody(t, readFile(stale+".pub")); got != vaultPredPub {
+		t.Fatal("setup: old/<key>.pub is not the vault predecessor's public key")
+	}
+
+	rb, err := New(p, m, inv).Rollback("bot_panel-ed25519")
+	if err != nil || !rb.Committed {
+		t.Fatalf("rollback with a stale file-era key in old/: %v %+v", err, rb)
+	}
+	if got := pubBody(t, readFile(filepath.Join(dir, "bot_panel-ed25519.pub"))); got != vaultPredPub {
+		t.Error("rollback did not restore the vault predecessor's public key")
+	}
+	if _, err := os.Stat(stale); err == nil {
+		t.Error("the stale file-era key is still at old/<key>")
+	}
+	retired := filepath.Join(oldDir, "bot_panel-ed25519.file-era")
+	if got := derivedPub(t, retired); got != fileEraPub {
+		t.Error("the stale key was not kept aside as old/<key>.file-era")
+	}
+	if got := pubBody(t, readFile(retired+".pub")); got != fileEraPub {
+		t.Error("the kept-aside pair does not match")
+	}
+}

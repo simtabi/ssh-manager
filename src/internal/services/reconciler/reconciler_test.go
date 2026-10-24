@@ -456,8 +456,9 @@ func TestOverwritingAKeyLeavesOneInventoryRecordPerPath(t *testing.T) {
 	if adelsaiqAfter != adelsaiqBefore {
 		t.Error("pruning one profile's record disturbed the same-named key in another")
 	}
-	if len(inv.Keys) != 2 {
-		t.Errorf("inventory holds %d records for 2 keys", len(inv.Keys))
+	// Two live keys plus the overwritten one, whose record followed it to old/.
+	if len(inv.Keys) != 3 {
+		t.Errorf("inventory holds %d records for 2 keys and 1 archived predecessor", len(inv.Keys))
 	}
 }
 
@@ -547,5 +548,169 @@ func TestReconcileFindsAKeyInItsCategory(t *testing.T) {
 		if strings.Contains(mk.Path, "id_personal") {
 			t.Errorf("planned a mint for the categorized key already on disk: %s", mk.Path)
 		}
+	}
+}
+
+// twoProfilesJSON has one key per profile, so a run can mint the first and then
+// fail on the second.
+const twoProfilesJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519", "rotate_after_days": 365},
+  "profiles": {
+    "a": {"key_scope": "per_service", "hosts": [{"alias": "a1", "hostname": "a.example", "user": "x"}]},
+    "b": {"key_scope": "per_service", "hosts": [{"alias": "b1", "hostname": "b.example", "user": "x"}]}
+  }
+}`
+
+// recordsAt returns the fingerprints of every inventory record at path.
+func recordsAt(inv *inventory.Inventory, path string) []string {
+	var fps []string
+	for fp, rec := range inv.Keys {
+		if rec.Path == path {
+			fps = append(fps, fp)
+		}
+	}
+	return fps
+}
+
+// A key minted earlier in a run is on disk whether or not a later key fails.
+// Returning before the save left it there with no record, and every later run
+// saw it as existing and never recorded it either, so expiry tracking was blind
+// to it for good.
+func TestAFailedMintStillRecordsTheKeysMintedBeforeIt(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	for _, via := range []string{"reconcile", "keygen"} {
+		t.Run(via, func(t *testing.T) {
+			var m manifest.Manifest
+			if err := json.Unmarshal([]byte(twoProfilesJSON), &m); err != nil {
+				t.Fatal(err)
+			}
+			ssh := t.TempDir()
+			p := paths.Paths{SSHDir: ssh, ConfigDir: t.TempDir()}
+			aRef := manifest.KeyRef{Profile: "a", KeyName: "a_a1-ed25519"}
+			// The keystore refuses to write through a symlink, and a dangling one
+			// does not count as the key being present, so b is planned and fails.
+			blocked := m.KeyPath(ssh, manifest.KeyRef{Profile: "b", KeyName: "b_b1-ed25519"})
+			if err := os.MkdirAll(filepath.Dir(blocked), 0o700); err != nil {
+				t.Fatal(err)
+			}
+			if err := os.Symlink("/nonexistent", blocked); err != nil {
+				t.Fatal(err)
+			}
+
+			inv := inventory.New()
+			var err error
+			if via == "reconcile" {
+				_, err = New(p, &m, inv, false).Reconcile(false, "")
+			} else {
+				_, err = New(p, &m, inv, false).Mint("", "", nil)
+			}
+			if err == nil {
+				t.Fatal("minting through a symlink should fail")
+			}
+			if _, statErr := os.Stat(m.KeyPath(ssh, aRef)); statErr != nil {
+				t.Fatalf("precondition: a's key should have been minted first: %v", statErr)
+			}
+			saved, loadErr := inventory.Load(p.Inventory())
+			if loadErr != nil {
+				t.Fatal(loadErr)
+			}
+			if got := recordsAt(saved, m.IdentityFile("a", aRef.KeyName)); len(got) != 1 {
+				t.Errorf("a's minted key has %d saved records, want 1", len(got))
+			}
+		})
+	}
+}
+
+// A declared key on disk with no record - left by an older run that failed, or
+// an inventory lost or reset - is recorded by reconcile, with the type and
+// rotation interval the manifest gives that key rather than the defaults.
+func TestReconcileRecordsAKeyOnDiskThatHasNoRecord(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(declaredKeysJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
+	first := inventory.New()
+	if _, err := New(p, &m, first, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+
+	inv := inventory.New() // the keys stay on disk; their records are gone
+	res, err := New(p, &m, inv, false).Reconcile(false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(res.Minted) != 0 {
+		t.Fatalf("minted %d keys that were already on disk", len(res.Minted))
+	}
+	if len(inv.Keys) != len(first.Keys) {
+		t.Fatalf("inventory has %d records, want %d (one per key on disk)", len(inv.Keys), len(first.Keys))
+	}
+	for fp, want := range first.Keys {
+		got, ok := inv.Keys[fp]
+		if !ok {
+			t.Errorf("%s (%s) was not recorded", want.Path, fp)
+			continue
+		}
+		if got.Path != want.Path || got.Type != want.Type || got.RotateAfterDays != want.RotateAfterDays {
+			t.Errorf("record = %s %s %d, want %s %s %d", got.Path, got.Type, got.RotateAfterDays,
+				want.Path, want.Type, want.RotateAfterDays)
+		}
+		if got.ExpiresOn == nil || *got.ExpiresOn == "" {
+			t.Errorf("%s has no expiry, so expiry tracking stays blind to it", got.Path)
+		}
+	}
+	saved, err := inventory.Load(p.Inventory())
+	if err != nil || len(saved.Keys) != len(first.Keys) {
+		t.Errorf("the recorded keys were not saved: %v", err)
+	}
+}
+
+// Overwriting a key archives its predecessor to old/, and its record has to go
+// with it, as a rotation's does. Deleting it meant a rollback restored a key
+// the inventory had no record of: the active key became unrecorded.
+func TestOverwriteMovesTheOutgoingRecordToOld(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(dupNameJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
+	inv := inventory.New()
+	if _, err := New(p, &m, inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	ident := m.IdentityFile("personal", "imani_github-ed25519")
+	oldIdent := m.IdentityFile("personal", "old/imani_github-ed25519")
+	before := recordsAt(inv, ident)
+	if len(before) != 1 {
+		t.Fatalf("precondition: %d records at %s", len(before), ident)
+	}
+	outgoing := before[0]
+	rec := inv.Keys[outgoing]
+	date := inventory.Today()
+	rec.Deployments = []inventory.Deployment{{Target: "gh-personal", Method: "api", Date: &date, Verified: true}}
+	inv.Keys[outgoing] = rec
+
+	if _, err := New(p, &m, inv, false).Mint("", "",
+		map[manifest.KeyRef]bool{{Profile: "personal", KeyName: "imani_github-ed25519"}: true}); err != nil {
+		t.Fatal(err)
+	}
+	if got := recordsAt(inv, oldIdent); len(got) != 1 || got[0] != outgoing {
+		t.Fatalf("records at %s = %v, want the outgoing key %s", oldIdent, got, outgoing)
+	}
+	if deps := inv.Keys[outgoing].Deployments; len(deps) != 1 {
+		t.Errorf("the archived record lost its deployments: %+v", deps)
+	}
+	if got := recordsAt(inv, ident); len(got) != 1 || got[0] == outgoing {
+		t.Errorf("records at %s = %v, want only the new key", ident, got)
 	}
 }

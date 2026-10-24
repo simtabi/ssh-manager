@@ -38,6 +38,7 @@ func newKnownHostsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -71,6 +72,7 @@ func newKnownHostsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

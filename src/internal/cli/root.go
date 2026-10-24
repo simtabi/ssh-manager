@@ -8,7 +8,9 @@
 package cli
 
 import (
+	"errors"
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
 
@@ -24,7 +26,7 @@ func newRootCmd() *cobra.Command {
 		Version:       version.Version,
 		SilenceUsage:  true,
 		SilenceErrors: true,
-		Args:          cobra.NoArgs,
+		Args:          rootArgs,
 		// Bare `sshmgr` on a terminal opens the menu; `sshmgr <verb>` is the CLI.
 		// Someone who runs the binary by double-clicking it, or by typing its name
 		// to see what it does, gets something they can use rather than a wall of
@@ -44,6 +46,7 @@ func newRootCmd() *cobra.Command {
 	// the config home under it and touches nothing in $HOME. Persistent, because
 	// it has to apply to every verb - a flag that only some commands honoured
 	// would produce a run that reads the sandbox and writes the real tree.
+	root.SetFlagErrorFunc(unknownCommandBeforeFlags)
 	root.PersistentFlags().String(devRootFlag, "",
 		"run against a sandbox directory instead of ~/.ssh (also $"+paths.DevRootEnv+")")
 
@@ -81,6 +84,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newTuiCmd())        // native Go
 	root.AddCommand(newGitCmd())        // native Go
 	root.AddCommand(newVMCmd())         // native Go
+	root.AddCommand(newTermiusCmd())    // native Go
 	return root
 }
 
@@ -94,4 +98,37 @@ func newVersionCmd() *cobra.Command {
 			return nil
 		},
 	}
+}
+
+// unknownCommandBeforeFlags reports a word that is not a command ahead of a
+// flag error. The root takes no arguments, so `sshmgr nosuchcmd --open` is
+// parsed as the root's own flags first, and cobra's "unknown flag: --open"
+// hides the real problem: this build has no such command (an older binary
+// on PATH, typically). A flag error on any real command is left as it is.
+func unknownCommandBeforeFlags(c *cobra.Command, err error) error {
+	if c.HasParent() || c.Flags().NArg() == 0 {
+		return err
+	}
+	return unknownCommand(c, c.Flags().Arg(0))
+}
+
+// rootArgs refuses any word given to the root, as cobra.NoArgs did, but says
+// which commands it may have meant: NoArgs reports an unknown command with no
+// suggestion, so `sshmgr termus` never pointed at `termius`.
+func rootArgs(c *cobra.Command, args []string) error {
+	if len(args) == 0 {
+		return nil
+	}
+	return unknownCommand(c, args[0])
+}
+
+func unknownCommand(c *cobra.Command, word string) error {
+	msg := fmt.Sprintf("unknown command %q for %q", word, c.Name())
+	if c.SuggestionsMinimumDistance <= 0 {
+		c.SuggestionsMinimumDistance = 2
+	}
+	if s := c.SuggestionsFor(word); len(s) > 0 {
+		msg += "\n\nDid you mean this?\n\t" + strings.Join(s, "\n\t")
+	}
+	return errors.New(msg + "\n\nRun 'sshmgr --help' for the commands this build has (sshmgr version names it).")
 }

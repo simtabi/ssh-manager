@@ -13,6 +13,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/rotator"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
@@ -251,5 +252,75 @@ func TestReportFormatNamesTargetsAndOutcome(t *testing.T) {
 		if !strings.Contains(text, want) {
 			t.Errorf("report should mention %q:\n%s", want, text)
 		}
+	}
+}
+
+// A key whose type and rotation interval differ from the manifest defaults.
+const overriddenJSON = `{
+  "version": 1,
+  "defaults": {"key_type": "ed25519", "rotate_after_days": 365},
+  "profiles": {
+    "panel": {"key_scope": "shared", "key_name": "panel_all-rsa",
+      "keys": [{"name": "panel_all-rsa", "type": "rsa", "rotate_after_days": 90}],
+      "hosts": [{"alias": "one", "hostname": "one.example", "user": "x", "provider": "ploi"}]}
+  }
+}`
+
+// Deploying a key the inventory has no record for creates one. It used to be
+// written with a hard-coded ed25519 and 365 days whatever the manifest said, so
+// an rsa key on a 90-day rotation was reported as the wrong type and expired
+// nine months late. And a record left at the same path by the key this one
+// replaced stayed beside it, two records claiming one file.
+func TestDeployRecordsAnUnrecordedKeyAsTheManifestDeclaresIt(t *testing.T) {
+	f := newFixture(t, overriddenJSON)
+	ident := f.m.IdentityFile("panel", "panel_all-rsa")
+	stale := inventory.New()
+	stale.Record("SHA256:stale", inventory.KeyRecord{Profile: "panel", Path: ident, Type: "rsa", RotateAfterDays: 90})
+	f.inv.Keys = stale.Keys // the key on disk is unrecorded; a predecessor's record remains
+
+	report, err := New(f.p, f.m, f.inv).Deploy("panel_all-rsa", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var atPath []string
+	for fp, rec := range f.inv.Keys {
+		if rec.Path == ident {
+			atPath = append(atPath, fp)
+		}
+	}
+	if len(atPath) != 1 || atPath[0] != report.Fingerprint {
+		t.Errorf("records at %s = %v, want only the deployed key %s", ident, atPath, report.Fingerprint)
+	}
+	rec := f.inv.Keys[report.Fingerprint]
+	if rec.Type != "rsa" || rec.RotateAfterDays != 90 {
+		t.Errorf("record = type %q, rotate %d; want the manifest's rsa, 90", rec.Type, rec.RotateAfterDays)
+	}
+}
+
+// `keygen --force` archives the outgoing key to old/, and `rollback` restores
+// it. The restored key must still have its record: overwrite used to delete
+// it, so after the rollback the active key was unrecorded.
+func TestRollbackAfterKeygenForceKeepsTheActiveKeyRecorded(t *testing.T) {
+	f := newFixture(t, manifestJSON)
+	ref := manifest.KeyRef{Profile: "panel", KeyName: "panel_all-ed25519"}
+	ident := f.m.IdentityFile(ref.Profile, ref.KeyName)
+	var original string
+	for fp, rec := range f.inv.Keys {
+		if rec.Path == ident {
+			original = fp
+		}
+	}
+	if _, err := reconciler.New(f.p, f.m, f.inv, false).Mint("", "", map[manifest.KeyRef]bool{ref: true}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := rotator.New(f.p, f.m, f.inv).Rollback(ref.String()); err != nil {
+		t.Fatal(err)
+	}
+	rec, ok := f.inv.Keys[original]
+	if !ok {
+		t.Fatalf("the restored key %s has no inventory record: %+v", original, f.inv.Keys)
+	}
+	if rec.Path != ident {
+		t.Errorf("the restored key's record is at %s, want %s", rec.Path, ident)
 	}
 }

@@ -203,6 +203,21 @@
                       "type": "string"
                     }
                   }
+                },
+                "proxy": {
+                  "type": "object",
+                  "additionalProperties": false,
+                  "required": [
+                    "kind"
+                  ],
+                  "description": "Route connections through a proxy command sshmgr renders: cloudflared reaches the host through Cloudflare Access (ssh runs `cloudflared access ssh --hostname %h`). A host is a VM or proxied, not both.",
+                  "properties": {
+                    "kind": {
+                      "enum": [
+                        "cloudflared"
+                      ]
+                    }
+                  }
                 }
               }
             }

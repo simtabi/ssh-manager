@@ -18,10 +18,13 @@ func intPtrIf(cmd *cobra.Command, flag string, val int) *int {
 	return nil
 }
 
+const proxyFlagHelp = "reach the host through a proxy: cloudflared (Cloudflare Access; ssh runs " +
+	"`cloudflared access ssh --hostname %h`)"
+
 func newHostCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "host", Short: "Manage a host within a profile (add/edit/delete)"}
 
-	var hostname, user, provider, tokenEnv, keyName string
+	var hostname, user, provider, tokenEnv, keyName, proxy string
 	var port int
 	var tags []string
 	add := &cobra.Command{
@@ -33,12 +36,14 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			f := editor.HostFields{
 				Hostname: &hostname, User: &user, Port: &port,
 				Provider: strPtrIf(c, "provider", provider),
 				TokenEnv: strPtrIf(c, "token-env", tokenEnv),
 				KeyName:  strPtrIf(c, "key-name", keyName),
 				Tags:     tags,
+				Proxy:    strPtrIf(c, "proxy", proxy),
 			}
 			snapshotBeforeMutation(p)
 			if err := editor.New(p).AddHost(args[0], args[1], f); err != nil {
@@ -59,11 +64,12 @@ func newHostCmd() *cobra.Command {
 	add.Flags().StringVar(&tokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
 	add.Flags().StringVar(&keyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	add.Flags().StringArrayVar(&tags, "tag", nil, "repeatable")
+	add.Flags().StringVar(&proxy, "proxy", "", proxyFlagHelp)
 	_ = add.MarkFlagRequired("hostname")
 	_ = add.MarkFlagRequired("user")
 	cmd.AddCommand(add)
 
-	var eHostname, eUser, eProvider, eTokenEnv, eKeyName string
+	var eHostname, eUser, eProvider, eTokenEnv, eKeyName, eProxy string
 	var ePort int
 	edit := &cobra.Command{
 		Use:   "edit <profile> <alias>",
@@ -74,6 +80,7 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			f := editor.HostFields{
 				Hostname: strPtrIf(c, "hostname", eHostname),
 				User:     strPtrIf(c, "user", eUser),
@@ -81,6 +88,7 @@ func newHostCmd() *cobra.Command {
 				Provider: strPtrIf(c, "provider", eProvider),
 				TokenEnv: strPtrIf(c, "token-env", eTokenEnv),
 				KeyName:  strPtrIf(c, "key-name", eKeyName),
+				Proxy:    strPtrIf(c, "proxy", eProxy),
 			}
 			snapshotBeforeMutation(p)
 			if err := editor.New(p).EditHost(args[0], args[1], f); err != nil {
@@ -108,6 +116,7 @@ func newHostCmd() *cobra.Command {
 	edit.Flags().StringVar(&eProvider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
 	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
 	edit.Flags().StringVar(&eKeyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
+	edit.Flags().StringVar(&eProxy, "proxy", "", proxyFlagHelp+`; "none" removes it`)
 	cmd.AddCommand(edit)
 
 	var yes, revoke, purge, noKeyBackup bool
@@ -133,6 +142,7 @@ func newHostCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			out := c.OutOrStdout()
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {

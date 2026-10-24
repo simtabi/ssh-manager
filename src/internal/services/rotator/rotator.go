@@ -163,6 +163,9 @@ func (r *Rotator) unreachable(hosts []manifest.Host) []string {
 // Rotate stages a fresh key, deploys+verifies it on every target, and commits only
 // if all verified (or allowUnverified and all deployed). Mirrors Rotator.rotate.
 func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase string) (RotateReport, error) {
+	if err := r.p.RefuseOutsideSandbox("rotate"); err != nil {
+		return RotateReport{}, err
+	}
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
@@ -354,6 +357,9 @@ func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, 
 // Rollback restores the single /old/ predecessor (plain reverse move), re-deploys
 // it, and revokes the rotated-in key. Mirrors Rotator.rollback.
 func (r *Rotator) Rollback(selector string) (RotateReport, error) {
+	if err := r.p.RefuseOutsideSandbox("rollback"); err != nil {
+		return RotateReport{}, err
+	}
 	profile, keyName, hosts, err := r.profileAndHosts(selector)
 	if err != nil {
 		return RotateReport{}, err
@@ -381,6 +387,24 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 		report.NewFingerprint = fp
 	}
 
+	// Preflight, before any file moves: a server that cannot be reached would
+	// keep trusting only the rotated-in key, so rolling back locally would cut
+	// it off. Rotate checks the same thing for the same reason.
+	if msgs := r.unreachable(hosts); len(msgs) > 0 {
+		report.Message = "cannot roll back - " + strings.Join(msgs, "; ") + ". Nothing was changed."
+		log.Audit(r.p.AuditLog(), "rollback.unreachable", log.Field{Key: "key", Value: keyName})
+		return report, nil
+	}
+
+	// Keep the rotated-in pair: it is linked aside now and moved into old/
+	// once the predecessor is out, so the rollback swaps the two keys rather
+	// than destroying the newer one, and can itself be rolled back.
+	swap := oldPriv + ".rolled-back"
+	if err := preservePair(curPriv, swap); err != nil {
+		return RotateReport{}, fmt.Errorf("could not keep the rotated-in key before rolling back, so "+
+			"nothing was rolled back: %w", err)
+	}
+
 	// Reverse move: predecessor -> canonical, replacing the rotated-in key.
 	//
 	// Nothing is removed first. This used to delete the canonical pair and then
@@ -406,6 +430,14 @@ func (r *Rotator) Rollback(selector string) (RotateReport, error) {
 	}
 	_ = perms.SetPerms(curPriv, perms.PrivateKeyMode)
 	_ = perms.SetPerms(curPub, perms.PublicKeyMode)
+	for _, ext := range []string{"", ".pub"} {
+		if exists(swap + ext) {
+			if err := os.Rename(swap+ext, oldPriv+ext); err != nil {
+				return RotateReport{}, fmt.Errorf("the previous key is active, but the rotated-in key "+
+					"could not be moved into old/; it is kept at %s: %w", swap+ext, err)
+			}
+		}
+	}
 
 	return r.finishRollback(profile, keyName, hosts, curPub, curPriv, curPubText, report)
 }
@@ -449,8 +481,11 @@ func (r *Rotator) finishRollback(profile, keyName string, hosts []manifest.Host,
 	}
 	report.Targets = results
 
-	if report.OldFingerprint != "" {
-		delete(r.inv.Keys, report.OldFingerprint)
+	// The rotated-in key now lives in old/, so its record follows it there
+	// rather than being dropped with a key that still exists.
+	if rec, ok := r.inv.Keys[report.OldFingerprint]; ok && report.OldFingerprint != "" {
+		rec.Path = r.m.IdentityFile(profile, "old/"+keyName)
+		r.inv.Keys[report.OldFingerprint] = rec
 	}
 	ident := r.m.IdentityFile(profile, keyName)
 	if rec, ok := r.inv.Keys[report.NewFingerprint]; ok {
@@ -462,8 +497,23 @@ func (r *Rotator) finishRollback(profile, keyName string, hosts []manifest.Host,
 	// still trusts only the key that was rolled back. Reporting it as done sent
 	// the user away believing an unreachable host had been restored, which is the
 	// one thing a rollback exists to guarantee.
-	report.Committed = len(unreached) == 0
-	if !report.Committed {
+	//
+	// A target that refused the restored key, or a server that could not prove
+	// it, is not restored either, however reachable it was.
+	var failed []string
+	for i, h := range hosts {
+		tr := results[i]
+		if len(unreached) == 0 && (!tr.Deployed || (r.provider(h).Category() == "server" && !tr.Verified)) {
+			failed = append(failed, h.Alias)
+		}
+	}
+	report.Committed = len(unreached) == 0 && len(failed) == 0
+	if len(failed) > 0 {
+		report.Message = fmt.Sprintf("the local key was restored, but %d target(s) did not take or "+
+			"verify it: %s. Fix the target and run `sshmgr deploy %s`.",
+			len(failed), strings.Join(failed, ", "), keyName)
+	}
+	if len(unreached) > 0 {
 		report.Message = fmt.Sprintf("the local key was restored, but %d target(s) could not be "+
 			"reached and still trust the rotated-in key: %s. Re-run `sshmgr rollback %s` once "+
 			"they are reachable (VPN-gated hosts: connect the VPN first).",

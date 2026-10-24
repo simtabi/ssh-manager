@@ -40,6 +40,19 @@ var heldLock func()
 // holding it: the lock exists to serialize separate processes, and within one
 // process these run in sequence anyway.
 func snapshotBeforeMutation(p paths.Paths) string {
+	lockForMutation(p)
+	snapshots.CleanTempArtifacts(p.SSHDir)
+	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain(), "")
+	return snap
+}
+
+// lockForMutation takes the advisory lock, once per process. A mutating
+// command calls it before it reads the manifest or inventory, not just before
+// it writes: one that loaded state first and then waited for the lock saved
+// that stale copy afterwards, silently dropping whatever the command it waited
+// for had written. snapshotBeforeMutation calls it too, so a command that
+// forgets still holds the lock while it mutates.
+func lockForMutation(p paths.Paths) {
 	if heldLock == nil {
 		rel, err := lock.Acquire(p.LockFile())
 		if err != nil {
@@ -54,9 +67,6 @@ func snapshotBeforeMutation(p paths.Paths) string {
 			heldLock = rel
 		}
 	}
-	snapshots.CleanTempArtifacts(p.SSHDir)
-	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), snapshotRetain(), "")
-	return snap
 }
 
 // applyManifestEdit re-renders ~/.ssh/config after a command changed the

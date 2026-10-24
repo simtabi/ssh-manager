@@ -79,6 +79,9 @@ func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Deploye
 // Deploy installs key keyName on its target(s) (all hosts using it, or just
 // targetAlias) and records each deployment. Mirrors Deployer.deploy.
 func (d *Deployer) Deploy(selector, targetAlias string) (DeployReport, error) {
+	if err := d.p.RefuseOutsideSandbox("deploy"); err != nil {
+		return DeployReport{}, err
+	}
 	hosts, ref, err := d.targets(selector, targetAlias)
 	if err != nil {
 		return DeployReport{}, err
@@ -162,15 +165,32 @@ func (d *Deployer) targets(selector, targetAlias string) ([]manifest.Host, manif
 	return chosen, ref, nil
 }
 
-// ensureRecord makes sure an inventory record exists for fp, with the
-// defaults (type ed25519, rotate 365), and returns the fingerprint key.
+// ensureRecord makes sure an inventory record exists for fp and returns the
+// fingerprint key. A new record takes the type and rotation interval the
+// manifest gives this key, as the reconciler's mint does: hard-coded ed25519
+// and 365 days misreported an rsa key, and put a 90-day key's expiry nine
+// months late. Any other record at the same path belongs to a key that is no
+// longer on disk there, so it is dropped rather than left beside this one,
+// two records claiming one file.
 func (d *Deployer) ensureRecord(fp, profile, keyName string) string {
-	if _, ok := d.inv.Keys[fp]; !ok {
-		d.inv.Record(fp, inventory.KeyRecord{
-			Profile: profile, Path: d.m.IdentityFile(profile, keyName),
-			Type: "ed25519", RotateAfterDays: 365,
-		})
+	if _, ok := d.inv.Keys[fp]; ok {
+		return fp
 	}
+	ref := manifest.KeyRef{Profile: profile, KeyName: keyName}
+	ident := d.m.IdentityFile(profile, keyName)
+	for other, rec := range d.inv.Keys {
+		if rec.Path == ident {
+			delete(d.inv.Keys, other)
+		}
+	}
+	keyType := d.m.KeyTypeFor(ref)
+	if d.m.Profiles[profile].InOnePassword() {
+		keyType = "ed25519" // what 1Password generates
+	}
+	d.inv.Record(fp, inventory.KeyRecord{
+		Profile: profile, Path: ident,
+		Type: keyType, RotateAfterDays: d.m.RotateAfterDaysFor(ref),
+	})
 	return fp
 }
 

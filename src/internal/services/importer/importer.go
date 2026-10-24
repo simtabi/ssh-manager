@@ -79,12 +79,79 @@ func inferProvider(hostname string) *string {
 	return nil
 }
 
-var simpleKeys = map[string]bool{"hostname": true, "user": true, "port": true, "identityfile": true}
+// block is one section of an ssh config: a Host line's patterns and the options
+// under it, in file order.
+type block struct {
+	patterns []string // as written, "!" negations included
+	all      bool     // the lines before the first Host line: they apply to every host
+	opts     []kv
+}
+
+// matches reports whether this block applies to alias, as ssh's
+// match_pattern_list decides it: some pattern matches and no negated one does.
+func (b *block) matches(alias string) bool {
+	if b.all {
+		return true
+	}
+	hit := false
+	for _, p := range b.patterns {
+		if neg := strings.HasPrefix(p, "!"); neg {
+			if globMatch(p[1:], alias) {
+				return false
+			}
+		} else if globMatch(p, alias) {
+			hit = true
+		}
+	}
+	return hit
+}
+
+// names reports whether alias is written literally in this block's Host line,
+// which makes it that host's own block rather than one it merely matches.
+func (b *block) names(alias string) bool {
+	for _, p := range b.patterns {
+		if p == alias {
+			return true
+		}
+	}
+	return false
+}
 
 // parseSSHConfig parses ssh config text into hosts, following relative Include
-// files. Wildcard/global Host blocks are skipped; Match ends the current block.
+// files.
+//
+// It resolves each host the way ssh does rather than block by block: every
+// block whose patterns match the alias contributes, in file order, and the
+// first value obtained for an option wins. So `Host *` and pattern blocks
+// supply what a host leaves unset (before any $USER/22 fallback), a block
+// above the host's own beats it, and a repeated alias only fills gaps. Raw
+// options are carried only from the block that first names the host - a
+// wildcard's options belong in the manifest's global options, not copied
+// into every host. Match blocks are never applied: their criteria cannot be
+// evaluated at import time.
 func parseSSHConfig(text, baseDir string, seen map[string]bool) []*ParsedHost {
-	var hosts, current []*ParsedHost
+	blocks, aliases := collectBlocks(text, baseDir, seen, true)
+	hosts := make([]*ParsedHost, 0, len(aliases))
+	for _, alias := range aliases {
+		hosts = append(hosts, resolveHost(alias, blocks))
+	}
+	return hosts
+}
+
+// collectBlocks splits config text into blocks, inlining Include files in place,
+// and lists each literal (non-pattern) alias once, in first-seen order.
+func collectBlocks(text, baseDir string, seen map[string]bool, top bool) ([]*block, []string) {
+	var blocks []*block
+	var aliases []string
+	known := map[string]bool{}
+	// Options before the first Host line apply to every host - but only in the
+	// file ssh reads first. An included file's leading lines inherit the
+	// includer's context, which (as before) is treated as no context at all.
+	var current *block
+	if top {
+		current = &block{all: true}
+		blocks = append(blocks, current)
+	}
 	for _, raw := range strings.Split(text, "\n") {
 		line := strings.TrimSpace(raw)
 		if line == "" || strings.HasPrefix(line, "#") {
@@ -93,60 +160,186 @@ func parseSSHConfig(text, baseDir string, seen map[string]bool) []*ParsedHost {
 		keyword, value := splitKV(line)
 		switch {
 		case keyword == "host":
-			current = nil
-			for _, alias := range strings.Fields(value) {
-				if strings.ContainsAny(alias, "*?!") {
+			current = &block{patterns: argvSplit(value)}
+			blocks = append(blocks, current)
+			for _, p := range current.patterns {
+				if strings.ContainsAny(p, "*?!") || known[p] {
 					continue
 				}
-				ph := &ParsedHost{Alias: alias, Port: 22, Profile: "imported"}
-				current = append(current, ph)
-				hosts = append(hosts, ph)
+				known[p] = true
+				aliases = append(aliases, p)
 			}
 		case keyword == "match":
 			current = nil
 		case keyword == "include" && baseDir != "":
-			hosts = append(hosts, parseIncludes(value, baseDir, seen)...)
+			incBlocks, incAliases := parseIncludes(value, baseDir, seen)
+			blocks = append(blocks, incBlocks...)
+			for _, a := range incAliases {
+				if !known[a] {
+					known[a] = true
+					aliases = append(aliases, a)
+				}
+			}
 			current = nil
 		default:
-			for _, ph := range current {
-				applyOption(ph, keyword, value)
+			if current != nil {
+				current.opts = append(current.opts, kv{keyword, value})
 			}
 		}
 	}
-	return hosts
+	return blocks, aliases
 }
 
-// splitKV splits a config line into a lowercased keyword and the trimmed rest,
-// splitting on whitespace only, as v1 did (no "=" handling).
+// resolveHost applies every block matching alias, in order, first value wins.
+func resolveHost(alias string, blocks []*block) *ParsedHost {
+	h := &ParsedHost{Alias: alias, Profile: "imported"}
+	set := map[string]bool{}
+	own := true // the first block naming alias is its own; later ones only fill gaps
+	for _, b := range blocks {
+		if !b.matches(alias) {
+			continue
+		}
+		carry := own && b.names(alias)
+		for _, o := range b.opts {
+			applyOption(h, set, o.Key, o.Val, carry)
+		}
+		if carry {
+			own = false
+		}
+	}
+	if !set["port"] {
+		h.Port = 22
+	}
+	if h.IdentityFile != "" {
+		h.Profile, h.Category = profileFromIdentity(h.IdentityFile)
+	}
+	return h
+}
+
+// splitKV splits a config line into a lowercased keyword and the trimmed rest.
+// The keyword ends at whitespace or '=', and one '=' (with whitespace either
+// side) may separate it from the value, as OpenSSH's strdelim allows - so
+// `HostName=x`, `HostName = x` and `HostName x` all mean the same thing.
 func splitKV(line string) (string, string) {
-	i := strings.IndexFunc(line, unicode.IsSpace)
+	i := strings.IndexFunc(line, func(r rune) bool { return r == '=' || unicode.IsSpace(r) })
 	if i < 0 {
 		return strings.ToLower(line), ""
 	}
-	return strings.ToLower(line[:i]), strings.TrimSpace(line[i:])
+	rest := strings.TrimLeftFunc(line[i:], unicode.IsSpace)
+	rest = strings.TrimPrefix(rest, "=")
+	return strings.ToLower(line[:i]), strings.TrimSpace(rest)
 }
 
-func applyOption(h *ParsedHost, keyword, value string) {
+// applyOption records one option on h unless an earlier one already set it:
+// ssh keeps the first value it obtains for each option. carry says whether
+// this is the host's own block, the only place raw options are taken from.
+func applyOption(h *ParsedHost, set map[string]bool, keyword, value string, carry bool) {
 	switch keyword {
-	case "hostname":
-		h.Hostname = value
-	case "user":
-		h.User = value
-	case "port":
-		if n, err := strconv.Atoi(value); err == nil {
-			h.Port = n
+	case "hostname", "user", "port", "identityfile":
+		if set[keyword] {
+			return
 		}
-	case "identityfile":
-		h.IdentityFile = value
-		h.Profile, h.Category = profileFromIdentity(value)
+		// These take one argument, which ssh unquotes: `IdentityFile "~/my key"`
+		// names a path with a space, not one beginning with a quote.
+		arg := firstArg(value)
+		switch keyword {
+		case "hostname":
+			h.Hostname = arg
+		case "user":
+			h.User = arg
+		case "port":
+			n, err := strconv.Atoi(arg)
+			if err != nil {
+				return // unusable; leave it unset so a later value can apply
+			}
+			h.Port = n
+		case "identityfile":
+			h.IdentityFile = arg
+		}
+		set[keyword] = true
 	default:
-		if manifest.IsDangerousOption(keyword) {
+		if !carry || manifest.IsDangerousOption(keyword) {
 			return // drop command/config-executing directives
 		}
-		if !simpleKeys[keyword] {
-			h.Extra = append(h.Extra, kv{keyword, value})
+		// Carried verbatim, quotes included: it is rendered back into an ssh
+		// config, where ssh will unquote it itself.
+		h.Extra = append(h.Extra, kv{keyword, value})
+	}
+}
+
+// firstArg is the first argument of an option value, unquoted.
+func firstArg(value string) string {
+	if args := argvSplit(value); len(args) > 0 {
+		return args[0]
+	}
+	return ""
+}
+
+// argvSplit splits s into arguments as OpenSSH's argv_split does: spaces and
+// tabs separate, single or double quotes group (and are removed), and a
+// backslash escapes a quote, a backslash, or (outside quotes) a space. Any
+// other backslash is literal, which keeps a Windows path like `~\.ssh\id`
+// intact. ssh rejects an unterminated quote; here the partial argument is
+// kept, since import should salvage what it can rather than fail outright.
+func argvSplit(s string) []string {
+	var args []string
+	for i := 0; i < len(s); {
+		if s[i] == ' ' || s[i] == '\t' {
+			i++
+			continue
+		}
+		var arg strings.Builder
+		var quote byte
+		for ; i < len(s); i++ {
+			c := s[i]
+			if c == '\\' && i+1 < len(s) && (s[i+1] == '\'' || s[i+1] == '"' || s[i+1] == '\\' ||
+				(quote == 0 && s[i+1] == ' ')) {
+				i++
+				arg.WriteByte(s[i])
+				continue
+			}
+			if quote == 0 && (c == ' ' || c == '\t') {
+				break // unquoted whitespace ends the argument
+			}
+			switch {
+			case quote == 0 && (c == '"' || c == '\''):
+				quote = c
+			case quote != 0 && c == quote:
+				quote = 0
+			default:
+				arg.WriteByte(c)
+			}
+		}
+		args = append(args, arg.String())
+	}
+	return args
+}
+
+// globMatch matches s against an ssh pattern, where '*' is any run of
+// characters and '?' any one. Case-insensitive, as ssh lowercases the host
+// it is matching.
+func globMatch(pattern, s string) bool {
+	p, t := []rune(strings.ToLower(pattern)), []rune(strings.ToLower(s))
+	i, j, star, mark := 0, 0, -1, 0
+	for j < len(t) {
+		switch {
+		case i < len(p) && (p[i] == '?' || p[i] == t[j]):
+			i++
+			j++
+		case i < len(p) && p[i] == '*':
+			star, mark = i, j // remember the star; try matching nothing first
+			i++
+		case star >= 0:
+			mark++ // backtrack: let the last star swallow one more character
+			i, j = star+1, mark
+		default:
+			return false
 		}
 	}
+	for i < len(p) && p[i] == '*' {
+		i++
+	}
+	return i == len(p)
 }
 
 // profileFromIdentity reads the profile (and category, if any) off a key path
@@ -169,8 +362,11 @@ func profileFromIdentity(identityFile string) (profile, category string) {
 	return "imported", ""
 }
 
-func parseIncludes(pattern, baseDir string, seen map[string]bool) []*ParsedHost {
-	var hosts []*ParsedHost
+// parseIncludes returns the blocks and aliases of every file an Include names,
+// in order, so they resolve together with the including file's blocks.
+func parseIncludes(pattern, baseDir string, seen map[string]bool) ([]*block, []string) {
+	var blocks []*block
+	var aliases []string
 	for _, token := range strings.Fields(pattern) {
 		expanded := expanduser(token)
 		full := expanded
@@ -195,10 +391,12 @@ func parseIncludes(pattern, baseDir string, seen map[string]bool) []*ParsedHost 
 			if err != nil {
 				continue
 			}
-			hosts = append(hosts, parseSSHConfig(string(b), baseDir, seen)...)
+			bs, as := collectBlocks(string(b), baseDir, seen, false)
+			blocks = append(blocks, bs...)
+			aliases = append(aliases, as...)
 		}
 	}
-	return hosts
+	return blocks, aliases
 }
 
 // resolution is how one parsed host maps onto the canonical layout.
@@ -244,11 +442,15 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 	var resolved []rh
 	seen := map[string]bool{}
 	for _, h := range parsed {
-		k := h.Profile + "\x00" + h.Alias
-		if seen[k] {
-			continue // duplicate Host block in the source - first wins
+		// Keyed on the alias alone, not profile+alias: a repeated alias whose
+		// blocks name keys in two profiles is still one ssh host (the first
+		// block wins), and the manifest rejects an alias declared twice in any
+		// profiles. The parser already yields each alias once; this keeps the
+		// manifest valid even if that ever changes.
+		if seen[h.Alias] {
+			continue
 		}
-		seen[k] = true
+		seen[h.Alias] = true
 		res := im.resolveKey(h)
 		resolved = append(resolved, rh{h, res})
 		kn := res.keyName
@@ -277,6 +479,13 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 	}
 	for _, name := range order {
 		m.SetProfile(name, manifest.Profile{Category: category[name], KeyScope: "per_service", Hosts: byProfile[name]})
+	}
+	// Save does not validate, and every later command Loads (which does). An
+	// import that wrote a manifest Load then rejects would report success and
+	// leave sshmgr unusable, so refuse it here - before any key is adopted, and
+	// in a dry run too, which should predict the real run.
+	if err := m.Validate(); err != nil {
+		return ImportResult{}, &importError{"import would produce an invalid manifest: " + err.Error()}
 	}
 
 	inv := inventory.New()

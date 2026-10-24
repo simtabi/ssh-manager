@@ -41,6 +41,8 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `config check` | Verify the on-disk config byte-for-byte matches a fresh render (exit ≠0 on drift). | U·E·F |
 | `config render [--dry-run]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
+| `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses any target inside `~/.ssh`. | U·F |
+| `termius export [--out PATH\|-] [--skip ALIAS] [--include-git] [--open]` | Write a Termius CSV import (group = profile, label = alias) and list the key to attach to each host; `--open` opens Termius on macOS. | U·F |
 | `import [path] [--force]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
 | `diff` | Preview manifest vs. on-disk reality (config + which keys are missing/present). | U·F |
 
@@ -100,7 +102,7 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 | `profile add <name> [--shared] [--key-name] [--category]` | Add a profile, optionally filed under `profiles/<category>/`. A profile keeps its keys on disk, or in 1Password with `key_store: 1password` (see [Key stores](configuration.md#key-stores)). | U·F |
 | `profile edit <name> [--key-scope] [--key-name] [--category]` | Change a profile in place. `--category` moves its key directory under `profiles/<category>/` (or back, with `""`) and re-points its inventory records. | U |
 | `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
-| `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag]` | Add a host to a profile (alias is **positional**). | U·F |
+| `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag] [--proxy cloudflared]` | Add a host to a profile (alias is **positional**). `--proxy cloudflared` reaches it through Cloudflare Access. | U·F |
 | `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name]` | Change a host in place. | U·F |
 | `host delete <profile> <alias> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a host; `--revoke` pulls the key off its targets, `--purge` deletes the key files if nothing else names them. | U·F |
 | `knownhosts init [PROFILE] [--all] [--force]` | Initialize the trust store (create the file + pin reachable hosts, TOFU, fingerprints reported) for one profile or, with `--all`, every host in the manifest. There is one hashed store, so a host used by two profiles is pinned once. | U·F |

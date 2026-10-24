@@ -449,6 +449,7 @@ func (t *tui) deploy() {
 	if !ok || k == tuiBack {
 		return
 	}
+	lockForMutation(t.p) // deploy records to the inventory: read it under the lock
 	inv, _ := inventory.Load(t.p.Inventory())
 	report, err := deployer.New(t.p, m, inv).Deploy(k, "")
 	if err != nil {
@@ -514,12 +515,17 @@ func (t *tui) snapshots() {
 	if !t.pr.Confirm(fmt.Sprintf("Restore %s? (current tree snapshotted first)", choice)) {
 		return
 	}
-	chosen, err := snapshots.RestoreByID(t.p.SSHDir, t.p.SnapshotsDir(), snapshotRetain(), choice)
+	// RestoreByIDIn, as `snapshots restore` uses: it accepts the dev sandbox's
+	// ssh dir and reports the public keys it kept to avoid splitting a pair.
+	res, err := snapshots.RestoreByIDIn(t.p, snapshotRetain(), choice)
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
 	}
-	t.print("restored from " + filepath.Base(chosen))
+	for _, rel := range res.Skipped {
+		t.print("kept " + rel + ": the snapshot's copy does not match the private key on disk")
+	}
+	t.print("restored from " + filepath.Base(res.Snapshot))
 }
 
 // banner draws the header: what this binary is, where it will operate, and the

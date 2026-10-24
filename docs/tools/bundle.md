@@ -17,6 +17,12 @@ than GPG. Install it first: `brew install age` (macOS) / `apt install age` (Linu
   included and its keys stay in 1Password
 - `manifest.json`, `inventory.json`, `providers.json`
 
+It does not carry the files sshmgr renders from the manifest: a category's
+`profiles/<category>/config` and any legacy `profiles/<profile>/known_hosts`.
+`restore` rebuilds them from the restored manifest, so a bundle cannot plant a
+config that `~/.ssh/config` Includes. An older bundle that carries them still
+restores; those members are skipped and named in the summary.
+
 ...into a single `ssh-manager-<stamp>.age`, alongside two sidecars:
 
 - `*.age.sha256` - checksum (verified before any restore)

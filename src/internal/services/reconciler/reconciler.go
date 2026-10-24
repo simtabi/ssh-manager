@@ -9,9 +9,11 @@ package reconciler
 import (
 	"errors"
 	"fmt"
+	"os"
 	"path/filepath"
 	"sort"
 	"strings"
+	"time"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
@@ -38,6 +40,7 @@ type ReconcileResult struct {
 	DryRun           bool
 	Minted           []MintedKey
 	ExistingKeys     []string
+	Recorded         []string // keys on disk that had no inventory record, now recorded
 	Config           *configsvc.WriteResult
 	PermsFixed       int
 	Snapshot         *string
@@ -62,6 +65,9 @@ func (r *ReconcileResult) Format() string {
 	}
 	if len(r.Minted) == 0 {
 		lines = append(lines, fmt.Sprintf("  keys: all %d present (none minted)", len(r.ExistingKeys)))
+	}
+	for _, name := range r.Recorded {
+		lines = append(lines, fmt.Sprintf("  record %s: %s  (on disk, had no inventory record)", verb, name))
 	}
 	if r.Config != nil {
 		if len(r.Config.Written) > 0 {
@@ -148,6 +154,9 @@ func (r *Reconciler) Reconcile(dryRun bool, passphrase string) (*ReconcileResult
 				Fingerprint: "(new)", Path: r.privPath(pk.Ref.Profile, pk.Ref.KeyName),
 			})
 		}
+		for _, pk := range r.unrecorded(existing) {
+			res.Recorded = append(res.Recorded, pk.Ref.KeyName)
+		}
 		c, err := r.cfg.Write(true)
 		if err != nil {
 			return nil, err
@@ -159,17 +168,22 @@ func (r *Reconciler) Reconcile(dryRun bool, passphrase string) (*ReconcileResult
 	if err := r.ensureTree(); err != nil {
 		return nil, err
 	}
+	for _, pk := range r.unrecorded(existing) {
+		if r.recordExisting(pk) {
+			res.Recorded = append(res.Recorded, pk.Ref.KeyName)
+		}
+	}
+	var mintErr error
 	for _, pk := range toMint {
 		mk, err := r.mintOne(pk, passphrase, false)
 		if err != nil {
-			return nil, err
+			mintErr = err
+			break
 		}
 		res.Minted = append(res.Minted, mk)
 	}
-	if len(toMint) > 0 {
-		if err := r.inv.Save(r.p.Inventory()); err != nil {
-			return nil, err
-		}
+	if err := r.saveRecords(len(res.Minted)+len(res.Recorded) > 0, mintErr); err != nil {
+		return nil, err
 	}
 	c, err := r.cfg.Write(false)
 	if err != nil {
@@ -201,29 +215,117 @@ func (r *Reconciler) Mint(selector, passphrase string, overwrite map[manifest.Ke
 		return nil, err
 	}
 	var minted []MintedKey
+	var mintErr error
 	for _, pk := range toMint {
 		mk, err := r.mintOne(pk, passphrase, false)
 		if err != nil {
-			return nil, err
+			mintErr = err
+			break
 		}
 		minted = append(minted, mk)
 	}
 	for _, pk := range existing {
+		if mintErr != nil {
+			break
+		}
 		if overwrite[pk.Ref] {
 			mk, err := r.mintOne(pk, passphrase, true)
 			if err != nil {
-				return nil, err
+				mintErr = err
+				break
 			}
 			minted = append(minted, mk)
 		}
 	}
 	if len(minted) > 0 {
-		if err := r.inv.Save(r.p.Inventory()); err != nil {
-			return nil, err
-		}
 		r.fixPerms()
 	}
+	if err := r.saveRecords(len(minted) > 0, mintErr); err != nil {
+		return nil, err
+	}
 	return minted, nil
+}
+
+// saveRecords persists the inventory when a run changed it, and then returns
+// the run's own error. A key minted before a later one failed is already on
+// disk, so its record has to be saved too: returning before the save left it
+// unrecorded, and since every later run sees it as existing rather than
+// missing, nothing would ever record it.
+func (r *Reconciler) saveRecords(changed bool, runErr error) error {
+	if changed {
+		if err := r.inv.Save(r.p.Inventory()); err != nil {
+			return errors.Join(runErr, err)
+		}
+	}
+	return runErr
+}
+
+// unrecorded returns the keys present on disk that no inventory record covers.
+// Coverage is by path, as `key list` and doctor judge it.
+func (r *Reconciler) unrecorded(existing []plannedKey) []plannedKey {
+	var out []plannedKey
+	for _, pk := range existing {
+		ident := r.m.IdentityFile(pk.Ref.Profile, pk.Ref.KeyName)
+		covered := false
+		for _, rec := range r.inv.Keys {
+			if rec.Path == ident {
+				covered = true
+				break
+			}
+		}
+		if !covered {
+			out = append(out, pk)
+		}
+	}
+	return out
+}
+
+// recordExisting records a key that is on disk with no inventory record - left
+// by a run that failed after minting it, or by an inventory that was lost - so
+// expiry and rotation stop being blind to it. It reports whether it recorded
+// anything.
+//
+// The type and rotation interval are the ones the manifest gives this key.
+// Created is the file's modification time, the closest thing to a mint date
+// left; today would push the expiry out by however old the key already is. No
+// deployments are claimed, because none are known: the next deploy records them.
+func (r *Reconciler) recordExisting(pk plannedKey) bool {
+	ref := pk.Ref
+	priv := r.privPath(ref.Profile, ref.KeyName)
+	src := priv + ".pub" // readable without the passphrase
+	if !fs.Exists(src) {
+		src = priv
+	}
+	fp, err := r.ks.Fingerprint(src)
+	if err != nil {
+		return false // unreadable: key list and doctor keep reporting it
+	}
+	if _, taken := r.inv.Keys[fp]; taken {
+		return false // recorded under another path; that record is not ours to move
+	}
+	keyType := r.m.KeyTypeFor(ref)
+	if r.m.Profiles[ref.Profile].InOnePassword() {
+		keyType = "ed25519" // what 1Password generates, as mintOne records it
+	}
+	created := inventory.Today()
+	if st, err := os.Stat(src); err == nil {
+		created = st.ModTime().Format(time.DateOnly)
+	}
+	rotate := r.m.RotateAfterDaysFor(ref)
+	exp, _ := inventory.ComputeExpiry(created, rotate)
+	r.inv.Record(fp, inventory.KeyRecord{
+		Profile:         ref.Profile,
+		Path:            r.m.IdentityFile(ref.Profile, ref.KeyName),
+		Type:            keyType,
+		Created:         &created,
+		RotateAfterDays: rotate,
+		ExpiresOn:       &exp,
+	})
+	log.Audit(r.p.AuditLog(), "reconcile.record",
+		log.Field{Key: "key", Value: ref.KeyName},
+		log.Field{Key: "fingerprint", Value: fp},
+		log.Field{Key: "profile", Value: ref.Profile})
+	return true
 }
 
 // MintRef mints exactly one key, by reference. It returns nil when the private
@@ -429,6 +531,9 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 	}
 	keyType := r.m.KeyTypeFor(ref)
 	comment := fmt.Sprintf("%s/%s %s", ref.Profile, subject, inventory.Today())
+	// An overwrite moves the key it replaces into old/ (keystore's
+	// archivePredecessor), so its record has to follow it there.
+	archived := overwrite && fs.Exists(priv)
 	var gen keystore.GenResult
 	var err error
 	if r.m.Profiles[ref.Profile].InOnePassword() {
@@ -442,6 +547,9 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 	}
 	created := inventory.Today()
 	ident := r.m.IdentityFile(ref.Profile, ref.KeyName)
+	if archived {
+		r.archiveRecord(ref, priv, gen.Fingerprint)
+	}
 	// Drop any stale inventory entry at this path (an old fingerprint left behind
 	// when the previous key was deleted) so we never orphan it.
 	for fp, rec := range r.inv.Keys {
@@ -466,6 +574,44 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 		log.Field{Key: "fingerprint", Value: gen.Fingerprint},
 		log.Field{Key: "profile", Value: ref.Profile})
 	return MintedKey{KeyName: ref.KeyName, Profile: ref.Profile, Fingerprint: gen.Fingerprint, Path: priv}, nil
+}
+
+// archiveRecord moves the record of the key an overwrite just displaced from
+// the canonical path to old/, where the key itself now is, the way a rotation
+// does (Rotator.updateInventory). Deleting it instead, as the stale-entry prune
+// used to, left a later `rollback` restoring a key with no record: the active
+// key unrecorded, its deployments and expiry gone.
+func (r *Reconciler) archiveRecord(ref manifest.KeyRef, priv, newFP string) {
+	ident := r.m.IdentityFile(ref.Profile, ref.KeyName)
+	oldIdent := r.m.IdentityFile(ref.Profile, "old/"+ref.KeyName)
+	outgoing := ""
+	oldPub := filepath.Join(filepath.Dir(priv), "old", filepath.Base(priv)) + ".pub"
+	if fp, err := r.ks.Fingerprint(oldPub); err == nil {
+		outgoing = fp
+	}
+	// old/ keeps one predecessor, so any other record there is for the key the
+	// archive just replaced on disk.
+	for fp, rec := range r.inv.Keys {
+		if rec.Path == oldIdent && fp != outgoing {
+			delete(r.inv.Keys, fp)
+		}
+	}
+	if rec, ok := r.inv.Keys[outgoing]; ok && outgoing != "" {
+		rec.Path = oldIdent
+		r.inv.Keys[outgoing] = rec
+		return
+	}
+	// The archived .pub could not be read (a half pair, say), so the outgoing
+	// key is whichever record still claims the canonical path. Rotator falls
+	// back the same way.
+	if outgoing == "" {
+		for fp, rec := range r.inv.Keys {
+			if rec.Path == ident && fp != newFP {
+				rec.Path = oldIdent
+				r.inv.Keys[fp] = rec
+			}
+		}
+	}
 }
 
 // fixPerms tightens both the ~/.ssh tree and the config home. Reconcile used to

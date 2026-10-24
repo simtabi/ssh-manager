@@ -100,11 +100,17 @@ func newSnapshotsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			chosen, err := snapshots.RestoreByID(p.SSHDir, p.SnapshotsDir(), snapshotRetain(), id)
+			res, err := snapshots.RestoreByIDIn(p, snapshotRetain(), id)
 			if err != nil {
 				return err
 			}
-			_, _ = fmt.Fprintf(c.OutOrStdout(), "restored from %s\n", filepath.Base(chosen))
+			out := c.OutOrStdout()
+			_, _ = fmt.Fprintf(out, "restored from %s\n", filepath.Base(res.Snapshot))
+			// A skipped .pub means the rollback is partial on purpose; saying so
+			// keeps it from reading as a restore of everything the snapshot held.
+			for _, s := range res.Skipped {
+				_, _ = fmt.Fprintf(out, "kept %s: the snapshot's copy does not match the private key on disk\n", s)
+			}
 			return nil
 		},
 	}

@@ -38,22 +38,37 @@ func (s *Service) Rendered() (map[string]string, error) {
 	return renderer.RenderAll(s.manifest, s.emitUseKeychain)
 }
 
-// CheckResult reports config drift. InSync is the gate (ssh_errors don't count).
+// CheckResult reports config drift. InSync is the gate.
 type CheckResult struct {
 	FileDiffs map[string]string
 	Missing   []string
 	Orphan    []string
+	// SSHErrors is filled only when Check ran with validateSSH; callers that
+	// skip the ssh leg get an empty map and an InSync that ignores it.
 	SSHErrors map[string]string
+	// Shadowed lists managed aliases that foreign content above the managed
+	// block takes over, so ssh does not do what the manifest says for them.
+	Shadowed []Shadow
 }
 
-// InSync reports whether the on-disk config matches the manifest.
-func (r *CheckResult) InSync() bool {
+// BlockInSync reports whether every managed file on disk matches the manifest
+// byte for byte - the part `config render` can fix.
+func (r *CheckResult) BlockInSync() bool {
 	return len(r.FileDiffs) == 0 && len(r.Missing) == 0 && len(r.Orphan) == 0
+}
+
+// InSync reports whether the on-disk config matches the manifest and, when it
+// was asked, whether ssh can parse it. A config ssh refuses breaks every host,
+// so it is never in sync even when every managed byte matches. Nor is one where
+// a foreign block ssh reads first overrides a managed alias: the bytes match,
+// but ssh resolves something else.
+func (r *CheckResult) InSync() bool {
+	return r.BlockInSync() && len(r.SSHErrors) == 0 && len(r.Shadowed) == 0
 }
 
 // Format renders a human report.
 func (r *CheckResult) Format() string {
-	if r.InSync() && len(r.SSHErrors) == 0 {
+	if r.InSync() {
 		return "config: in sync with the manifest ✓"
 	}
 	var b strings.Builder
@@ -68,6 +83,22 @@ func (r *CheckResult) Format() string {
 	}
 	for _, a := range sortedKeys(r.SSHErrors) {
 		fmt.Fprintf(&b, "SSH -G   %s: %s\n", a, r.SSHErrors[a])
+	}
+	for _, sh := range r.Shadowed {
+		fmt.Fprintf(&b, "SHADOWED %s\n", sh)
+	}
+	if r.BlockInSync() {
+		// The managed block already matches, so rendering again would not
+		// help - the fault is in content sshmgr does not own.
+		if len(r.SSHErrors) > 0 {
+			b.WriteString("config: ssh cannot parse the config - fix the lines reported above")
+		} else {
+			b.WriteString("config: managed block in sync, but ssh reads the blocks above first - " + ShadowFix)
+		}
+		return b.String()
+	}
+	if len(r.Shadowed) > 0 {
+		b.WriteString("config: shadowed aliases need fixing by hand - " + ShadowFix + "\n")
 	}
 	b.WriteString("config: DRIFT detected - run: sshmgr config render")
 	return b.String()
@@ -150,6 +181,9 @@ func (s *Service) Check(validateSSH bool) (*CheckResult, error) {
 		target := content
 		if rel == renderer.RootConfig {
 			target = renderer.ComposeRootConfig(current, content)
+			// Read from what is on disk: foreign content above the block stays
+			// above it through a render, so the verdict holds either way.
+			res.Shadowed = findShadows(dest, current, rendered)
 		}
 		if current != target {
 			res.FileDiffs[rel] = unifiedDiff(current, target, rel)

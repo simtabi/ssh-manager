@@ -28,7 +28,7 @@ func newRotateCmd() *cobra.Command {
 			"untouched and the rest still rotate. A key no host uses is skipped, since\n" +
 			"there is nothing to deploy it to.",
 		RunE: func(c *cobra.Command, args []string) error {
-			if len(args) == 1 && !all && category == "" && !dryRun {
+			if len(args) == 1 && !all && category == "" && !dryRun && namesAKey(c, args[0]) {
 				return rotateOne(c, args[0], allowUnverified, passphrase, yes, noKeyBackup)
 			}
 			return rotateMany(c, keysvc.Selection{Selectors: args, Category: category, All: all},
@@ -46,6 +46,23 @@ func newRotateCmd() *cobra.Command {
 	return cmd
 }
 
+// namesAKey reports whether a single rotate argument is a key selector, the
+// only thing rotateOne resolves. A profile or alias - both in the usage line,
+// and both accepted by --dry-run - goes to the batch path, which resolves every
+// kind of selector; sending it to rotateOne failed with "no such key".
+func namesAKey(c *cobra.Command, arg string) bool {
+	p, err := resolvePaths(c)
+	if err != nil {
+		return true // let rotateOne report the real problem
+	}
+	m, err := manifest.Load(p.Manifest())
+	if err != nil {
+		return true
+	}
+	_, err = m.ResolveKeySelector(arg)
+	return err == nil
+}
+
 // rotateOne is the single-key rotation, unchanged from before batches existed.
 func rotateOne(c *cobra.Command, key string, allowUnverified, passphrase, yes, noKeyBackup bool) error {
 	if err := confirmOrAbort(c, fmt.Sprintf("Rotate %s? (the current key moves to old/, "+
@@ -56,6 +73,7 @@ func rotateOne(c *cobra.Command, key string, allowUnverified, passphrase, yes, n
 	if err != nil {
 		return err
 	}
+	lockForMutation(p)
 	if err := backupKeysBeforeDestroying(p, c.OutOrStdout(), noKeyBackup); err != nil {
 		return err
 	}
@@ -101,6 +119,7 @@ func rotateMany(c *cobra.Command, sel keysvc.Selection, allowUnverified, passphr
 	if err != nil {
 		return err
 	}
+	lockForMutation(p)
 	m, err := manifest.Load(p.Manifest())
 	if err != nil {
 		return err
@@ -194,6 +213,7 @@ func newRollbackCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -211,6 +231,9 @@ func newRollbackCmd() *cobra.Command {
 				return err
 			}
 			_, _ = fmt.Fprintln(c.OutOrStdout(), report.Format())
+			if !report.Committed {
+				return errNotClean // incomplete: a script must not read it as done
+			}
 			return nil
 		},
 	}

@@ -396,3 +396,207 @@ func mustLoad(t *testing.T, p paths.Paths) *manifest.Manifest {
 	}
 	return m
 }
+
+// ssh_config accepts `Keyword=value` as well as `Keyword value` (OpenSSH's
+// strdelim splits the keyword on whitespace or one '='). Splitting on whitespace
+// alone turned `HostName=alpha.example.com` into an option named
+// "hostname=alpha.example.com", missed `Host=gamma` as a new block so gamma's
+// settings landed on alpha, and let `ProxyCommand=...` through as a raw option.
+func TestEqualsFormSeparatesTheKeyword(t *testing.T) {
+	cfg := `Host=alpha
+    HostName=alpha.example.com
+    User = deploy
+    Port= 2222
+Host = gamma
+    HostName gamma.example.com
+    ProxyCommand=nc %h %p
+    ServerAliveInterval=30
+`
+	hosts := parseSSHConfig(cfg, "", map[string]bool{})
+	alpha, gamma := find(hosts, "alpha"), find(hosts, "gamma")
+	if alpha == nil || gamma == nil {
+		t.Fatalf("want alpha and gamma as separate hosts, got %d host(s)", len(hosts))
+	}
+	if alpha.Hostname != "alpha.example.com" || alpha.User != "deploy" || alpha.Port != 2222 {
+		t.Errorf("alpha = %+v", alpha)
+	}
+	if len(alpha.Extra) != 0 {
+		t.Errorf("alpha extra = %+v, want none (gamma's options leaked in, or a key=value survived raw)", alpha.Extra)
+	}
+	if gamma.Hostname != "gamma.example.com" {
+		t.Errorf("gamma hostname = %q", gamma.Hostname)
+	}
+	if len(gamma.Extra) != 1 || gamma.Extra[0].Key != "serveraliveinterval" || gamma.Extra[0].Val != "30" {
+		t.Errorf("gamma extra = %+v, want only serveraliveinterval=30 (ProxyCommand dropped)", gamma.Extra)
+	}
+}
+
+// ssh takes the first value it obtains for each option, so a repeated HostName
+// in one block resolves to the first line, not the last.
+func TestTheFirstValueForAnOptionWins(t *testing.T) {
+	hosts := parseSSHConfig(`Host srv
+    HostName first.example.com
+    User first
+    Port 2201
+    HostName second.example.com
+    User second
+    Port 2202
+`, "", map[string]bool{})
+	srv := find(hosts, "srv")
+	if srv == nil || srv.Hostname != "first.example.com" || srv.User != "first" || srv.Port != 2201 {
+		t.Errorf("srv = %+v, want the first HostName/User/Port", srv)
+	}
+}
+
+// Wildcard and pattern blocks apply to every alias they match, in file order and
+// first-wins, exactly as ssh resolves them. A host that sets nothing itself takes
+// User/Port from a matching `Host *` rather than from $USER and 22, a negated
+// pattern excludes, and a wildcard block that comes first beats the host's own.
+func TestWildcardBlocksApplyFirstWins(t *testing.T) {
+	hosts := parseSSHConfig(`Host special
+    User owner
+Host *.example.com !skip.example.com
+    User wild
+    Port 2222
+Host e*
+    User wildcard-came-first
+Host app.example.com skip.example.com plain special
+    HostName 10.0.0.1
+Host early
+    User mine
+Host *
+    User fallback
+    Port 2200
+`, "", map[string]bool{})
+	cases := []struct {
+		alias, user string
+		port        int
+	}{
+		{"app.example.com", "wild", 2222},
+		{"skip.example.com", "fallback", 2200}, // negated out of the *.example.com block
+		{"plain", "fallback", 2200},
+		{"special", "owner", 2200}, // its own User wins, Port still from Host *
+		{"early", "wildcard-came-first", 2200},
+	}
+	for _, c := range cases {
+		h := find(hosts, c.alias)
+		if h == nil {
+			t.Errorf("%s: not parsed", c.alias)
+			continue
+		}
+		if h.User != c.user || h.Port != c.port {
+			t.Errorf("%s: user/port = %q/%d, want %q/%d", c.alias, h.User, h.Port, c.user, c.port)
+		}
+	}
+	if len(hosts) != 5 {
+		t.Errorf("parsed %d hosts, want 5 (each alias once)", len(hosts))
+	}
+}
+
+// End to end: a value from `Host *` reaches the manifest instead of the $USER
+// fallback.
+func TestRunTakesUserFromAMatchingWildcardBeforeTheEnvironment(t *testing.T) {
+	t.Setenv("USER", "from-the-environment")
+	im, p, cfgPath := setupImport(t, "Host box\n    HostName 10.0.0.5\nHost *\n    User wildcard-user\n    Port 2200\n")
+	if _, err := im.Run(cfgPath, false); err != nil {
+		t.Fatal(err)
+	}
+	hosts := mustLoad(t, p).Profiles["imported"].Hosts
+	if len(hosts) != 1 || hosts[0].User != "wildcard-user" || hosts[0].Port != 2200 {
+		t.Errorf("hosts = %+v, want user/port from Host *", hosts)
+	}
+}
+
+// ssh splits a value as argv_split does: quotes group, and are removed.
+func TestArgvSplit(t *testing.T) {
+	cases := map[string][]string{
+		`plain`:                    {"plain"},
+		`"~/.ssh/my key"`:          {"~/.ssh/my key"},
+		`'single quoted' next`:     {"single quoted", "next"},
+		`a\ b`:                     {"a b"},
+		`"it\"s"`:                  {`it"s`},
+		`~\.ssh\id_ed25519`:        {`~\.ssh\id_ed25519`}, // a Windows path keeps its separators
+		`  spaced   out  `:         {"spaced", "out"},
+		`"mixed 'inner' quotes" x`: {"mixed 'inner' quotes", "x"},
+	}
+	for in, want := range cases {
+		got := argvSplit(in)
+		if len(got) != len(want) {
+			t.Errorf("argvSplit(%q) = %q, want %q", in, got, want)
+			continue
+		}
+		for i := range got {
+			if got[i] != want[i] {
+				t.Errorf("argvSplit(%q) = %q, want %q", in, got, want)
+				break
+			}
+		}
+	}
+}
+
+// `IdentityFile "~/.ssh/my key"` names a key whose path has a space. Kept with
+// its quotes, the path was never found, so the key was neither fingerprinted
+// nor adopted.
+func TestAQuotedIdentityFileIsFoundAndAdopted(t *testing.T) {
+	src := filepath.Join(t.TempDir(), "my key")
+	im, p, cfgPath := setupImport(t, "Host gh\n    HostName github.com\n    IdentityFile \""+src+"\"\n")
+	if got := identityIn(t, cfgPath); got != src {
+		t.Fatalf("IdentityFile = %q, want the unquoted %q", got, src)
+	}
+	mintKey(t, src)
+	res, err := im.Run(cfgPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Adopted != 1 || res.KeysFound != 1 {
+		t.Errorf("Adopted/KeysFound = %d/%d, want the quoted key found and adopted", res.Adopted, res.KeysFound)
+	}
+	if _, err := os.Stat(filepath.Join(p.SSHDir, "profiles", "imported", "imported_gh-ed25519")); err != nil {
+		t.Errorf("adopted key missing: %v", err)
+	}
+}
+
+// The same alias declared twice with IdentityFiles in two different profiles
+// used to import as two hosts - one per profile - which sshmgr's own validation
+// rejects ("declared more than once"), so import reported success and every
+// later command failed. ssh honours the first block; so does import.
+func TestTheSameAliasInTwoProfilesImportsOnce(t *testing.T) {
+	im, p, cfgPath := setupImport(t, `Host gh
+    HostName github.com
+    IdentityFile ~/.ssh/profiles/alpha/alpha_gh-ed25519
+Host gh
+    HostName github.example.invalid
+    IdentityFile ~/.ssh/profiles/beta/beta_gh-ed25519
+`)
+	res, err := im.Run(cfgPath, false)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Profiles["alpha"] != 1 || res.Profiles["beta"] != 0 {
+		t.Errorf("Profiles = %+v, want gh once, under alpha", res.Profiles)
+	}
+	m := mustLoad(t, p) // Load validates: a duplicate alias fails here
+	if _, ok := m.Profiles["beta"]; ok {
+		t.Error("the second block's profile was imported too")
+	}
+	if hosts := m.Profiles["alpha"].Hosts; len(hosts) != 1 || hosts[0].Hostname != "github.com" {
+		t.Errorf("alpha hosts = %+v, want the first block", hosts)
+	}
+}
+
+// Import must never save a manifest sshmgr then refuses to load. A flat profile
+// "work" and a profile categorized under "work" both own profiles/work/, which
+// validation rejects; import has to report that rather than write it.
+func TestRunNeverSavesAnInvalidManifest(t *testing.T) {
+	im, p, cfgPath := setupImport(t, `Host a
+    IdentityFile ~/.ssh/profiles/work/work_a-ed25519
+Host b
+    IdentityFile ~/.ssh/profiles/work/other/other_b-ed25519
+`)
+	if _, err := im.Run(cfgPath, false); err == nil {
+		t.Error("import of a config that yields an invalid manifest succeeded")
+	}
+	if _, err := os.Stat(p.Manifest()); err == nil {
+		t.Error("an invalid manifest was written")
+	}
+}

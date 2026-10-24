@@ -24,6 +24,8 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
 )
 
 const ageHint = "install age: brew install age  (Linux: apt install age / get from FiloSottile/age)"
@@ -102,6 +104,9 @@ type FP struct{ Name, Fingerprint string }
 type RestoreResult struct {
 	Restored     []string
 	Fingerprints []FP
+	// Skipped lists rendered files an older (or forged) bundle carried, which
+	// restore does not lay down: the caller re-renders them from the manifest.
+	Skipped []string
 }
 
 // Format renders the restore summary (mirrors RestoreResult.format).
@@ -109,6 +114,9 @@ func (r RestoreResult) Format() string {
 	lines := []string{fmt.Sprintf("restore: laid down %d file(s)", len(r.Restored))}
 	for _, f := range r.Fingerprints {
 		lines = append(lines, "  "+f.Name+"  "+f.Fingerprint)
+	}
+	for _, s := range r.Skipped {
+		lines = append(lines, "  skipped "+s+" (rendered from the manifest, not taken from the bundle)")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -212,7 +220,7 @@ func (b *Bundler) writeTarGz(w io.Writer) ([]string, error) {
 		for _, p := range paths {
 			rel, _ := filepath.Rel(b.sshDir, p)
 			rel = filepath.ToSlash(rel)
-			if hasStaging(rel) {
+			if hasStaging(rel) || isRenderedFile(rel, p) {
 				continue
 			}
 			arc := sshPrefix + rel
@@ -239,6 +247,43 @@ func (b *Bundler) writeTarGz(w io.Writer) ([]string, error) {
 		return nil, err
 	}
 	return members, gz.Close()
+}
+
+// renderedSlot reports whether rel (relative to ~/.ssh) is where sshmgr puts a
+// file it renders rather than a key: profiles/<category>/config, which the
+// root config Includes, or a legacy per-profile profiles/<p>/known_hosts. A key
+// can carry either name too, which is why callers look at the content.
+func renderedSlot(rel string) bool {
+	parts := strings.Split(rel, "/")
+	return len(parts) == 3 && parts[0] == "profiles" && (parts[2] == "config" || parts[2] == "known_hosts")
+}
+
+// isRenderedFile reports whether the file at path, in a rendered slot, is one
+// sshmgr rendered: a legacy known_hosts, or a config carrying the managed
+// header. Rendered files are rebuilt from the manifest after a restore, so a
+// bundle does not carry them - carrying them is what let a forged bundle plant
+// a category config with a ProxyCommand. A key named config is still a key.
+func isRenderedFile(rel, path string) bool {
+	if !renderedSlot(rel) {
+		return false
+	}
+	if strings.HasSuffix(rel, "/known_hosts") {
+		return true
+	}
+	b, err := os.ReadFile(path)
+	return err == nil && renderer.IsManagedFile(string(b))
+}
+
+// looksLikeKey reports whether data is an SSH private or public key, the only
+// thing restore lays down in a rendered slot.
+func looksLikeKey(data []byte) bool {
+	s := strings.TrimSpace(string(data))
+	for _, prefix := range []string{"-----BEGIN ", "ssh-", "ecdsa-", "sk-ssh-", "sk-ecdsa-"} {
+		if strings.HasPrefix(s, prefix) {
+			return true
+		}
+	}
+	return false
 }
 
 func hasStaging(rel string) bool {
@@ -330,10 +375,51 @@ func (b *Bundler) decrypt(bundlePath, identityFile string) ([]member, error) {
 	return members, nil
 }
 
+// profilesPrefix is the only subtree of ~/.ssh that writeTarGz walks.
+const profilesPrefix = sshPrefix + "profiles/"
+
+// checkMember reports whether name is something writeTarGz could have written,
+// and is the restore-side mirror of it: change one and the other must follow.
+//
+// It is an allow-list rather than a deny-list because age encrypts but does not
+// authenticate the sender. Anyone holding the public recipient can forge a
+// bundle that decrypts cleanly with the owner's identity, so a valid decryption
+// says nothing about who made it. A member like ssh/authorized_keys (a login for
+// the forger) or ssh/config (a ProxyCommand run on the next ssh) is entirely
+// inside ~/.ssh, so the os.Root containment in layDown has no objection to it;
+// only knowing exactly what a real bundle holds does.
+func checkMember(name string) error {
+	if rel, ok := strings.CutPrefix(name, profilesPrefix); ok && rel != "" {
+		// writeTarGz skips .staging, so a member inside one is not ours.
+		if hasStaging(rel) {
+			return fmt.Errorf("refusing member bundle never writes: %s", name)
+		}
+		return nil
+	}
+	if base, ok := strings.CutPrefix(name, configPrefix); ok {
+		// Exact names, not path.Base: the config members are flat, and taking
+		// the base name of config/x/.env would have let .env back in.
+		for _, c := range configMembers {
+			if base == c {
+				return nil
+			}
+		}
+	}
+	return fmt.Errorf("refusing member bundle never writes: %s", name)
+}
+
 func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, error)) (RestoreResult, error) {
 	res := RestoreResult{}
 	sorted := append([]member(nil), members...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].name < sorted[j].name })
+	// Vet every member before writing any. Checking inside the write loop would
+	// lay down the members that sort ahead of a forged one, so a refused restore
+	// would still have changed the tree.
+	for _, m := range sorted {
+		if err := checkMember(m.name); err != nil {
+			return res, err
+		}
+	}
 	// One root per destination, opened once. Every write below goes through one
 	// of them, so a member can only ever land inside the directory it is routed
 	// to - enforced by the kernel on the resolved path, not by us on the
@@ -360,6 +446,12 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 	defer func() { _ = configRoot.Close() }()
 
 	for _, m := range sorted {
+		// A rendered slot holding anything but a key came from an older bundle
+		// or a forged one. It is never trusted: the caller re-renders it.
+		if rel, ok := strings.CutPrefix(m.name, sshPrefix); ok && renderedSlot(rel) && !looksLikeKey(m.data) {
+			res.Skipped = append(res.Skipped, rel)
+			continue
+		}
 		var root *os.Root
 		var rel, label string
 		switch {
@@ -367,15 +459,12 @@ func (b *Bundler) layDown(members []member, fingerprintOf func(string) (string, 
 			root, rel = sshRoot, strings.TrimPrefix(m.name, sshPrefix)
 			label = rel
 		case strings.HasPrefix(m.name, configPrefix):
-			// Flat by construction, and pinning the base name keeps a crafted
-			// member from escaping the config dir.
-			root, rel = configRoot, path.Base(m.name)
+			// checkMember has pinned this to a flat, known name already.
+			root, rel = configRoot, strings.TrimPrefix(m.name, configPrefix)
 			label = configPrefix + rel
 		default:
-			// A bundle only ever holds those two roots. Anything else means the
-			// archive was tampered with - including a traversal like
-			// "ssh/../../x", which path.Clean has already stripped the prefix
-			// from. Refusing beats silently skipping part of a restore.
+			// Unreachable once checkMember has passed every member; kept so a
+			// future change to the allow-list cannot fall through to a write.
 			return res, fmt.Errorf("refusing unexpected member in bundle: %s", m.name)
 		}
 		if err := writeBytesAtomicIn(root, rel, m.data); err != nil {

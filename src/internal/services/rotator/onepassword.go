@@ -166,6 +166,21 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 				"was not committed (the active key is untouched): %w", err))
 		}
 		undo = append(undo, func() { _ = r.op.Rename(vault, cur.ID, keyName) })
+		// The vault now holds the predecessor, so a private key still at
+		// old/<key> is the file-era key the move into 1Password archived. Left
+		// there it would pose as the predecessor of a vault key - rollback
+		// would refuse on it, and old/<key>.pub is about to become the vault
+		// predecessor's, leaving a pair that does not match. Keep it, aside.
+		if exists(filepath.Join(oldDir, keyName)) {
+			restore, err := r.setAsideFileEraKey(oldDir, keyName, filepath.Join(oldDir, keyName+".pub"))
+			if err != nil {
+				rollbackCommit()
+				discard()
+				return RotateReport{}, note(fmt.Errorf("could not set aside the key file from before the "+
+					"profile moved to 1Password, so the rotation was undone: %w", err))
+			}
+			undo = append(undo, restore)
+		}
 	case errors.Is(err, opstore.ErrNotFound) && exists(curPriv):
 		// Moving into 1Password: the outgoing key is a file pair.
 		oldPriv := filepath.Join(oldDir, keyName)
@@ -228,10 +243,23 @@ func (r *Rotator) rollbackOnePassword(profile, keyName string, hosts []manifest.
 	vault := r.m.Profiles[profile].OPVault
 	pdir := r.dir(profile)
 	curPub := filepath.Join(pdir, keyName+".pub")
-	oldPub := filepath.Join(pdir, "old", keyName+".pub")
-	if exists(filepath.Join(pdir, "old", keyName)) {
-		return RotateReport{}, fmt.Errorf("the predecessor of %q is a key file from before the profile "+
-			"moved to 1Password; set key_store back to %q to roll back to it", keyName, manifest.KeyStoreFile)
+	oldDir := filepath.Join(pdir, "old")
+	oldPub := filepath.Join(oldDir, keyName+".pub")
+	// A key file at old/<key> is the predecessor only while old/<key>.pub is
+	// its public half: then the profile has rotated once since moving into
+	// 1Password and the way back is the file store. An earlier sshmgr left that
+	// file in place across later vault rotations, which overwrote the .pub with
+	// the vault predecessor's, so presence alone is not proof. A key that
+	// cannot be derived (encrypted) is given the benefit of the doubt and
+	// refused, as before.
+	stale := false
+	if oldPriv := filepath.Join(oldDir, keyName); exists(oldPriv) {
+		derived, _, derr := r.ks.PublicFromPrivate(oldPriv)
+		if derr != nil || derived == "" || sameKey(derived, readFile(oldPub)) {
+			return RotateReport{}, fmt.Errorf("the predecessor of %q is a key file from before the profile "+
+				"moved to 1Password; set key_store back to %q to roll back to it", keyName, manifest.KeyStoreFile)
+		}
+		stale = true
 	}
 	prev, err := r.op.Get(vault, oldTitle(keyName))
 	if errors.Is(err, opstore.ErrNotFound) || !exists(oldPub) {
@@ -240,6 +268,15 @@ func (r *Rotator) rollbackOnePassword(profile, keyName string, hosts []manifest.
 	}
 	if err != nil {
 		return RotateReport{}, err
+	}
+	if stale {
+		// Out of the predecessor's place before the rollback uses it. This is
+		// not undone if a later step fails: the file is stale either way, and
+		// set aside it stays a recoverable, matching pair.
+		if _, err := r.setAsideFileEraKey(oldDir, keyName, ""); err != nil {
+			return RotateReport{}, fmt.Errorf("could not set aside the stale key file from before the "+
+				"profile moved to 1Password, so nothing was rolled back: %w", err)
+		}
 	}
 	report := RotateReport{KeyName: keyName}
 	if fp, err := r.ks.Fingerprint(curPub); err == nil {
@@ -277,4 +314,42 @@ func (r *Rotator) rollbackOnePassword(profile, keyName string, hosts []manifest.
 		_ = r.op.Archive(vault, cur.ID)
 	}
 	return r.finishRollback(profile, keyName, hosts, curPub, curPub, curPubText, report)
+}
+
+// setAsideFileEraKey moves the private key at old/<key> - the file-era key a
+// move into 1Password archived - to old/<key>.file-era, and writes its public
+// half beside it so the pair stays usable. Nothing is deleted: key material is
+// only ever moved. An existing .file-era is never overwritten; the next free
+// numbered name is used instead.
+//
+// The public half is derived from the private key when it can be; for an
+// encrypted key it is copied from pubFallback, which the caller passes only
+// when that file is known to be this key's (empty: none is written). The
+// returned func puts the key back where it was.
+func (r *Rotator) setAsideFileEraKey(oldDir, keyName, pubFallback string) (func(), error) {
+	from := filepath.Join(oldDir, keyName)
+	to := filepath.Join(oldDir, keyName+".file-era")
+	for n := 2; exists(to) || exists(to+".pub"); n++ {
+		to = filepath.Join(oldDir, fmt.Sprintf("%s.file-era.%d", keyName, n))
+	}
+	if err := os.Rename(from, to); err != nil {
+		return nil, err
+	}
+	wrotePub := r.rederivePub(to, to+".pub")
+	if !wrotePub && pubFallback != "" && exists(pubFallback) {
+		wrotePub = fs.WriteTextAtomic(to+".pub", readFile(pubFallback), perms.PublicKeyMode) == nil
+	}
+	return func() {
+		_ = os.Rename(to, from)
+		if wrotePub {
+			_ = os.Remove(to + ".pub")
+		}
+	}, nil
+}
+
+// sameKey reports whether two OpenSSH public key lines carry the same key,
+// ignoring the comment.
+func sameKey(a, b string) bool {
+	fa, fb := strings.Fields(a), strings.Fields(b)
+	return len(fa) >= 2 && len(fb) >= 2 && fa[0] == fb[0] && fa[1] == fb[1]
 }

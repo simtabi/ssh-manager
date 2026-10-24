@@ -46,6 +46,7 @@ func newKeyDeleteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err
@@ -103,6 +104,7 @@ func newKeyAddCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			out := c.OutOrStdout()
 
 			// Prompt before mutating anything, so an abandoned prompt leaves the
@@ -236,6 +238,7 @@ func newKeyRegenPubCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

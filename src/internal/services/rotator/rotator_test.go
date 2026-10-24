@@ -89,8 +89,10 @@ func TestRotateThenRollback(t *testing.T) {
 	if !rb.Committed || rb.NewFingerprint != origFP {
 		t.Errorf("rollback should restore %s, got %+v", origFP, rb)
 	}
-	if _, ok := inv.Keys[newFP]; ok {
-		t.Error("rotated-in record should be dropped on rollback")
+	// The rotated-in key is kept in old/ (a rollback swaps, it does not
+	// destroy), so its record follows it there.
+	if rec, ok := inv.Keys[newFP]; !ok || rec.Path != "~/.ssh/profiles/vcs/old/"+keyName {
+		t.Errorf("rotated-in record should move to old/ on rollback: %+v", inv.Keys[newFP])
 	}
 	if rec, ok := inv.Keys[origFP]; !ok || rec.Path != "~/.ssh/profiles/vcs/"+keyName {
 		t.Errorf("restored record should be at the canonical path: %+v", inv.Keys[origFP])
@@ -323,5 +325,70 @@ func TestFailedVerificationDiscardsTheStagedKey(t *testing.T) {
 	}
 	if len(inv.Keys) != invBefore {
 		t.Errorf("inventory changed on an aborted rotation: %d -> %d", invBefore, len(inv.Keys))
+	}
+}
+
+const sharedJSON = `{"version":1,"defaults":{"key_type":"ed25519","rotate_after_days":365},
+  "profiles":{"vcs":{"key_scope":"shared","key_name":"vcs-ed25519","hosts":[
+    {"alias":"panel","hostname":"ploi.example","user":"x","provider":"ploi"}]}}}`
+
+// A rollback must not lose the rotated-in key. It used to rename the
+// predecessor over it before checking a single target, so a target that could
+// not be reached left the rotated-in key gone, old/ empty, the advice to re-run
+// unfollowable - and the command exited 0. Now an unreachable server stops it
+// before any file moves, and a completed rollback swaps the pair: the
+// rotated-in key moves to old/, so the rollback itself can be undone.
+func TestRollbackKeepsTheRotatedInKey(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	var m manifest.Manifest
+	if err := json.Unmarshal([]byte(sharedJSON), &m); err != nil {
+		t.Fatal(err)
+	}
+	base := t.TempDir()
+	p := paths.Paths{SSHDir: filepath.Join(base, ".ssh"), ConfigDir: filepath.Join(base, "cfg")}
+	inv := inventory.New()
+	if _, err := reconciler.New(p, &m, inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	pdir := filepath.Join(p.SSHDir, "profiles", "vcs")
+	cur, old := filepath.Join(pdir, "vcs-ed25519"), filepath.Join(pdir, "old", "vcs-ed25519")
+	if rep, err := New(p, &m, inv).Rotate("vcs-ed25519", true, ""); err != nil || !rep.Committed {
+		t.Fatalf("rotate: %v %+v", err, rep)
+	}
+	rotatedIn, predecessor := readFile(cur), readFile(old)
+
+	// A server target that cannot be reached joins the profile.
+	prof := m.Profiles["vcs"]
+	prof.Hosts = append(prof.Hosts, manifest.Host{Alias: "box", Hostname: "nohost.invalid", User: "u", Port: 22})
+	m.SetProfile("vcs", prof)
+
+	rb, err := New(p, &m, inv).Rollback("vcs-ed25519")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rb.Committed {
+		t.Error("a rollback that reached no server must not report committed")
+	}
+	if readFile(cur) != rotatedIn || readFile(old) != predecessor {
+		t.Fatal("an unreachable target must stop the rollback before any key moves")
+	}
+
+	// Reachable again: the rollback completes and the pair is swapped.
+	prof.Hosts = prof.Hosts[:1]
+	m.SetProfile("vcs", prof)
+	rb, err = New(p, &m, inv).Rollback("vcs-ed25519")
+	if err != nil || !rb.Committed {
+		t.Fatalf("rollback: %v %+v", err, rb)
+	}
+	if readFile(cur) != predecessor {
+		t.Error("the predecessor should be the active key")
+	}
+	if readFile(old) != rotatedIn || readFile(old+".pub") == "" {
+		t.Error("the rotated-in key should be kept in old/, not destroyed")
+	}
+	if rec, ok := inv.Keys[rb.OldFingerprint]; !ok || !strings.HasSuffix(rec.Path, "/old/vcs-ed25519") {
+		t.Errorf("the rotated-in key's record should follow it to old/: %+v", rec)
 	}
 }

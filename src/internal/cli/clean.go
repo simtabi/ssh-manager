@@ -35,6 +35,7 @@ func newCleanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			if !dryRun {
 				if err := confirmChange(c,
 					"clean removes known_hosts pins tagged sshmgr that no host needs, "+

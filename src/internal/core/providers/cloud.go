@@ -189,6 +189,37 @@ func get(headers map[string]string, u string) (map[string]any, error) {
 	return m, nil
 }
 
+// sameOrigin vets a next-page URL taken from a response body before the
+// credential is sent to it. Following it is a new request, not a redirect, so
+// httpjson's redirect policy never sees it: without this check a spoofed or
+// compromised page could name any host (or an http:// URL) and receive the
+// token. Origin is scheme+host+port, with the default port made explicit so
+// https://h and https://h:443 match.
+func sameOrigin(base, next string) error {
+	b, err := url.Parse(base)
+	if err != nil {
+		return fmt.Errorf("cannot parse base URL %q: %w", base, err)
+	}
+	n, err := url.Parse(next)
+	if err != nil {
+		return fmt.Errorf("refusing next-page URL that does not parse: %w", err)
+	}
+	if originOf(b) != originOf(n) {
+		return fmt.Errorf("refusing next-page URL on %s://%s: it is not the API origin %s://%s, "+
+			"and following it would send the credential there", n.Scheme, n.Host, b.Scheme, b.Host)
+	}
+	return nil
+}
+
+func originOf(u *url.URL) string {
+	scheme := strings.ToLower(u.Scheme)
+	port := u.Port()
+	if port == "" {
+		port = map[string]string{"https": "443", "http": "80"}[scheme]
+	}
+	return scheme + "://" + strings.ToLower(u.Hostname()) + ":" + port
+}
+
 func paginationError() error {
 	return fmt.Errorf("pagination did not terminate after %d pages", maxPages)
 }
@@ -269,6 +300,11 @@ func (doOps) listKeys(token string) ([]RemoteKey, error) {
 		}
 		out = append(out, remoteKeys(arr(data["ssh_keys"]), "id", "name", "public_key")...)
 		u = str(dig(data, "links", "pages", "next"))
+		if u != "" {
+			if err := sameOrigin(doBase, u); err != nil {
+				return nil, err
+			}
+		}
 	}
 	if u != "" {
 		return nil, paginationError()
@@ -527,6 +563,11 @@ func (o genericRestOps) listKeys(token string) ([]RemoteKey, error) {
 		u = ""
 		if nextField != "" {
 			u = str(dig(data, strings.Split(nextField, ".")...))
+		}
+		if u != "" {
+			if err := sameOrigin(base, u); err != nil {
+				return nil, err
+			}
 		}
 	}
 	if u != "" {

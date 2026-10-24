@@ -120,12 +120,16 @@ func (p Paths) NotifyCache() string  { return filepath.Join(p.StateDir(), "notif
 // LegacyHomes are pre-rename / pre-XDG home locations in priority order: the
 // "sshmgr" sibling of the standard home (pre-rename OS-standard dir) and the
 // original dot-home ~/.sshmgr. Mirrors facade._legacy_homes.
+//
+// A sandbox has none outside its root: ~/.sshmgr is the real user's, and
+// dev-mode `migrate` used to move it into the sandbox.
 func (p Paths) LegacyHomes() []string {
-	home, _ := os.UserHomeDir()
-	return []string{
-		filepath.Join(filepath.Dir(p.ConfigDir), "sshmgr"),
-		filepath.Join(home, ".sshmgr"),
+	sibling := filepath.Join(filepath.Dir(p.ConfigDir), "sshmgr")
+	if p.IsDev() {
+		return []string{sibling}
 	}
+	home, _ := os.UserHomeDir()
+	return []string{sibling, filepath.Join(home, ".sshmgr")}
 }
 
 // FirstLegacyHome returns the first real legacy dir worth migrating (a directory,
@@ -256,3 +260,16 @@ func isRooted(p string) bool {
 
 // IsDev reports whether this layout is a sandbox.
 func (p Paths) IsDev() bool { return p.DevRoot != "" }
+
+// RefuseOutsideSandbox refuses, in dev mode, an action that takes effect on a
+// server or account. Dev mode sandboxes files; it cannot sandbox a key
+// installed on a real host or removed from one. It lives on Paths, and the
+// services that reach targets (deploy, rotate, rollback, revoke) call it
+// themselves, so no caller - a verb, the TUI, a future one - can skip it.
+func (p Paths) RefuseOutsideSandbox(action string) error {
+	if !p.IsDev() {
+		return nil
+	}
+	return fmt.Errorf("%s is refused in dev mode: it changes keys on real servers or accounts, "+
+		"which the sandbox under %s cannot contain", action, p.DevRoot)
+}

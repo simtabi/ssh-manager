@@ -257,6 +257,8 @@ func TestTheToolRunsOnlyTheBinariesItDeclares(t *testing.T) {
 		"git",
 		// docker: `sshmgr vm docker-context` creates or updates an ssh:// context.
 		"docker",
+		// cloudflared: looked up to write a Cloudflare Access host's ProxyCommand; ssh runs it, sshmgr never does.
+		"cloudflared",
 		// Hypervisor CLIs (`sshmgr vm`), each optional: a missing one is listed as not installed.
 		"prlctl", "vmpal", "vmrun", "utmctl", "limactl", "orb", "podman",
 		// Itself: the scheduled notifier runs `sshmgr audit --notify`, and it

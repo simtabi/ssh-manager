@@ -28,12 +28,28 @@ const (
 
 var controlChars = regexp.MustCompile(`[\x00-\x1f\x7f]`)
 
+// optionKeyword is the shape of an ssh_config keyword. ssh splits a config line
+// on the first run of whitespace or '=', so a key with either in it ("ProxyCommand ",
+// "ProxyCommand=x") renders as a different keyword than the one the dangerous
+// check below looked up. Holding every key to this shape first is what makes
+// that lookup sound.
+var optionKeyword = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
+
+// configSyntaxChars mean something to ssh's config parser, so none may appear in
+// an alias, hostname or user, which are rendered unquoted. A quote makes ssh
+// refuse the whole file ("invalid quotes"), taking every host offline; '#'
+// starts a comment, '!' negates a Host pattern, ',' and '=' separate lists and
+// keywords.
+const configSyntaxChars = `"'#!,=`
+
 // dangerousOptions run a command, load an object, or pull in further config and
 // are never allowed in raw_options / global_options (ProxyJump is a host, allowed).
+// XAuthLocation is the path of the xauth program ssh runs for X11 forwarding.
 var dangerousOptions = map[string]bool{
 	"proxycommand": true, "localcommand": true, "permitlocalcommand": true,
 	"remotecommand": true, "match": true, "include": true,
 	"knownhostscommand": true, "pkcs11provider": true, "securitykeyprovider": true,
+	"xauthlocation": true,
 }
 
 // IsDangerousOption reports whether an SSH option key can execute commands / pull
@@ -161,6 +177,8 @@ type Host struct {
 	RawOptions  OrderedOptions `json:"raw_options,omitempty"`
 	// VM marks a local VM whose address the hypervisor supplies at connect time.
 	VM *VMSpec `json:"vm,omitempty"`
+	// Proxy routes connections through a proxy command, e.g. Cloudflare Access.
+	Proxy *ProxySpec `json:"proxy,omitempty"`
 }
 
 func (h *Host) UnmarshalJSON(b []byte) error {
@@ -191,6 +209,7 @@ func (h Host) MarshalJSON() ([]byte, error) {
 		VPNURL      *string        `json:"vpn_url"`
 		RawOptions  OrderedOptions `json:"raw_options"`
 		VM          *VMSpec        `json:"vm,omitempty"` // omitted when unset: older files stay byte-identical
+		Proxy       *ProxySpec     `json:"proxy,omitempty"`
 	}
 	tags := h.Tags
 	if tags == nil {
@@ -200,7 +219,7 @@ func (h Host) MarshalJSON() ([]byte, error) {
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		Provider: h.Provider, TokenEnv: h.TokenEnv, KeyName: h.KeyName, Tags: tags,
 		RequiresVPN: h.RequiresVPN, VPNName: h.VPNName, VPNURL: h.VPNURL, RawOptions: h.RawOptions,
-		VM: h.VM,
+		VM: h.VM, Proxy: h.Proxy,
 	})
 }
 
@@ -547,6 +566,16 @@ func safeValue(field, value string) error {
 			return fmt.Errorf("%s=%q must not contain whitespace", field, value)
 		}
 	}
+	return rejectConfigSyntax(field, value)
+}
+
+// rejectConfigSyntax refuses a value carrying any of configSyntaxChars. Applied
+// to the alias, hostname and user, which are written into a Host block as-is.
+func rejectConfigSyntax(field, value string) error {
+	if strings.ContainsAny(value, configSyntaxChars) {
+		return fmt.Errorf("%s=%q must not contain any of %s "+
+			"(ssh's config parser reads them as syntax)", field, value, configSyntaxChars)
+	}
 	return nil
 }
 
@@ -556,6 +585,9 @@ func checkOptions(field string, opts OrderedOptions) error {
 		if err := rejectControl(fmt.Sprintf("%s key %q", field, k), k); err != nil {
 			return err
 		}
+		if !optionKeyword.MatchString(k) {
+			return fmt.Errorf("%s key %q is not an ssh keyword (letters and digits only)", field, k)
+		}
 		if err := rejectControl(fmt.Sprintf("%s[%s]", field, k), v); err != nil {
 			return err
 		}
@@ -564,6 +596,64 @@ func checkOptions(field string, opts OrderedOptions) error {
 		}
 	}
 	return nil
+}
+
+// managedHostOptions are the keywords every rendered host block already sets
+// from a field of its own, each mapped to what to set instead. A raw_option for
+// one of them is never what ssh uses: ssh keeps the first value it obtains, and
+// the managed line comes first. IdentitiesOnly and IdentityAgent are absent on
+// purpose - a raw value for those replaces the managed line, as a per-host
+// override. So is IdentityFile: ssh tries every IdentityFile line, so a raw one
+// has always added a second key to offer, and dropping it would take that away.
+//
+// They are reported rather than rejected. The importer carries every option it
+// does not parse into raw_options, so manifests imported before this existed
+// hold UserKnownHostsFile today; refusing them would stop every command from
+// loading the manifest at all.
+var managedHostOptions = map[string]string{
+	"hostname":           `set "hostname" instead`,
+	"user":               `set "user" instead`,
+	"port":               `set "port" instead`,
+	"userknownhostsfile": `pin host keys with sshmgr knownhosts pin instead (sshmgr keeps every pin in ~/.ssh/known_hosts)`,
+}
+
+// ManagedHostOption reports whether a raw_options key duplicates a line the
+// renderer writes for every host, and what to set instead. Case-insensitive,
+// as ssh reads keywords.
+func ManagedHostOption(key string) (useInstead string, ok bool) {
+	useInstead, ok = managedHostOptions[strings.ToLower(key)]
+	return useInstead, ok
+}
+
+// RawOptionOverlaps lists, as "profile/alias: ..." lines in manifest order, each
+// raw_options key that duplicates a managed line. The renderer emits only the
+// managed value (bar a raw Port at the default port), so these keys read as if
+// they applied when they do not.
+func RawOptionOverlaps(m *Manifest) []string {
+	var out []string
+	for _, pname := range m.ProfileNames() {
+		for _, h := range m.Profiles[pname].Hosts {
+			for _, k := range h.RawOptions.Keys() {
+				use, ok := ManagedHostOption(k)
+				if !ok {
+					continue
+				}
+				if strings.EqualFold(k, "port") && (h.Port == 0 || h.Port == 22) {
+					// No managed Port line is written at the default, so this
+					// one does apply - but sshmgr's own pinning and deploys read
+					// the field and would talk to port 22.
+					out = append(out, fmt.Sprintf("%s/%s: raw_options %q is the port ssh uses, but sshmgr "+
+						"reads the port field and would pin and deploy on 22 - move it to \"port\" instead",
+						pname, h.Alias, k))
+					continue
+				}
+				out = append(out, fmt.Sprintf("%s/%s: raw_options %q duplicates a line sshmgr writes "+
+					"for every host, so ssh never uses it - remove it and %s",
+					pname, h.Alias, k, use))
+			}
+		}
+	}
+	return out
 }
 
 func checkKeyScope(value string) error {
@@ -817,6 +907,11 @@ func (m *Manifest) validate() error {
 			if err := safeSegment("alias", h.Alias); err != nil {
 				return err
 			}
+			// safeSegment already refuses '*' and '?'; an alias is also a Host
+			// pattern, so the parser's own syntax is refused on top.
+			if err := rejectConfigSyntax("alias", h.Alias); err != nil {
+				return err
+			}
 			if h.KeyName != nil {
 				if err := safeSegment("key_name", *h.KeyName); err != nil {
 					return err
@@ -832,6 +927,9 @@ func (m *Manifest) validate() error {
 				return err
 			}
 			if err := checkVM(name, h); err != nil {
+				return err
+			}
+			if err := checkProxy(name, h); err != nil {
 				return err
 			}
 		}

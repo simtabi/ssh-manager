@@ -29,6 +29,7 @@ func newDeployCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			if err := refuseInDevMode(p, "deploy",
 				"it uploads a public key to a live account, which is still there "+
 					"after the sandbox is deleted"); err != nil {

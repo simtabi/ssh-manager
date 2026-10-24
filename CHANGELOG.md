@@ -8,6 +8,24 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **Cloudflare Access hosts.** `sshmgr host add|edit ... --proxy cloudflared`
+  (manifest `proxy: {kind: cloudflared}`) renders
+  `ProxyCommand "<cloudflared>" access ssh --hostname %h`, so `ssh <alias>`
+  reaches a server through Cloudflare Access with no SSH port open. `doctor`
+  reports a proxied host when `cloudflared` is not installed; the Termius export
+  skips it, since Termius ignores ProxyCommand.
+- **Exports for other tools.** `sshmgr config export --flat` writes the whole
+  config as one file, every host inline with absolute key paths and no
+  `Include` or `Match`, for a tool that reads a single `ssh_config`.
+  `sshmgr termius export` writes a Termius CSV import (group = profile,
+  label = alias, tags, address, port, user; never a password) and lists the key
+  to attach to each host; `--open` opens Termius and shows the file on macOS,
+  `--skip` leaves a host out, and VM and git hosts are left out and reported.
+  Both write under `~/.config/ssh-manager/exports/` (0600) and refuse any target
+  inside `~/.ssh` (checked by inode, so case and symlinks cannot get round it),
+  so the split config, keys and trust store are never changed.
+  Termius's own importer reads only the top-level `~/.ssh/config` and never
+  saw the hosts in category files.
 - **Git remote modes.** `sshmgr git status` shows how each checkout's GitHub
   origin authenticates; `sshmgr git use profile|ssh|https [PATH...]` switches it:
   the profile's own alias (`git@github-<profile>:owner/repo.git`, the default),
@@ -29,6 +47,46 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Audit of 2026-10-21: security.** Dev mode no longer lets `rotate`,
+  `rollback`, the TUI deploy or `--revoke` reach real servers, and dev-mode
+  `migrate` no longer moves the real `~/.sshmgr` into the sandbox. `restore`
+  lays down only the members `bundle` writes, so a forged bundle cannot replace
+  `authorized_keys` or `config`. Option keys must be bare ssh keywords
+  (`ProxyCommand=x` and `"ProxyCommand "` bypassed the dangerous-option check)
+  and `XAuthLocation` is refused. Caller headers are dropped on a cross-origin
+  redirect, and a pagination link that leaves the API origin is refused rather
+  than sent the token. Import splits `Keyword=value`, so `ProxyCommand=...`
+  is dropped like the plain form.
+- **Audit of 2026-10-21: correctness.** A rollback checks every server before
+  moving a key and swaps the pair into `old/`, so an unreachable target no
+  longer destroys the rotated-in key, and an incomplete rollback exits non-zero.
+  Mutating commands take the lock before reading state, so concurrent runs no
+  longer drop each other's inventory records. Hostnames match known_hosts
+  case-insensitively (`clean` had pruned a live pin) and `@revoked` lines no
+  longer count as pinned. Aliases, hostnames and users that ssh reads as syntax
+  (`"`, `'`, `#`, `!`, `,`, `=`) are refused, and `config check` fails when ssh
+  cannot parse the config. Import resolves hosts the way ssh does: first value
+  wins, `Host *` applies, quotes are removed, and the same alias in two
+  profiles imports once instead of saving an invalid manifest. 1Password
+  rollback works after a second vault rotation. Keys minted before a failed
+  mint, keys on disk with no record, and the key `keygen --force` replaces all
+  keep their inventory records; `deploy` records the manifest's key type and
+  rotation. `rotate <profile|alias>` works, a shared profile needs a key name,
+  and an unknown command is reported ahead of its flags.
+- **Audit of 2026-10-21: what ssh would not use.** `config check` and `doctor`
+  report a hand-written Host block above the managed block that shadows a
+  managed alias (ssh reads it first), instead of calling the config in sync;
+  sshmgr still never edits content outside its block. A raw option that repeats
+  a line sshmgr writes (HostName, User, Port, UserKnownHostsFile) is no longer
+  rendered as a second, ignored line, and `doctor` names the field to use. A
+  `snapshots restore` keeps a `.pub` that would not match the private key on
+  disk, says so, and now works in dev mode.
+- **Bundles no longer carry rendered config.** `bundle` leaves out the
+  `profiles/<category>/config` files and legacy `profiles/*/known_hosts` that
+  sshmgr renders, and `restore` skips them in older bundles (naming each) and
+  re-renders from the restored manifest. Before, a forged bundle could lay down
+  a category config with a ProxyCommand, which `~/.ssh/config` Includes. A key
+  that happens to be named `config` is still bundled and restored.
 - **Hosting panel targets no longer force an unverified rotation.** A
   `ploi`, `forge` or `cpanel` target only accepts a pasted key, and `rotate`
   either aborted or, with `--allow-unverified`, committed before the key was
