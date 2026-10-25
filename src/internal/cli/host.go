@@ -22,7 +22,7 @@ const proxyFlagHelp = "reach the host through a proxy: cloudflared (Cloudflare A
 	"`cloudflared access ssh --hostname %h`)"
 
 func newHostCmd() *cobra.Command {
-	cmd := &cobra.Command{Use: "host", Short: "Manage a host within a profile (add/edit/delete)"}
+	cmd := &cobra.Command{Use: "host", Short: "Manage a host within a profile (add/edit/delete/apply)"}
 
 	var hostname, user, provider, tokenEnv, keyName, proxy string
 	var port int
@@ -165,6 +165,8 @@ func newHostCmd() *cobra.Command {
 	del.Flags().BoolVar(&noKeyBackup, "no-key-backup", false,
 		"purge without writing an encrypted backup first (the key is then unrecoverable)")
 	cmd.AddCommand(del)
+
+	cmd.AddCommand(newHostApplyCmd())
 
 	return cmd
 }

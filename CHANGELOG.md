@@ -6,8 +6,44 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`sshmgr host apply` - add or update hosts from compact specs.** A spec is
+  `<alias> <host>[:port] <user> [role]`, e.g.
+  `sshmgr host apply adelsaiq dani-prd-web-00 206.189.185.129 ploi web`. Give
+  one positionally, many with repeated `--host "..."`, or a file with
+  `-f FILE` (`-` for stdin; one spec per line with `#` comments, or a JSON
+  array of spec strings or `{alias,host,user,port,role,tags}` objects). A new
+  alias is added the way `host add` adds it; an existing one has its hostname,
+  user and port updated the way `host edit` does, and the role and any `--tag`
+  are merged into its tags (never removed). Each host is reported added,
+  updated (with what moved) or unchanged, so re-running the same specs is a
+  no-op. The batch passes the manifest's validation and is saved at once, so
+  one bad spec changes nothing. `--create-profile`/`--category` create a
+  missing profile (and are undone if the batch is refused, so no empty
+  profile is left behind), `--reconcile` mints the new keys afterwards, and
+  `--dry-run`/`-y` behave as on `reconcile`.
+
 ### Fixed
 
+- **`reconcile` no longer claims to fix permissions it did not change.** The
+  fixer counted every managed path it visited, so an already-correct tree
+  printed `perms fixed on 53 paths` on every run, indistinguishable from real
+  drift. It now counts only paths whose mode actually changed and prints
+  `perms: ok` when there were none. Nothing was resetting modes between runs.
+- **The git ssh mode `Host github.com` block is rendered once, with its
+  profile.** When `defaults.git.profile` is filed under a category, the block
+  now goes into that category's `profiles/<category>/config` instead of the
+  root `~/.ssh/config`. The category Include still precedes `Host *`, so ssh
+  resolves `github.com` exactly as before. It is also skipped when a host is
+  already aliased `github.com`.
+- **`config check` reports duplicate Host blocks.** A `Host` pattern the
+  managed files define more than once is listed as `DUPLICATE` (ssh only reads
+  the first) and the config is not reported in sync.
+- **OrbStack's Include is moved to the top.** OrbStack appends
+  `Include ~/.orbstack/ssh/config` to the end of `~/.ssh/config` and says it
+  only works at the top; a render now moves that line (with its comments) to
+  the top of the file. No other foreign content moves.
 - **Releases carry their notes again.** `changelog: disable: true` made
   GoReleaser skip the pipe that reads `--release-notes`, so v3.2.0 and v3.4.0
   were published with empty bodies while the run reported success. The config

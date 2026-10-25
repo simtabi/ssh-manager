@@ -49,6 +49,8 @@ type CheckResult struct {
 	// Shadowed lists managed aliases that foreign content above the managed
 	// block takes over, so ssh does not do what the manifest says for them.
 	Shadowed []Shadow
+	// Duplicates lists Host patterns the managed files define more than once.
+	Duplicates []Duplicate
 }
 
 // BlockInSync reports whether every managed file on disk matches the manifest
@@ -63,7 +65,7 @@ func (r *CheckResult) BlockInSync() bool {
 // a foreign block ssh reads first overrides a managed alias: the bytes match,
 // but ssh resolves something else.
 func (r *CheckResult) InSync() bool {
-	return r.BlockInSync() && len(r.SSHErrors) == 0 && len(r.Shadowed) == 0
+	return r.BlockInSync() && len(r.SSHErrors) == 0 && len(r.Shadowed) == 0 && len(r.Duplicates) == 0
 }
 
 // Format renders a human report.
@@ -87,11 +89,17 @@ func (r *CheckResult) Format() string {
 	for _, sh := range r.Shadowed {
 		fmt.Fprintf(&b, "SHADOWED %s\n", sh)
 	}
+	for _, d := range r.Duplicates {
+		fmt.Fprintf(&b, "DUPLICATE %s\n", d)
+	}
 	if r.BlockInSync() {
 		// The managed block already matches, so rendering again would not
 		// help - the fault is in content sshmgr does not own.
 		if len(r.SSHErrors) > 0 {
 			b.WriteString("config: ssh cannot parse the config - fix the lines reported above")
+		} else if len(r.Shadowed) == 0 {
+			b.WriteString("config: managed block in sync, but it defines a Host more than once - " +
+				"rename or remove the duplicate alias in the manifest")
 		} else {
 			b.WriteString("config: managed block in sync, but ssh reads the blocks above first - " + ShadowFix)
 		}
@@ -194,6 +202,7 @@ func (s *Service) Check(validateSSH bool) (*CheckResult, error) {
 			res.Orphan = append(res.Orphan, rel)
 		}
 	}
+	res.Duplicates = s.findDuplicates(rendered)
 	if validateSSH {
 		if _, err := exec.LookPath("ssh"); err == nil {
 			res.SSHErrors = s.validateAliases()

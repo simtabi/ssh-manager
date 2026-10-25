@@ -412,6 +412,19 @@ func (e *Editor) AddHost(profile, alias string, f HostFields) error {
 	if err != nil {
 		return err
 	}
+	if err := addHostTo(m, profile, alias, f); err != nil {
+		return err
+	}
+	if err := e.save(m); err != nil {
+		return err
+	}
+	log.Audit(e.p.AuditLog(), "host.add", log.Field{Key: "profile", Value: profile}, log.Field{Key: "alias", Value: alias})
+	return nil
+}
+
+// addHostTo is AddHost's in-memory half, shared with ApplyHosts so a batch
+// adds hosts exactly the way `host add` does.
+func addHostTo(m *manifest.Manifest, profile, alias string, f HostFields) error {
 	if _, ok := m.Profiles[profile]; !ok {
 		return fmt.Errorf("unknown profile: %q", profile)
 	}
@@ -435,10 +448,6 @@ func (e *Editor) AddHost(profile, alias string, f HostFields) error {
 	p := m.Profiles[profile]
 	p.Hosts = append(p.Hosts, host)
 	m.SetProfile(profile, p)
-	if err := e.save(m); err != nil {
-		return err
-	}
-	log.Audit(e.p.AuditLog(), "host.add", log.Field{Key: "profile", Value: profile}, log.Field{Key: "alias", Value: alias})
 	return nil
 }
 
@@ -448,6 +457,19 @@ func (e *Editor) EditHost(profile, alias string, f HostFields) error {
 	if err != nil {
 		return err
 	}
+	if err := editHostIn(m, profile, alias, f); err != nil {
+		return err
+	}
+	if err := e.save(m); err != nil {
+		return err
+	}
+	log.Audit(e.p.AuditLog(), "host.edit", log.Field{Key: "profile", Value: profile}, log.Field{Key: "alias", Value: alias})
+	return nil
+}
+
+// editHostIn is EditHost's in-memory half, shared with ApplyHosts. Tags are
+// not touched here - `host edit` has never changed them.
+func editHostIn(m *manifest.Manifest, profile, alias string, f HostFields) error {
 	idx, host, err := findHost(m, profile, alias)
 	if err != nil {
 		return err
@@ -476,10 +498,6 @@ func (e *Editor) EditHost(profile, alias string, f HostFields) error {
 	p := m.Profiles[profile]
 	p.Hosts[idx] = host
 	m.SetProfile(profile, p)
-	if err := e.save(m); err != nil {
-		return err
-	}
-	log.Audit(e.p.AuditLog(), "host.edit", log.Field{Key: "profile", Value: profile}, log.Field{Key: "alias", Value: alias})
 	return nil
 }
 

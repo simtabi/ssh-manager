@@ -72,7 +72,9 @@ func TestReconcileMintsRendersAndIsIdempotent(t *testing.T) {
 	if res.Config == nil || len(res.Config.Written) == 0 {
 		t.Errorf("expected config writes, got %+v", res.Config)
 	}
-	if res.PermsFixed == 0 {
+	// Windows ACLs on a fresh temp dir may already be tight, so only POSIX
+	// modes are guaranteed to need fixing here.
+	if runtime.GOOS != "windows" && res.PermsFixed == 0 {
 		t.Error("expected perms fixed on managed paths")
 	}
 	// Inventory recorded every minted key, each needs-redeploy with an expiry.
@@ -712,5 +714,41 @@ func TestOverwriteMovesTheOutgoingRecordToOld(t *testing.T) {
 	}
 	if got := recordsAt(inv, ident); len(got) != 1 || got[0] == outgoing {
 		t.Errorf("records at %s = %v, want only the new key", ident, got)
+	}
+}
+
+// A tree that is already correct must report zero fixes: the fixer used to
+// count every path it visited, so every reconcile printed "perms fixed on N".
+func TestSecondReconcileFixesNoPerms(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
+	inv := inventory.New()
+	if _, err := New(p, loadManifest(t), inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	res, err := New(p, loadManifest(t), inv, false).Reconcile(false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.PermsFixed != 0 {
+		t.Errorf("second reconcile fixed %d paths, want 0", res.PermsFixed)
+	}
+	if !strings.Contains(res.Format(), "perms: ok") {
+		t.Errorf("want 'perms: ok' in:\n%s", res.Format())
+	}
+	// Real drift is still counted, exactly. os.Chmod does not loosen a Windows
+	// ACL, so this half is POSIX-only.
+	if runtime.GOOS == "windows" {
+		return
+	}
+	cfg := filepath.Join(p.SSHDir, "config")
+	if err := os.Chmod(cfg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = New(p, loadManifest(t), inv, false).Reconcile(false, "")
+	if res.PermsFixed != 1 {
+		t.Errorf("one loosened file: fixed %d, want 1", res.PermsFixed)
 	}
 }

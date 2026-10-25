@@ -6,7 +6,7 @@ one of three modes after proving the new URL works.
 | Mode | Origin URL | Authenticates as |
 |---|---|---|
 | `profile` (default) | `git@<profile's alias>:owner/repo.git`, e.g. `git@github-imanimanyara:simtabi/pheg.git` | that profile's GitHub key |
-| `ssh` | `git@github.com:owner/repo.git` | the key bound to the rendered `Host github.com` (`defaults.git.profile`) |
+| `ssh` | `git@github.com:owner/repo.git` | the key bound to the rendered `Host github.com` (`defaults.git.profile`), written into that profile's category config when it has one |
 | `https` | `https://github.com/owner/repo.git` | your git credential helper (for example `gh-app git-credential`) |
 
 ## Choosing the mode

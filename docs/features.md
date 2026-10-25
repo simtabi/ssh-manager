@@ -38,7 +38,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `keygen <profile\|host> [--no-pin]` | Targeted key generation; warns + **skips** keys that already exist; auto-pins the affected profiles' `known_hosts` for reachable hosts. | U·E·F |
 | `keygen ... --force [--yes]` | Overwrite existing keys (prompted; `~/.ssh` snapshotted first). | U·E·F |
 | `keygen ... --passphrase` | Protect new keys with a passphrase (off by default, so omitting the flag is the "no" answer; prompts without echo on a TTY). | U |
-| `config check` | Verify the on-disk config byte-for-byte matches a fresh render (exit ≠0 on drift). | U·E·F |
+| `config check` | Verify the on-disk config byte-for-byte matches a fresh render, and that no `Host` pattern is defined twice across the managed files (`DUPLICATE`); exit ≠0 on either. | U·E·F |
 | `config render [--dry-run]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
 | `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses any target inside `~/.ssh`. | U·F |
@@ -104,6 +104,7 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 | `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
 | `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag] [--proxy cloudflared]` | Add a host to a profile (alias is **positional**). `--proxy cloudflared` reaches it through Cloudflare Access. | U·F |
 | `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name]` | Change a host in place. | U·F |
+| `host apply <profile> [<alias> <host>[:port] <user> [role]] [--host SPEC]... [-f FILE\|-] [--tag] [--create-profile] [--category] [--reconcile] [--no-pin] [--dry-run] [-y]` | Add-or-update hosts from compact specs: one positional, repeatable `--host`, or a file (one per line, `#` comments, or a JSON array). New aliases are added as `host add`, existing ones edited as `host edit`; role and `--tag` merge into tags. Reports each host added/updated/unchanged; the batch is validated and saved at once. See [Host specs](recipes/host-specs.md). | U·F |
 | `host delete <profile> <alias> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a host; `--revoke` pulls the key off its targets, `--purge` deletes the key files if nothing else names them. | U·F |
 | `knownhosts init [PROFILE] [--all] [--force]` | Initialize the trust store (create the file + pin reachable hosts, TOFU, fingerprints reported) for one profile or, with `--all`, every host in the manifest. There is one hashed store, so a host used by two profiles is pinned once. | U·F |
 | `knownhosts pin [HOST] [--all]` | Pin into the one `known_hosts` via `ssh-keyscan`, showing each fingerprint and asking first. A host that returns no SSH key fails the command (named, with the reason) instead of reporting `pinned 0`. | U·F |

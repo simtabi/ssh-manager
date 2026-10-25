@@ -26,6 +26,17 @@ mints anything — three ways, whichever suits:
 ```sh
 sshmgr profile add work
 sshmgr host add work gh -H github.com -u git      # or edit manifest.json directly
+sshmgr host apply work web1 203.0.113.10 deploy web   # add-or-update from a compact spec
+```
+
+`host apply` takes `<alias> <host>[:port] <user> [role]` and adds the host if
+it is new or updates it if not, so the same line can be re-run. Many at once:
+
+```sh
+sshmgr host apply work \
+  --host "web1 203.0.113.10 deploy web" \
+  --host "db1  203.0.113.11 deploy db" --reconcile
+sshmgr host apply work -f hosts.txt     # one spec per line, # comments, - for stdin
 sshmgr import ~/.ssh/config                        # or onboard an existing setup
 ```
 

@@ -81,7 +81,11 @@ func (r *ReconcileResult) Format() string {
 		}
 	}
 	if !r.DryRun {
-		lines = append(lines, fmt.Sprintf("  perms fixed on %d paths", r.PermsFixed))
+		if r.PermsFixed == 0 {
+			lines = append(lines, "  perms: ok")
+		} else {
+			lines = append(lines, fmt.Sprintf("  perms fixed on %d paths", r.PermsFixed))
+		}
 	}
 	if len(r.Pinned) > 0 {
 		keys := make([]string, 0, len(r.Pinned))
@@ -618,18 +622,28 @@ func (r *Reconciler) archiveRecord(ref manifest.KeyRef, priv, newFP string) {
 // cover only ~/.ssh while `doctor --fix` covered both, so reconciling left the
 // manifest and providers.json at whatever mode the umask produced and a following
 // doctor run reported perm issues it had just been asked to prevent.
+//
+// It returns how many paths actually changed mode. It used to count every
+// path it visited, so a tree that was already correct reported "perms fixed
+// on 53 paths" on every run - indistinguishable from real drift.
 func (r *Reconciler) fixPerms() int {
 	count := 0
+	fix := func(path string, mode os.FileMode) {
+		if perms.PermsOK(path, mode) {
+			return
+		}
+		if perms.SetPerms(path, mode) == nil {
+			count++
+		}
+	}
 	for _, mp := range perms.IterManagedPaths(r.p.SSHDir) {
-		_ = perms.SetPerms(mp.Path, mp.Mode)
-		count++
+		fix(mp.Path, mp.Mode)
 	}
 	for _, sp := range homeperms.SecretPerms(r.p) {
 		if !fs.Exists(sp.Path) {
 			continue
 		}
-		_ = perms.SetPerms(sp.Path, sp.Mode)
-		count++
+		fix(sp.Path, sp.Mode)
 	}
 	return count
 }

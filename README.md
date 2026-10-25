@@ -35,6 +35,7 @@ mints anything:
 sshmgr init                  # create ~/.config/ssh-manager (dirs, perms, seed files)
 sshmgr profile add work
 sshmgr host add work gh -H github.com -u git      # or edit manifest.json directly
+sshmgr host apply work web1 203.0.113.10 deploy web   # add-or-update from a compact spec
 sshmgr import ~/.ssh/config                        # or onboard an existing setup
 ```
 
@@ -89,6 +90,7 @@ else is in the [documentation index](#documentation).
 
 ### Recipes
 
+- [Add or update many hosts at once](docs/recipes/host-specs.md) — `host apply` with `<alias> <host> <user> [role]` lines, re-runnable.
 - [Two GitHub accounts on one machine](docs/recipes/two-github-accounts.md) — one hostname, two identities, neither able to act as the other.
 - [Keep keys in 1Password](docs/recipes/keep-keys-in-1password.md) — private keys generated and rotated inside a vault; only the `.pub` on disk.
 - [Use a GitHub machine user](docs/recipes/github-machine-user.md) — one bot key with read access to every org repo, rotated in one command.
