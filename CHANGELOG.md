@@ -8,6 +8,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`sshmgr termius keys [ALIAS]` - get each key into Termius.** Termius's CSV import has no key column, so imported
+  hosts stop at SSH key selection. With no alias it lists every exported host with its Termius key label (the key
+  file's name) and private key path; with an alias it copies that host's private key to the clipboard (pbcopy,
+  wl-copy/xclip/xsel, or clip) and prints the label to paste into Keychain → New Key. The key is never printed unless
+  `--print` is given (with a stderr warning); `--clear` and `--clear-after DUR` empty the clipboard. `termius export`
+  now points to it, and the export docs and Termius recipe describe the full flow with Termius's docs as sources.
 - **`sshmgr host apply` - add or update hosts from compact specs.** A spec is
   `<alias> <host>[:port] <user> [role]`, e.g.
   `sshmgr host apply adelsaiq dani-prd-web-00 206.189.185.129 ploi web`. Give

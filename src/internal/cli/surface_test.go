@@ -143,6 +143,11 @@ var goOnly = map[string]string{
 	"termius export --include-git": "exports - also export git hosts, which are not shells",
 	"termius export --open":        "exports - macOS: open Termius and show the file in Finder",
 	"termius export --skip":        "exports - leave out a named host",
+	"termius keys":                 "exports - Termius key label per host; copy one host's private key to the clipboard",
+	"termius keys --include-git":   "exports - also list git hosts",
+	"termius keys --print":         "exports - print the key instead of copying, with a stderr warning",
+	"termius keys --clear":         "exports - empty the clipboard",
+	"termius keys --clear-after":   "exports - auto-clear the clipboard after a delay",
 
 	// Cloudflare Access (3.4.0): a host reached through cloudflared, rendered by sshmgr since
 	// raw_options may not set a ProxyCommand.
