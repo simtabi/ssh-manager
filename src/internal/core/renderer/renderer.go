@@ -32,6 +32,11 @@ var legacyEnds = []string{"# End of sshmgr-managed block - content outside it is
 func isManagedHeader(s string) bool { return s == ManagedHeader || contains(legacyHeaders, s) }
 func isManagedEnd(s string) bool    { return s == ManagedEnd || contains(legacyEnds, s) }
 
+// IsManagedHeaderLine and IsManagedEndLine report whether a trimmed line opens
+// or closes the managed block (current or legacy markers).
+func IsManagedHeaderLine(s string) bool { return isManagedHeader(s) }
+func IsManagedEndLine(s string) bool    { return isManagedEnd(s) }
+
 func contains(ss []string, s string) bool {
 	for _, x := range ss {
 		if x == s {
@@ -212,14 +217,12 @@ func RenderRootConfig(m *manifest.Manifest, emitUseKeychain bool) (string, error
 		writeProfile(&b, pname, byProfile[pname])
 	}
 	// Host github.com sits after every profile block and before Host *, the only other block that
-	// could match it.
-	gh, err := gitHubBlock(m)
-	if err != nil {
-		return "", err
-	}
-	if gh != nil {
-		b.WriteString(gitBanner(m.Defaults.Git.Profile) + "\n")
-		writeHostBlock(&b, *gh)
+	// could match it. When the git profile is filed under a category, the block lives in that
+	// category's file instead (writeGitBlock), never in both.
+	if gitCategory(m) == "" {
+		if err := writeGitBlock(&b, m); err != nil {
+			return "", err
+		}
 	}
 	writeGlobalBlock(&b, m.Defaults.GlobalOptions, emitUseKeychain)
 	b.WriteString(ManagedEnd + "\n")
@@ -244,7 +247,34 @@ func RenderCategoryConfig(m *manifest.Manifest, category string) (string, error)
 			writeProfile(&b, pname, byProfile[pname])
 		}
 	}
+	// The git ssh mode block belongs to its profile, so it renders with the profile's category.
+	// The category Includes come before anything else in the root block and before Host *, so
+	// ssh still reaches it first for github.com.
+	if c := gitCategory(m); c != "" && c == category {
+		if err := writeGitBlock(&b, m); err != nil {
+			return "", err
+		}
+	}
 	return b.String(), nil
+}
+
+// gitCategory is the category of defaults.git.profile ("" for none, or no git profile).
+func gitCategory(m *manifest.Manifest) string {
+	g := m.Defaults.Git
+	if g == nil || g.Profile == "" {
+		return ""
+	}
+	return m.Profiles[g.Profile].Category
+}
+
+func writeGitBlock(b *strings.Builder, m *manifest.Manifest) error {
+	gh, err := gitHubBlock(m)
+	if err != nil || gh == nil {
+		return err
+	}
+	b.WriteString(gitBanner(m.Defaults.Git.Profile) + "\n")
+	writeHostBlock(b, *gh)
+	return nil
 }
 
 func hostsByProfile(m *manifest.Manifest) (map[string][]RenderHost, error) {
@@ -344,6 +374,7 @@ func ComposeRootConfig(existing, managed string) string {
 			trailer = lines[end+1:]
 		}
 	}
+	preamble, trailer = hoistTopIncludes(preamble, trailer)
 	pre := strings.TrimRight(strings.Join(preamble, "\n"), "\n")
 	trail := strings.Trim(strings.Join(trailer, "\n"), "\n")
 	block := managed
@@ -359,6 +390,37 @@ func ComposeRootConfig(existing, managed string) string {
 		out += "\n" + trail + "\n"
 	}
 	return out
+}
+
+// topIncludes are foreign Include lines whose owner requires them at the top of
+// ~/.ssh/config, before any Host block. OrbStack appends its Include to the end
+// of the file and its comment says it "only works if it's at the top"; below
+// the managed block it sits under Host *, which is not what OrbStack asked for.
+var topIncludes = []string{"include ~/.orbstack/ssh/config"}
+
+// hoistTopIncludes moves a topIncludes line found below the managed block -
+// with the comment lines directly above it - to the top of the file. Only these known lines move; every other foreign line stays where the
+// user put it.
+func hoistTopIncludes(preamble, trailer []string) ([]string, []string) {
+	for i := 0; i < len(trailer); i++ {
+		if !contains(topIncludes, strings.ToLower(strings.Join(strings.Fields(trailer[i]), " "))) {
+			continue
+		}
+		from := i
+		for from > 0 && strings.HasPrefix(strings.TrimSpace(trailer[from-1]), "#") {
+			from--
+		}
+		moved := append([]string{}, trailer[from:i+1]...)
+		trailer = append(append([]string{}, trailer[:from]...), trailer[i+1:]...)
+		// To the very top: an Include after a foreign Host line would be scoped to that host.
+		pre := strings.Trim(strings.Join(preamble, "\n"), "\n")
+		preamble = moved
+		if pre != "" {
+			preamble = append(append(preamble, ""), splitLines(pre)...)
+		}
+		i = from - 1
+	}
+	return preamble, trailer
 }
 
 // RenderAll renders every managed file: {relative path -> content} - the root

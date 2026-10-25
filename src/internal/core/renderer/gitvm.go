@@ -103,6 +103,14 @@ func gitHubBlock(m *manifest.Manifest) (*RenderHost, error) {
 	if g == nil || g.Profile == "" {
 		return nil, nil
 	}
+	// A host already named github.com renders its own block; a second one would never be read.
+	for _, pname := range m.ProfileNames() {
+		for _, h := range m.Profiles[pname].Hosts {
+			if strings.EqualFold(h.Alias, "github.com") {
+				return nil, nil
+			}
+		}
+	}
 	h, ok := manifest.GitHubHostOf(m, g.Profile)
 	if !ok {
 		return nil, fmt.Errorf("defaults.git.profile %q has no github.com host", g.Profile)
