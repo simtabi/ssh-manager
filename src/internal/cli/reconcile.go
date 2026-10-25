@@ -13,6 +13,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // newReconcileCmd is the native reconcile verb: apply the manifest to ~/.ssh
@@ -50,41 +51,7 @@ func newReconcileCmd() *cobra.Command {
 				return nil
 			}
 
-			// Show the dry run as the confirmation. The user sees exactly what is
-			// about to happen rather than being asked to agree to a verb name.
-			preview, err := r.Reconcile(true, "")
-			if err != nil {
-				return err
-			}
-			if err := confirmChange(c, preview.Format(), yes); err != nil {
-				return err
-			}
-
-			pw := ""
-			if passphrase {
-				secret, err := readPassphrase(c.InOrStdin())
-				if err != nil {
-					return err
-				}
-				pw = secret
-			}
-			snap := snapshotBeforeMutation(p)
-			res, err := r.Reconcile(false, pw)
-			if err != nil {
-				return err
-			}
-			if snap != "" {
-				res.Snapshot = &snap
-			}
-			if !noPin {
-				res.Pinned = knownhosts.New(p.SSHDir).AutoPin(m, nil, os.Getenv)
-			}
-			_, _ = fmt.Fprintln(out, res.Format())
-			// Reconcile is the command that leaves the tree in its intended state,
-			// so it is where a key that will never be used should be noticed -
-			// rather than at the next doctor run, days later.
-			warnDangling(out, p, m)
-			return nil
+			return reconcileApply(c, p, m, r, yes, passphrase, noPin)
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview without writing")
@@ -92,6 +59,48 @@ func newReconcileCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&passphrase, "passphrase", false, "protect newly minted keys (prompts without echo)")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "apply without confirming (implied when there is no terminal)")
 	return cmd
+}
+
+// reconcileApply is reconcile's applying half - preview as confirmation, then
+// snapshot, mint, pin and warn - shared with `host apply --reconcile`.
+func reconcileApply(c *cobra.Command, p paths.Paths, m *manifest.Manifest, r *reconciler.Reconciler,
+	yes, passphrase, noPin bool) error {
+	out := c.OutOrStdout()
+	// Show the dry run as the confirmation. The user sees exactly what is
+	// about to happen rather than being asked to agree to a verb name.
+	preview, err := r.Reconcile(true, "")
+	if err != nil {
+		return err
+	}
+	if err := confirmChange(c, preview.Format(), yes); err != nil {
+		return err
+	}
+
+	pw := ""
+	if passphrase {
+		secret, err := readPassphrase(c.InOrStdin())
+		if err != nil {
+			return err
+		}
+		pw = secret
+	}
+	snap := snapshotBeforeMutation(p)
+	res, err := r.Reconcile(false, pw)
+	if err != nil {
+		return err
+	}
+	if snap != "" {
+		res.Snapshot = &snap
+	}
+	if !noPin {
+		res.Pinned = knownhosts.New(p.SSHDir).AutoPin(m, nil, os.Getenv)
+	}
+	_, _ = fmt.Fprintln(out, res.Format())
+	// Reconcile is the command that leaves the tree in its intended state,
+	// so it is where a key that will never be used should be noticed -
+	// rather than at the next doctor run, days later.
+	warnDangling(out, p, m)
+	return nil
 }
 
 // readPassphrase collects the passphrase to protect newly minted keys. On a

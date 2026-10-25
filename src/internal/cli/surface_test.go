@@ -149,6 +149,10 @@ var goOnly = map[string]string{
 	"host add --proxy":  "cloudflare access - route the host through cloudflared",
 	"host edit --proxy": "cloudflare access - set or remove (none) the proxy",
 
+	// Compact host specs (unreleased): add-or-update one host or many from
+	// `<alias> <host>[:port] <user> [role]`.
+	"host apply": "host specs - upsert hosts from compact specs, a file or JSON",
+
 	"profile add --category":  "categories - file a new profile under profiles/<category>/",
 	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
 
