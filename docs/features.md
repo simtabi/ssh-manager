@@ -43,6 +43,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
 | `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses any target inside `~/.ssh`. | U·F |
 | `termius export [--out PATH\|-] [--skip ALIAS] [--include-git] [--open]` | Write a Termius CSV import (group = profile, label = alias) and list the key to attach to each host; `--open` opens Termius on macOS. | U·F |
+| `termius keys [ALIAS] [--clear-after DUR] [--clear] [--print] [--include-git]` | The CSV carries no keys: list each host's Termius key label and key path, or copy one host's private key to the clipboard (never printed unless `--print`) with the label to paste into Keychain → New Key. | U·F |
 | `import [path] [--force]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
 | `diff` | Preview manifest vs. on-disk reality (config + which keys are missing/present). | U·F |
 

@@ -61,8 +61,26 @@ Left out, and listed under `skipped:`:
 A value starting with `=`, `+`, `-` or `@` is prefixed with `'`, so the file cannot run a formula if opened in a
 spreadsheet.
 
-The CSV carries no keys. The command prints each host's key path; in Termius, import each key once (Keychain → Import
-key) and pick it in the host's SSH key field. A key kept in 1Password is named as such, to add from 1Password.
+**The CSV carries no keys.** Termius's CSV import takes labels, addresses, ports, groups, tags and credentials but has
+no key column ([Import existing hosts](https://docs.termius.com/getting-started/import-existing-hosts)); keys live in Termius's Keychain and are linked to each host
+([Keychain](https://support.termius.com/hc/en-us/articles/4401872025113-Keychain), [SSH keys and certificates](https://docs.termius.com/keychain/ssh-keys-and-certificates)). The export prints each host's key path, then:
+
+## `sshmgr termius keys`
+
+```bash
+sshmgr termius keys                              # every exported host: HOST, TERMIUS LABEL, PRIVATE KEY path
+sshmgr termius keys dani-prd-db-00               # copy its private key to the clipboard, print the label
+sshmgr termius keys dani-prd-db-00 --clear-after 60s   # ...and empty the clipboard after 60 seconds
+sshmgr termius keys --clear                      # empty the clipboard now
+sshmgr termius keys dani-prd-db-00 --print       # key on stdout instead (warns on stderr; avoid)
+sshmgr termius keys github-me --include-git      # git hosts, as with export --include-git
+```
+
+The label is the key file's name (`adelsaiq_dani-prd-db-00-ed25519`). The key is copied with `pbcopy` (macOS),
+`wl-copy`, `xclip` or `xsel` (Linux), or `clip` (Windows), and never printed without `--print`. In Termius:
+**Keychain → New Key** (or **Add key** on SSH key selection), Label = the label, paste into **Private key**, leave
+**Certificate** empty, **Save**; pick it on the host and **Continue & Save**. A key kept in 1Password is refused, to
+add from 1Password instead. Full walk-through: [Import your hosts into Termius](../recipes/import-hosts-into-termius.md).
 
 The column layout is the one third-party exporters reproduce from Termius's import template (Termius 9.x). Termius
 publishes the template only inside the app (Hosts → New Host → Import → CSV → download template); if its header ever

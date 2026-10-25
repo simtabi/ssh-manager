@@ -206,7 +206,7 @@ func newTermiusCmd() *cobra.Command {
 	export.Flags().BoolVar(&includeGit, "include-git", false, "also export git hosts (user git, or a github or gitlab provider), which are not shells")
 	export.Flags().StringArrayVar(&skip, "skip", nil, "leave out this alias (repeatable)")
 	export.Flags().BoolVar(&open, "open", false, "macOS: open Termius and show the file in Finder")
-	cmd.AddCommand(export)
+	cmd.AddCommand(export, newTermiusKeysCmd())
 	return cmd
 }
 
@@ -225,7 +225,9 @@ func reportTermius(w io.Writer, exp *renderer.TermiusExport, toStdout bool) {
 	if len(exp.Keys) == 0 {
 		return
 	}
-	_, _ = fmt.Fprintln(w, "Then attach each host's key (Keychain > Import key from file, then the host's SSH key field):")
+	_, _ = fmt.Fprintln(w, "The CSV carries no keys (Termius's importer has no key column). For each host below:")
+	_, _ = fmt.Fprintln(w, "  sshmgr termius keys <HOST>   copies its private key and prints the Termius label;")
+	_, _ = fmt.Fprintln(w, "  then Keychain > New Key: Label + paste into Private key > Save, pick it on the host, Continue & Save.")
 	width := 0
 	for _, k := range exp.Keys {
 		width = max(width, len(k.Label))
