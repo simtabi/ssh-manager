@@ -18,3 +18,8 @@
 # exact shape generic-api-key exists to catch, and a fair hit on a fake. The
 # working tree now uses THE-TEST-VALUE; this retires the published commit.
 a05bdcdefcfdfe5dc51c21f032ec13e02bfc58ad:internal/util/askpass/askpass_test.go:generic-api-key:114
+
+# termius keys test fixture: the literal "throwaway-test-key" between OpenSSH armor
+# lines, written to a temp dir by the test; not a key (the body is plain text).
+# Later commits build the armor at run time so it is not flagged again.
+eb1bf5e242d3752cbdd82a68950fc200bfa58227:src/internal/cli/termius_keys_test.go:private-key:11
