@@ -64,7 +64,8 @@ A JSON array works too, of spec strings or objects:
 - The whole batch is validated by the manifest's rules and saved once; a bad or
   duplicated spec changes nothing.
 - A missing profile is refused unless you pass `--create-profile` or
-  `--category <name>` (which implies it).
+  `--category <name>` (which implies it). If the batch is then refused, the
+  new profile is removed again.
 - Without `--reconcile`, new hosts have no key until you run `sshmgr
   reconcile`. With it, the reconcile preview is shown and confirmed as usual
   (`-y` skips the prompt; `--no-pin` skips known_hosts auto-pinning).

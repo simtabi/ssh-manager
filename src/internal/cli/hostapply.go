@@ -115,17 +115,7 @@ func newHostApplyCmd() *cobra.Command {
 			}
 
 			snapshotBeforeMutation(p)
-			if !exists {
-				if err := ed.AddProfile(profile, "per_service", nil); err != nil {
-					return err
-				}
-				if category != "" {
-					if _, err := ed.SetCategory(profile, category); err != nil {
-						return err
-					}
-				}
-			}
-			res, err := ed.ApplyHosts(profile, specs, false)
+			res, err := applyCreatingProfile(ed, p.Manifest(), profile, category, !exists, specs)
 			if err != nil {
 				return err
 			}
@@ -162,6 +152,41 @@ func newHostApplyCmd() *cobra.Command {
 	f.BoolVar(&dryRun, "dry-run", false, "report what would change without writing")
 	f.BoolVarP(&yes, "yes", "y", false, "apply without confirming (implied when there is no terminal)")
 	return cmd
+}
+
+// applyCreatingProfile runs the batch, first creating the profile when asked.
+// Creating it is a separate save, so if the batch then fails validation the
+// manifest is put back exactly as it was - otherwise a refused batch left an
+// empty profile behind. A new profile has no key directory yet, so restoring
+// the manifest is the whole of the undo.
+func applyCreatingProfile(ed *editor.Editor, manifestPath, profile, category string, create bool,
+	specs []editor.HostSpec) ([]editor.ApplyResult, error) {
+	if !create {
+		return ed.ApplyHosts(profile, specs, false)
+	}
+	before, err := os.ReadFile(manifestPath)
+	if err != nil {
+		return nil, err
+	}
+	undo := func(cause error) error {
+		if werr := os.WriteFile(manifestPath, before, 0o600); werr != nil {
+			return fmt.Errorf("%w (and restoring the manifest failed: %v)", cause, werr)
+		}
+		return cause
+	}
+	if err := ed.AddProfile(profile, "per_service", nil); err != nil {
+		return nil, undo(err)
+	}
+	if category != "" {
+		if _, err := ed.SetCategory(profile, category); err != nil {
+			return nil, undo(err)
+		}
+	}
+	res, err := ed.ApplyHosts(profile, specs, false)
+	if err != nil {
+		return nil, undo(err)
+	}
+	return res, nil
 }
 
 // collectHostSpecs merges the positional spec, --host values and -f input, in

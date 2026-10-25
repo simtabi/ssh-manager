@@ -20,11 +20,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   updated (with what moved) or unchanged, so re-running the same specs is a
   no-op. The batch passes the manifest's validation and is saved at once, so
   one bad spec changes nothing. `--create-profile`/`--category` create a
-  missing profile, `--reconcile` mints the new keys afterwards, and
+  missing profile (and are undone if the batch is refused, so no empty
+  profile is left behind), `--reconcile` mints the new keys afterwards, and
   `--dry-run`/`-y` behave as on `reconcile`.
 
 ### Fixed
 
+- **`reconcile` no longer claims to fix permissions it did not change.** The
+  fixer counted every managed path it visited, so an already-correct tree
+  printed `perms fixed on 53 paths` on every run, indistinguishable from real
+  drift. It now counts only paths whose mode actually changed and prints
+  `perms: ok` when there were none. Nothing was resetting modes between runs.
 - **Releases carry their notes again.** `changelog: disable: true` made
   GoReleaser skip the pipe that reads `--release-notes`, so v3.2.0 and v3.4.0
   were published with empty bodies while the run reported success. The config

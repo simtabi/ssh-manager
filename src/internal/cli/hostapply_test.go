@@ -96,6 +96,17 @@ func TestHostApply(t *testing.T) {
 		}
 	})
 
+	t.Run("a refused batch does not leave a created profile behind", func(t *testing.T) {
+		p := editHome(t)
+		if _, err := runErr(t, "host", "apply", "newp", "--host", "a h\"x u", "--category", "clients", "-y"); err == nil {
+			t.Fatal("want the invalid host refused")
+		}
+		m, _ := manifest.Load(p.Manifest())
+		if _, ok := m.Profiles["newp"]; ok {
+			t.Error("the failed batch left profile newp in the manifest")
+		}
+	})
+
 	t.Run("bad specs are refused and change nothing", func(t *testing.T) {
 		p := editHome(t)
 		run(t, "profile", "add", "adelsaiq")
