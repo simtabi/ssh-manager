@@ -714,3 +714,35 @@ func TestOverwriteMovesTheOutgoingRecordToOld(t *testing.T) {
 		t.Errorf("records at %s = %v, want only the new key", ident, got)
 	}
 }
+
+// A tree that is already correct must report zero fixes: the fixer used to
+// count every path it visited, so every reconcile printed "perms fixed on N".
+func TestSecondReconcileFixesNoPerms(t *testing.T) {
+	if _, err := exec.LookPath("ssh-keygen"); err != nil {
+		t.Skip("ssh-keygen not on PATH")
+	}
+	p := paths.Paths{SSHDir: t.TempDir(), ConfigDir: t.TempDir()}
+	inv := inventory.New()
+	if _, err := New(p, loadManifest(t), inv, false).Reconcile(false, ""); err != nil {
+		t.Fatal(err)
+	}
+	res, err := New(p, loadManifest(t), inv, false).Reconcile(false, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.PermsFixed != 0 {
+		t.Errorf("second reconcile fixed %d paths, want 0", res.PermsFixed)
+	}
+	if !strings.Contains(res.Format(), "perms: ok") {
+		t.Errorf("want 'perms: ok' in:\n%s", res.Format())
+	}
+	// Real drift is still counted, exactly.
+	cfg := filepath.Join(p.SSHDir, "config")
+	if err := os.Chmod(cfg, 0o644); err != nil {
+		t.Fatal(err)
+	}
+	res, _ = New(p, loadManifest(t), inv, false).Reconcile(false, "")
+	if res.PermsFixed != 1 {
+		t.Errorf("one loosened file: fixed %d, want 1", res.PermsFixed)
+	}
+}
