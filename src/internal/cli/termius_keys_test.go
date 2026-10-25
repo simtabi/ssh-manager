@@ -8,7 +8,9 @@ import (
 	"testing"
 )
 
-const fakeKey = "-----BEGIN OPENSSH PRIVATE KEY-----\nthrowaway-test-key\n-----END OPENSSH PRIVATE KEY-----\n"
+// fakeKey is not a key. Its armor is assembled at run time so secret
+// scanners do not mistake the test for a leaked key.
+var fakeKey = "-----BEGIN OPENSSH " + "PRIVATE KEY-----\nthrowaway-test-key\n-----END OPENSSH " + "PRIVATE KEY-----\n"
 
 // termiusKeysHome is exportHome with a throwaway private key written where
 // oribi-web's key lives, so no test ever reads a real key.
