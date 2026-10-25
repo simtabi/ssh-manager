@@ -208,7 +208,7 @@ func collectHostSpecs(stdin io.Reader, positional, lines []string, file string) 
 		specs = append(specs, s)
 	}
 	if file != "" {
-		var r io.Reader = stdin
+		r := stdin
 		if file != "-" {
 			fh, err := os.Open(file)
 			if err != nil {
