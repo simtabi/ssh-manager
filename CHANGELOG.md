@@ -6,6 +6,23 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`sshmgr host apply` - add or update hosts from compact specs.** A spec is
+  `<alias> <host>[:port] <user> [role]`, e.g.
+  `sshmgr host apply adelsaiq dani-prd-web-00 206.189.185.129 ploi web`. Give
+  one positionally, many with repeated `--host "..."`, or a file with
+  `-f FILE` (`-` for stdin; one spec per line with `#` comments, or a JSON
+  array of spec strings or `{alias,host,user,port,role,tags}` objects). A new
+  alias is added the way `host add` adds it; an existing one has its hostname,
+  user and port updated the way `host edit` does, and the role and any `--tag`
+  are merged into its tags (never removed). Each host is reported added,
+  updated (with what moved) or unchanged, so re-running the same specs is a
+  no-op. The batch passes the manifest's validation and is saved at once, so
+  one bad spec changes nothing. `--create-profile`/`--category` create a
+  missing profile, `--reconcile` mints the new keys afterwards, and
+  `--dry-run`/`-y` behave as on `reconcile`.
+
 ### Fixed
 
 - **Releases carry their notes again.** `changelog: disable: true` made

@@ -121,6 +121,11 @@ guarantees each alias offers only its own key and trusts only its own host keys.
 }
 ```
 
+Hosts need not be written by hand: `sshmgr host add|edit` change one field set at a
+time, and `sshmgr host apply <profile> <alias> <host>[:port] <user> [role]` (or many
+with `--host`/`-f`) adds or updates `alias`, `hostname`, `user`, `port` and `tags` in one
+step. See [Host specs](recipes/host-specs.md).
+
 ### `defaults`
 
 | Field | Default | Meaning |
