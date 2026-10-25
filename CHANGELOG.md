@@ -31,6 +31,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   printed `perms fixed on 53 paths` on every run, indistinguishable from real
   drift. It now counts only paths whose mode actually changed and prints
   `perms: ok` when there were none. Nothing was resetting modes between runs.
+- **The git ssh mode `Host github.com` block is rendered once, with its
+  profile.** When `defaults.git.profile` is filed under a category, the block
+  now goes into that category's `profiles/<category>/config` instead of the
+  root `~/.ssh/config`. The category Include still precedes `Host *`, so ssh
+  resolves `github.com` exactly as before. It is also skipped when a host is
+  already aliased `github.com`.
+- **`config check` reports duplicate Host blocks.** A `Host` pattern the
+  managed files define more than once is listed as `DUPLICATE` (ssh only reads
+  the first) and the config is not reported in sync.
+- **OrbStack's Include is moved to the top.** OrbStack appends
+  `Include ~/.orbstack/ssh/config` to the end of `~/.ssh/config` and says it
+  only works at the top; a render now moves that line (with its comments) to
+  the top of the file. No other foreign content moves.
 - **Releases carry their notes again.** `changelog: disable: true` made
   GoReleaser skip the pipe that reads `--release-notes`, so v3.2.0 and v3.4.0
   were published with empty bodies while the run reported success. The config

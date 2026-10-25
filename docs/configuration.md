@@ -19,7 +19,10 @@ is resolved.
 
 Anything above or below that block is left untouched, so edits injected by other
 tools survive a re-render. In particular, an OrbStack preamble (which must sit at
-the very top of `ssh_config`, before any `Host` block) is kept at the top:
+the very top of `ssh_config`, before any `Host` block) is kept at the top. OrbStack
+appends its Include to the *end* of the file; a render moves that one known
+`Include ~/.orbstack/ssh/config` (and the comment lines above it) to the top -
+no other foreign line is moved:
 
 ```
 # Added by OrbStack: 'orb' SSH host for Linux machines
@@ -140,7 +143,7 @@ step. See [Host specs](recipes/host-specs.md).
 | `global_options` | `{}` | ssh options emitted under `Host *` (e.g. `AddKeysToAgent`, macOS `UseKeychain`) |
 | `onepassword_agent` | platform default | the 1Password SSH agent socket for `key_store: 1password` profiles (see [Key stores](#key-stores)) |
 | `git.mode` | `profile` | default GitHub remote mode for `sshmgr git use`: `profile`, `ssh` or `https` |
-| `git.profile` | unset | the default identity: its GitHub key is bound to a rendered `Host github.com` (ssh mode), and it is used for owners `git.orgs` does not list. Unset, no `Host github.com` is rendered |
+| `git.profile` | unset | the default identity: its GitHub key is bound to a rendered `Host github.com` (ssh mode), and it is used for owners `git.orgs` does not list. Unset, no `Host github.com` is rendered. The block is rendered once: in the profile's category file (`profiles/<category>/config`) when it has a category, otherwise in the root block; skipped if a host is already aliased `github.com` |
 | `git.orgs` | `{}` | GitHub owner → profile, for `sshmgr git` (see [tools/git.md](tools/git.md)) |
 
 All three `git` fields are optional and the key is omitted when unset, so a manifest without them renders

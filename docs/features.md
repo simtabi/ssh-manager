@@ -38,7 +38,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `keygen <profile\|host> [--no-pin]` | Targeted key generation; warns + **skips** keys that already exist; auto-pins the affected profiles' `known_hosts` for reachable hosts. | U·E·F |
 | `keygen ... --force [--yes]` | Overwrite existing keys (prompted; `~/.ssh` snapshotted first). | U·E·F |
 | `keygen ... --passphrase` | Protect new keys with a passphrase (off by default, so omitting the flag is the "no" answer; prompts without echo on a TTY). | U |
-| `config check` | Verify the on-disk config byte-for-byte matches a fresh render (exit ≠0 on drift). | U·E·F |
+| `config check` | Verify the on-disk config byte-for-byte matches a fresh render, and that no `Host` pattern is defined twice across the managed files (`DUPLICATE`); exit ≠0 on either. | U·E·F |
 | `config render [--dry-run]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
 | `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses any target inside `~/.ssh`. | U·F |
