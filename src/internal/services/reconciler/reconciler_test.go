@@ -72,7 +72,9 @@ func TestReconcileMintsRendersAndIsIdempotent(t *testing.T) {
 	if res.Config == nil || len(res.Config.Written) == 0 {
 		t.Errorf("expected config writes, got %+v", res.Config)
 	}
-	if res.PermsFixed == 0 {
+	// Windows ACLs on a fresh temp dir may already be tight, so only POSIX
+	// modes are guaranteed to need fixing here.
+	if runtime.GOOS != "windows" && res.PermsFixed == 0 {
 		t.Error("expected perms fixed on managed paths")
 	}
 	// Inventory recorded every minted key, each needs-redeploy with an expiry.
@@ -736,7 +738,11 @@ func TestSecondReconcileFixesNoPerms(t *testing.T) {
 	if !strings.Contains(res.Format(), "perms: ok") {
 		t.Errorf("want 'perms: ok' in:\n%s", res.Format())
 	}
-	// Real drift is still counted, exactly.
+	// Real drift is still counted, exactly. os.Chmod does not loosen a Windows
+	// ACL, so this half is POSIX-only.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	cfg := filepath.Join(p.SSHDir, "config")
 	if err := os.Chmod(cfg, 0o644); err != nil {
 		t.Fatal(err)
