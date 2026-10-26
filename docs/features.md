@@ -18,10 +18,11 @@ when the profile has a category.
 | `init` | Create/converge the per-user home (OS-standard, e.g. `~/.config/ssh-manager`): every run (re)creates the dir structure (`log/`, `snapshots/`, `.state/`) + re-asserts perms (dirs 700, secrets 600) and seeds any **missing** starter files (manifest, inventory, `.env`) - never clobbering existing ones. `providers.json` is not seeded (the shipped catalog is used unless you create your own). | U·E·F |
 | `init --force` | Overwrite the seed files with fresh defaults, **in place** (no backup). | U·F |
 | `init --force --backup` | Same, but first copy the old files into `~/.config/ssh-manager/.state/init-backup-<ts>/`. | U·F |
-| `migrate [--force]` | Move a legacy `~/.sshmgr` to the **resolved** home (`$SSH_MANAGER_HOME` override-aware; auto-migration handles the simple case on any command; this resolves the stranded both-exist case `doctor` warns about - `--force` backs up the current home and replaces it). | U |
+| `migrate [--force] [-y]` | Move a legacy `~/.sshmgr` to the **resolved** home (`$SSH_MANAGER_HOME` override-aware; auto-migration handles the simple case on any command; this resolves the stranded both-exist case `doctor` warns about - `--force` backs up the current home and replaces it). | U |
 | `doctor` | Verify the environment: deps, perms, agent, known_hosts, ≤1-old-key invariant, config drift, orphan/duplicate keys, alias collisions. Prints the **resolved home**, `~/.ssh`, and the active provider-catalog source; warns about a stranded legacy home. | U·E·F |
 | `doctor --fix` | Re-assert canonical perms on every tool-managed path (`~/.ssh` tree + home secrets). | U·F |
 | `doctor --json` | Machine-readable report for scripting/monitoring. | U |
+| `doctor --strict` | Treat every dangling-key state as a failure, not only the blocking ones (for CI). | U |
 | `version` / `--version` | Print the version. | F |
 
 Home resolution: `$SSH_MANAGER_HOME` (alias `$SSH_MANAGER_CONFIG_DIR`) if set, else the
@@ -33,18 +34,18 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 
 | Command | What it does | Tests |
 |---|---|---|
-| `reconcile [--no-pin]` | Make `~/.ssh` match the manifest: build the profile tree, **mint missing keys**, render config, set perms, and **auto-pin each profile's `known_hosts`** for reachable hosts (`--no-pin` or `SSH_MANAGER_AUTO_PIN=0` to skip). Snapshots `~/.ssh` first. | U·E·F |
+| `reconcile [--no-pin] [--passphrase] [-y]` | Make `~/.ssh` match the manifest: build the profile tree, **mint missing keys**, render config, set perms, and **auto-pin each profile's `known_hosts`** for reachable hosts (`--no-pin` or `SSH_MANAGER_AUTO_PIN=0` to skip). Snapshots `~/.ssh` first. | U·E·F |
 | `reconcile --dry-run` | Preview the plan; write nothing. | E·F |
-| `keygen <profile\|host> [--no-pin]` | Targeted key generation; warns + **skips** keys that already exist; auto-pins the affected profiles' `known_hosts` for reachable hosts. | U·E·F |
+| `keygen <profile\|host> [--no-pin] [--no-key-backup]` | Targeted key generation; warns + **skips** keys that already exist; auto-pins the affected profiles' `known_hosts` for reachable hosts. | U·E·F |
 | `keygen ... --force [--yes]` | Overwrite existing keys (prompted; `~/.ssh` snapshotted first). | U·E·F |
 | `keygen ... --passphrase` | Protect new keys with a passphrase (off by default, so omitting the flag is the "no" answer; prompts without echo on a TTY). | U |
 | `config check` | Verify the on-disk config byte-for-byte matches a fresh render, and that no `Host` pattern is defined twice across the managed files (`DUPLICATE`); exit ≠0 on either. | U·E·F |
-| `config render [--dry-run]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
+| `config render [-n\|--dry-run] [-y]` | Re-render config files from the manifest (one renderer, shared with `check`/`reconcile`). | U·E·F |
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
 | `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses any target inside `~/.ssh`. | U·F |
 | `termius export [--out PATH\|-] [--skip ALIAS] [--include-git] [--open]` | Write a Termius CSV import (group = profile, label = alias) and list the key to attach to each host; `--open` opens Termius on macOS. | U·F |
 | `termius keys [ALIAS] [--clear-after DUR] [--clear] [--print] [--include-git]` | The CSV carries no keys: list each host's Termius key label and key path, or copy one host's private key to the clipboard (never printed unless `--print`) with the label to paste into Keychain → New Key. | U·F |
-| `import [path] [--force]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
+| `import [path] [--force] [--dry-run] [-y]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
 | `diff` | Preview manifest vs. on-disk reality (config + which keys are missing/present). | U·F |
 
 ## Keys
@@ -55,7 +56,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `key regen-pub [selectors...] [--category] [--all] [--dry-run]` | Rebuild `.pub` files from the private key or the 1Password item; reports unchanged / created / rewritten / skipped. Never changes a private key. | U |
 | `key add <profile> <name> [--type] [--rotate-after-days] [--host] [--passphrase]` | Declare a key on a profile and mint it. Without `--host` the key is minted **unwired**: it exists and nothing uses it, which `doctor` then reports. | U |
 | `key delete <profile/key> [--purge] [--revoke] [--yes] [--no-key-backup]` | Remove the declaration and the inventory record. **Refuses while any host still resolves to the key** — a `Host` block pointing at a missing `IdentityFile` fails as a bare "Permission denied (publickey)" with nothing naming the cause. `--purge` also deletes the files. | U |
-| `clean [--dry-run] [--adopt]` | Prune stale `known_hosts` pins, stale inventory records and write residue. Only removes pins tagged `sshmgr`; `--adopt` opts an untagged pin that matches a manifest host into management, since an untagged pin is presumed to be yours. | U |
+| `clean [--dry-run] [--adopt] [-y]` | Prune stale `known_hosts` pins, stale inventory records and write residue. Only removes pins tagged `sshmgr`; `--adopt` opts an untagged pin that matches a manifest host into management, since an untagged pin is presumed to be yours. | U |
 
 ## Inspect
 
@@ -74,8 +75,8 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 
 | Command | What it does | Tests |
 |---|---|---|
-| `deploy <key> [target]` | Install the public key on its target via the host's provider (GitHub/GitLab CLI, cloud-VPS REST, `generic-ssh` `ssh-copy-id`, or web-panel/manual) and record it. **Exits ≠0 if a target is unreachable.** | U·E·F |
-| `rotate <key> [--yes] [--allow-unverified] [--passphrase]` | Zero-downtime staged rotation: stage → deploy → verify → archive (≤1 predecessor). Aborts cleanly (pulling the staged key back) if a target can't be verified or is unreachable. A hosting-panel target (Ploi, Forge, cPanel) waits at a terminal for the pasted key, then logs in with it before committing. | U·E·F |
+| `deploy <key> [target] [-y]` | Install the public key on its target via the host's provider (GitHub/GitLab CLI, cloud-VPS REST, `generic-ssh` `ssh-copy-id`, or web-panel/manual) and record it. **Exits ≠0 if a target is unreachable.** | U·E·F |
+| `rotate <key> [--yes] [--allow-unverified] [--passphrase] [--no-key-backup]` | Zero-downtime staged rotation: stage → deploy → verify → archive (≤1 predecessor). Aborts cleanly (pulling the staged key back) if a target can't be verified or is unreachable. A hosting-panel target (Ploi, Forge, cPanel) waits at a terminal for the pasted key, then logs in with it before committing. | U·E·F |
 | `rotate [selectors...] [--category] [--all] [--dry-run]` | Rotate a batch: several keys, profiles or aliases, a category, or every key a host uses. One confirmation, backup and snapshot; each key rotates on its own and a failure leaves only that key untouched. | U |
 | `rollback <key> [--yes]` | Restore the single `/old/` predecessor (re-deploy is best-effort; skips unreachable hosts). | U·E·F |
 | `load <profile>` | Add the profile's keys to the agent (Keychain on macOS). | U·F |
@@ -91,9 +92,9 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 
 | Command | What it does | Tests |
 |---|---|---|
-| `bundle [-r recipient] [-o dir]` | `age`-encrypted, off-machine backup of keys + manifest + inventory + providers. **Never** includes `.env`. | U·E·F |
+| `bundle [-r recipient] [-o dir] [--keep N]` | `age`-encrypted, off-machine backup of keys + manifest + inventory + providers. **Never** includes `.env`. | U·E·F |
 | `restore <bundle> [-i identity] [--yes]` | Decrypt and lay the **same** keys back (true recovery on a new machine). | U·E·F |
-| `snapshots list\|restore\|prune` | Local, reversible `~/.ssh` backups (every mutating command snapshots first; last 10 kept). `restore` takes `--yes`. | U·E·F |
+| `snapshots list\|restore\|prune [--keep N]` | Local, reversible `~/.ssh` backups (every mutating command snapshots first; last 10 kept). `restore` takes `--yes`. | U·E·F |
 | `recover [key]` | Break-glass: with a key, a tailored shell snippet to paste into a locked-out console; without, the full interactive `fixkeys` tool (reads `/dev/tty`). | U·F |
 
 ## Editing, trust, scheduling, UI
@@ -104,17 +105,17 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 | `profile edit <name> [--key-scope] [--key-name] [--category]` | Change a profile in place. `--category` moves its key directory under `profiles/<category>/` (or back, with `""`) and re-points its inventory records. | U |
 | `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
 | `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag] [--proxy cloudflared]` | Add a host to a profile (alias is **positional**). `--proxy cloudflared` reaches it through Cloudflare Access. | U·F |
-| `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name]` | Change a host in place. | U·F |
+| `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--proxy cloudflared\|none]` | Change a host in place. | U·F |
 | `host apply <profile> [<alias> <host>[:port] <user> [role]] [--host SPEC]... [-f FILE\|-] [--tag] [--create-profile] [--category] [--reconcile] [--no-pin] [--dry-run] [-y]` | Add-or-update hosts from compact specs: one positional, repeatable `--host`, or a file (one per line, `#` comments, or a JSON array). New aliases are added as `host add`, existing ones edited as `host edit`; role and `--tag` merge into tags. Reports each host added/updated/unchanged; the batch is validated and saved at once. See [Host specs](recipes/host-specs.md). | U·F |
 | `host delete <profile> <alias> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a host; `--revoke` pulls the key off its targets, `--purge` deletes the key files if nothing else names them. | U·F |
-| `knownhosts init [PROFILE] [--all] [--force]` | Initialize the trust store (create the file + pin reachable hosts, TOFU, fingerprints reported) for one profile or, with `--all`, every host in the manifest. There is one hashed store, so a host used by two profiles is pinned once. | U·F |
-| `knownhosts pin [HOST] [--all]` | Pin into the one `known_hosts` via `ssh-keyscan`, showing each fingerprint and asking first. A host that returns no SSH key fails the command (named, with the reason) instead of reporting `pinned 0`. | U·F |
+| `knownhosts init [PROFILE] [--all] [--force] [-y]` | Initialize the trust store (create the file + pin reachable hosts, TOFU, fingerprints reported) for one profile or, with `--all`, every host in the manifest. There is one hashed store, so a host used by two profiles is pinned once. | U·F |
+| `knownhosts pin [HOST] [-p PORT] [--all] [-y]` | Pin into the one `known_hosts` via `ssh-keyscan`, showing each fingerprint and asking first. A host that returns no SSH key fails the command (named, with the reason) instead of reporting `pinned 0`. | U·F |
 | `git status [PATH...]` | Each checkout's GitHub remote mode (profile, ssh, https), owner/repo and profile. | U·F |
 | `git use [MODE] [PATH...] [--mode] [--profile] [--dry-run] [--yes]` | Point checkouts' origin at profile SSH, plain SSH or HTTPS; the new URL must pass `git ls-remote` before origin is rewritten. | U·F |
 | `vm list` | Every installed hypervisor's VMs, and which manifest host uses each; missing hypervisors say so. | U·F |
-| `vm add PROFILE ALIAS --hypervisor H --vm NAME -u USER` | Add a local VM as a host; its address is resolved at connect time through `ProxyCommand "<sshmgr>" vm proxy ALIAS`. | U·F |
+| `vm add PROFILE ALIAS --hypervisor H --vm NAME -u USER [--key-name] [-y]` | Add a local VM as a host; its address is resolved at connect time through `ProxyCommand "<sshmgr>" vm proxy ALIAS`. | U·F |
 | `vm docker-context ALIAS` | Create or update a Docker context `ssh://ALIAS` for a VM host. | U·F |
-| `notify install\|test` | Scheduled desktop expiry reminders (launchd / systemd-user-or-cron / schtasks). | U·F |
+| `notify install\|test [-y]` | Scheduled desktop expiry reminders (launchd / systemd-user-or-cron / schtasks). | U·F |
 | `tui` (or a bare `sshmgr` on a terminal) | Interactive arrow-key UI over the whole facade. | U |
 
 Cross-cutting flags: `--yes`/`-y` on destructive verbs (with `--revoke` on deletes);

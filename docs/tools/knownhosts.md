@@ -69,7 +69,7 @@ when you want to verify against the host's published fingerprint rather than
 trust-on-first-use, or to pin a host auto-pin couldn't reach:
 
 ```sh
-sshmgr knownhosts pin --all       # review fingerprints, then pin (per profile)
+sshmgr knownhosts pin --all       # review fingerprints, then pin
 ```
 
 So the first-use sequence is **reconcile (auto-pins reachable hosts) -> deploy**,
@@ -83,7 +83,7 @@ Scans a host with `ssh-keyscan`, shows each key's type + SHA256 fingerprint, and
 (after you confirm) writes it into the one hashed `~/.ssh/known_hosts` (0600):
 
 ```sh
-sshmgr knownhosts pin github.com         # pin one host (grouped under the profile that uses it)
+sshmgr knownhosts pin github.com         # pin one host
 sshmgr knownhosts pin 203.0.113.10 -p 2222
 sshmgr knownhosts pin --all              # pin every host in the manifest
 sshmgr knownhosts pin --all --yes        # trust scanned keys without prompting (scripted)
