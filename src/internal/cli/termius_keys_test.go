@@ -114,3 +114,15 @@ func TestTermiusKeysRefusesUnknownAndNonKeys(t *testing.T) {
 		t.Error("a file that is not a private key was copied")
 	}
 }
+
+// keys lists what export exports, so it takes export's --skip: a host left out
+// of the CSV has no Termius entry to attach a key to.
+func TestTermiusKeysSkipsWhatExportSkips(t *testing.T) {
+	termiusKeysHome(t)
+	if out := run(t, "termius", "keys", "--skip", "oribi-web"); strings.Contains(out, "oribi-web") {
+		t.Errorf("--skip oribi-web still listed it:\n%s", out)
+	}
+	if _, err := runErr(t, "termius", "keys", "--skip", "nope"); err == nil {
+		t.Error("a --skip naming no host should be an error, as on export")
+	}
+}

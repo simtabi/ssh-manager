@@ -84,6 +84,7 @@ func privateKeyPath(k renderer.TermiusKey) string { return strings.TrimSuffix(k.
 
 func newTermiusKeysCmd() *cobra.Command {
 	var includeGit, printKey, clear bool
+	var skip []string
 	var clearAfter time.Duration
 	cmd := &cobra.Command{
 		Use:   "keys [ALIAS]",
@@ -113,7 +114,7 @@ func newTermiusKeysCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			exp, err := renderer.RenderTermiusCSV(m, exportPaths(p), renderer.TermiusOptions{IncludeGit: includeGit})
+			exp, err := renderer.RenderTermiusCSV(m, exportPaths(p), renderer.TermiusOptions{IncludeGit: includeGit, Skip: skip})
 			if err != nil {
 				return err
 			}
@@ -171,6 +172,7 @@ func newTermiusKeysCmd() *cobra.Command {
 		},
 	}
 	cmd.Flags().BoolVar(&includeGit, "include-git", false, "also list git hosts, as 'termius export --include-git' does")
+	cmd.Flags().StringArrayVar(&skip, "skip", nil, "leave out this alias, as 'termius export --skip' does (repeatable)")
 	cmd.Flags().BoolVar(&printKey, "print", false, "print the private key to stdout instead of copying it (warns on stderr)")
 	cmd.Flags().BoolVar(&clear, "clear", false, "empty the clipboard and exit")
 	cmd.Flags().DurationVar(&clearAfter, "clear-after", 0, "after copying, wait this long (e.g. 60s) and empty the clipboard")
