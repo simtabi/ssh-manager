@@ -17,6 +17,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/hypervisor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
@@ -26,6 +27,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/preflight"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/clipboard"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/homeperms"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
@@ -63,6 +65,13 @@ type Report struct {
 	// RawOptionOverlaps lists raw_options keys that duplicate a managed line.
 	// The rendered config already resolves the managed value; this is advice.
 	RawOptionOverlaps []string
+	// NeededTools lists commands the manifest relies on that are not on PATH: a
+	// VM host's hypervisor CLI (its address comes from it at connect time), and
+	// git once defaults.git configures `sshmgr git`.
+	NeededTools []string
+	// Clipboard is set when no clipboard tool is found. Advice only: `termius
+	// keys` then needs --print.
+	Clipboard string
 }
 
 // OK is the overall verdict.
@@ -73,7 +82,7 @@ type Report struct {
 // call, not this one's (--strict makes all of them fatal).
 func (r Report) OK() bool {
 	if !r.Preflight.OK() || len(r.PermIssues) > 0 || !r.ConfigInSync || len(r.OnePassword) > 0 || len(r.StaleProxy) > 0 ||
-		len(r.ShadowedHosts) > 0 {
+		len(r.ShadowedHosts) > 0 || len(r.NeededTools) > 0 {
 		return false
 	}
 	if !r.Dangling.OK() {
@@ -115,6 +124,12 @@ func (r Report) Format() string {
 			continue
 		}
 		lines = append(lines, "vm proxy: "+issue+" - run `sshmgr config render`")
+	}
+	for _, t := range r.NeededTools {
+		lines = append(lines, "MISSING tool: "+t)
+	}
+	if r.Clipboard != "" {
+		lines = append(lines, "clipboard: "+r.Clipboard+" (`termius keys` needs --print)")
 	}
 	lines = append(lines, "known_hosts: "+presentAbsent(r.KnownHosts))
 	if len(r.UnpinnedHosts) > 0 {
@@ -221,6 +236,8 @@ func (r Report) JSON() ([]byte, error) {
 		StaleProxy         []string       `json:"stale_proxy"`
 		ShadowedHosts      []string       `json:"shadowed_hosts"`
 		RawOptionOverlaps  []string       `json:"raw_option_overlaps"`
+		NeededTools        []string       `json:"needed_tools"`
+		Clipboard          *string        `json:"clipboard"`
 		StrandedLegacyHome *string        `json:"stranded_legacy_home"`
 	}
 	nz := func(s []string) []string {
@@ -242,6 +259,7 @@ func (r Report) JSON() ([]byte, error) {
 		DuplicateKeys: nz(r.DuplicateKeys), UnpinnedHosts: nz(r.UnpinnedHosts),
 		AliasCollisions: nz(r.AliasCollisions), StaleProxy: nz(r.StaleProxy),
 		ShadowedHosts: nz(r.ShadowedHosts), RawOptionOverlaps: nz(r.RawOptionOverlaps),
+		NeededTools: nz(r.NeededTools), Clipboard: strOrNil(r.Clipboard),
 		StrandedLegacyHome: strOrNil(r.StrandedLegacyHome),
 	})
 }
@@ -297,6 +315,9 @@ func (s *Service) Run(strict bool) Report {
 	rep.AgentStatus = agentStatus()
 	rep.KnownHosts = knownHostsPresent(ssh)
 	rep.OldKeys, rep.StaleOldKeys = archivedKeys(ssh, OldKeyMaxAge(nil), time.Now())
+	if _, _, err := clipboard.Command(); err != nil {
+		rep.Clipboard = "none found"
+	}
 	if s.m != nil {
 		if chk, err := configsvc.New(ssh, s.m, s.emitUseKeychain).Check(false); err == nil {
 			// Drift is what `config render` fixes; shadowing is reported on its
@@ -319,6 +340,7 @@ func (s *Service) Run(strict bool) Report {
 		rep.AliasCollisions = aliasCollisions(s.m)
 		rep.OnePassword = onePasswordIssues(s.m)
 		rep.StaleProxy = staleProxies(ssh, s.m)
+		rep.NeededTools = neededTools(s.m)
 	}
 	return rep
 }
@@ -685,4 +707,37 @@ func staleProxies(ssh string, m *manifest.Manifest) []string {
 		}
 	}
 	return sortedUnique(out)
+}
+
+// neededTools reports the commands the manifest relies on that are missing: the
+// hypervisor CLI behind each VM host, and git when defaults.git is set.
+func neededTools(m *manifest.Manifest) []string {
+	byHV := map[string][]string{}
+	var hvs []string
+	for _, prof := range m.ProfileNames() {
+		for _, h := range m.Profiles[prof].Hosts {
+			if h.VM == nil {
+				continue
+			}
+			if _, seen := byHV[h.VM.Hypervisor]; !seen {
+				hvs = append(hvs, h.VM.Hypervisor)
+			}
+			byHV[h.VM.Hypervisor] = append(byHV[h.VM.Hypervisor], prof+"/"+h.Alias)
+		}
+	}
+	var out []string
+	for _, name := range hvs {
+		d, err := hypervisor.For(name)
+		if err != nil || hypervisor.Available(d) {
+			continue // an unknown hypervisor is the manifest validator's to report
+		}
+		out = append(out, fmt.Sprintf("%s CLI not found (VM hosts %s cannot resolve their address)",
+			name, strings.Join(byHV[name], ", ")))
+	}
+	if m.Defaults.Git != nil {
+		if _, err := exec.LookPath("git"); err != nil {
+			out = append(out, "git (defaults.git is set, and `sshmgr git` runs it)")
+		}
+	}
+	return out
 }
