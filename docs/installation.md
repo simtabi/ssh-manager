@@ -122,9 +122,9 @@ customize them.
 sshmgr init                  # create/converge the home + starter manifest/inventory/.env
 # edit <home>/manifest.json for your profiles/hosts (or: sshmgr import / profile add / host add)
 sshmgr reconcile --dry-run   # preview what would change
-sshmgr reconcile             # build ~/.ssh from the manifest (prompts about a passphrase on a TTY)
+sshmgr reconcile             # build ~/.ssh from the manifest (--passphrase to protect new keys)
 sshmgr config check          # confirm it's in sync (exit 0)
-sshmgr knownhosts init --all # create per-profile known_hosts + pin reachable hosts
+sshmgr knownhosts init --all # pin every reachable host into the one ~/.ssh/known_hosts
 ```
 
 `sshmgr init` is safe to re-run: every run (re)creates the directory structure and
@@ -132,8 +132,8 @@ re-asserts perms, and seeds any missing files **without** touching your existing
 manifest/`.env`. To reset the seed files to defaults, use `sshmgr init --force` (it overwrites
 them in place). Add `--backup` to first copy the old ones into `<home>/.state/`.
 
-Passphrases are **off by default** but a conscious choice: `reconcile`/`keygen`
-prompt once on a terminal, or take `--passphrase`/`--no-passphrase` to script it.
+Passphrases are **off by default** but a conscious choice: pass `--passphrase` to
+`reconcile`, `keygen`, `key add` or `rotate` to protect the keys they mint. Without it nothing prompts.
 
 ## Permissions / groups
 

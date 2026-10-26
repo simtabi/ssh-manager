@@ -44,6 +44,9 @@ type ImportResult struct {
 	KeysFound int
 	Adopted   int
 	DryRun    bool
+	// Skipped names each host left out because the manifest would refuse it
+	// (e.g. a hostname ssh itself refuses), with the reason.
+	Skipped []string
 }
 
 // Format renders the human-readable import summary (mirrors ImportResult.format).
@@ -64,6 +67,9 @@ func (r ImportResult) Format() string {
 	lines = append(lines, "  keys fingerprinted into inventory: "+strconv.Itoa(r.KeysFound))
 	if r.Adopted > 0 {
 		lines = append(lines, "  keys adopted into profiles/ layout: "+strconv.Itoa(r.Adopted))
+	}
+	for _, s := range r.Skipped {
+		lines = append(lines, "  skipped "+s)
 	}
 	return strings.Join(lines, "\n")
 }
@@ -440,6 +446,7 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 		res resolution
 	}
 	var resolved []rh
+	var skipped []string
 	seen := map[string]bool{}
 	for _, h := range parsed {
 		// Keyed on the alias alone, not profile+alias: a repeated alias whose
@@ -452,7 +459,6 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 		}
 		seen[h.Alias] = true
 		res := im.resolveKey(h)
-		resolved = append(resolved, rh{h, res})
 		kn := res.keyName
 		hostName := h.Hostname
 		if hostName == "" {
@@ -469,6 +475,13 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 			Provider: inferProvider(hostName), KeyName: &kn,
 			RawOptions: manifest.NewOrderedOptions(pairs(h.Extra)),
 		}
+		// One host the manifest would refuse is left out and reported; the
+		// rest of the config is still imported.
+		if err := manifest.ValidateHost(h.Profile, host); err != nil {
+			skipped = append(skipped, h.Alias+": "+err.Error())
+			continue
+		}
+		resolved = append(resolved, rh{h, res})
 		if _, ok := byProfile[h.Profile]; !ok {
 			order = append(order, h.Profile)
 		}
@@ -509,7 +522,7 @@ func (im *Importer) Run(configPath string, dryRun bool) (ImportResult, error) {
 	// config rather than editing it in place is normal, so a repeated alias is
 	// normal - and counting parsed hosts reported an import larger than the one
 	// written, with nothing in the summary to say which number was real.
-	result := ImportResult{DryRun: dryRun, KeysFound: len(inv.Keys), Adopted: adopted, Profiles: map[string]int{}}
+	result := ImportResult{DryRun: dryRun, KeysFound: len(inv.Keys), Adopted: adopted, Profiles: map[string]int{}, Skipped: skipped}
 	for name, hosts := range byProfile {
 		result.Profiles[name] = len(hosts)
 	}

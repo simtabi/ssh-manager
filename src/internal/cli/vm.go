@@ -111,7 +111,7 @@ func newVMAddCmd() *cobra.Command {
 		},
 	}
 	c.Flags().StringVar(&hv, "hypervisor", "", strings.Join(manifest.Hypervisors, ", "))
-	c.Flags().StringVar(&vmName, "vm", "", "the VM's name as the hypervisor lists it (`sshmgr vm list`)")
+	c.Flags().StringVar(&vmName, "vm", "", "the VM's name as the hypervisor lists it (see 'sshmgr vm list')")
 	c.Flags().StringVarP(&user, "user", "u", "", "guest user")
 	c.Flags().StringVar(&keyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	c.Flags().BoolVarP(&yes, "yes", "y", false, "add without confirming (implied when there is no terminal)")

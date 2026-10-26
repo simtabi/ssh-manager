@@ -42,6 +42,16 @@ var optionKeyword = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9]*$`)
 // keywords.
 const configSyntaxChars = `"'#!,=`
 
+// sshHostRefused are the characters ssh refuses in a destination or HostName
+// ("hostname contains invalid characters", OpenSSH valid_hostname), and
+// sshUserRefused those it refuses in a user (valid_ruser), which keeps '$' and
+// '\' for names like DOMAIN\user. A host carrying one can never connect, and
+// `ssh -G` stops on it, so `config check` fails for every host.
+const (
+	sshHostRefused = "`$\\;&|<>(){}"
+	sshUserRefused = "`;&|<>(){}"
+)
+
 // dangerousOptions run a command, load an object, or pull in further config and
 // are never allowed in raw_options / global_options (ProxyJump is a host, allowed).
 // XAuthLocation is the path of the xauth program ssh runs for X11 forwarding.
@@ -579,6 +589,15 @@ func rejectConfigSyntax(field, value string) error {
 	return nil
 }
 
+// rejectSSHRefused refuses a value carrying any of chars, which ssh itself
+// would refuse at connect time.
+func rejectSSHRefused(field, value, chars string) error {
+	if strings.ContainsAny(value, chars) {
+		return fmt.Errorf("%s=%q must not contain any of %s (ssh refuses them)", field, value, chars)
+	}
+	return nil
+}
+
 func checkOptions(field string, opts OrderedOptions) error {
 	for _, k := range opts.keys {
 		v := opts.vals[k]
@@ -904,37 +923,64 @@ func (m *Manifest) validate() error {
 			return err
 		}
 		for _, h := range p.Hosts {
-			if err := safeSegment("alias", h.Alias); err != nil {
-				return err
-			}
-			// safeSegment already refuses '*' and '?'; an alias is also a Host
-			// pattern, so the parser's own syntax is refused on top.
-			if err := rejectConfigSyntax("alias", h.Alias); err != nil {
-				return err
-			}
-			if h.KeyName != nil {
-				if err := safeSegment("key_name", *h.KeyName); err != nil {
-					return err
-				}
-			}
-			if err := safeValue("hostname", h.Hostname); err != nil {
-				return err
-			}
-			if err := safeValue("user", h.User); err != nil {
-				return err
-			}
-			if err := checkOptions("raw_options", h.RawOptions); err != nil {
-				return err
-			}
-			if err := checkVM(name, h); err != nil {
-				return err
-			}
-			if err := checkProxy(name, h); err != nil {
-				return err
+			if err := validateHost(name, h); err != nil {
+				return fmt.Errorf("profile %q host %q: %w", name, h.Alias, err)
 			}
 		}
 	}
 	return checkOnePasswordKeys(m)
+}
+
+// ValidateHost reports whether one host of the named profile would pass the
+// manifest's validation, so a caller assembling hosts (import) can leave out
+// the one that fails rather than the whole batch.
+func ValidateHost(profile string, h Host) error {
+	return validateHost(profile, h)
+}
+
+// validateHost checks one host's fields. Its errors are wrapped with the profile
+// and alias by validate, so a manifest that fails to load says which host to fix.
+func validateHost(name string, h Host) error {
+	if err := safeSegment("alias", h.Alias); err != nil {
+		return err
+	}
+	// safeSegment already refuses '*' and '?'; an alias is also a Host
+	// pattern, so the parser's own syntax is refused on top.
+	if err := rejectConfigSyntax("alias", h.Alias); err != nil {
+		return err
+	}
+	// The alias is what `ssh <alias>` is given, so ssh checks it as a
+	// destination hostname.
+	if err := rejectSSHRefused("alias", h.Alias, sshHostRefused); err != nil {
+		return err
+	}
+	if h.KeyName != nil {
+		if err := safeSegment("key_name", *h.KeyName); err != nil {
+			return err
+		}
+	}
+	if err := safeValue("hostname", h.Hostname); err != nil {
+		return err
+	}
+	if err := rejectSSHRefused("hostname", h.Hostname, sshHostRefused); err != nil {
+		return err
+	}
+	if err := safeValue("user", h.User); err != nil {
+		return err
+	}
+	if err := rejectSSHRefused("user", h.User, sshUserRefused); err != nil {
+		return err
+	}
+	if err := checkOptions("raw_options", h.RawOptions); err != nil {
+		return err
+	}
+	if err := checkVM(name, h); err != nil {
+		return err
+	}
+	if err := checkProxy(name, h); err != nil {
+		return err
+	}
+	return nil
 }
 
 func (m *Manifest) sortedProfileNames() []string {
@@ -1285,7 +1331,7 @@ func Load(path string) (*Manifest, error) {
 		return nil, fmt.Errorf("manifest failed validation: %s: %w", path, err)
 	}
 	if err := m.validate(); err != nil {
-		return nil, fmt.Errorf("manifest failed validation: %w", err)
+		return nil, fmt.Errorf("manifest failed validation: %s: %w (fix it in that file: no command loads it until then)", path, err)
 	}
 	return &m, nil
 }

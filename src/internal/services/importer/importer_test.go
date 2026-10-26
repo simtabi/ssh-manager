@@ -5,6 +5,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"testing"
 	"time"
 
@@ -598,5 +599,31 @@ Host b
 	}
 	if _, err := os.Stat(p.Manifest()); err == nil {
 		t.Error("an invalid manifest was written")
+	}
+}
+
+// A host ssh would refuse is skipped and reported, and the rest of the config is
+// still imported: one bad block in a long ~/.ssh/config must not lose the others.
+func TestAHostSSHRefusesIsSkippedAndTheRestImported(t *testing.T) {
+	im, p, cfgPath := setupImport(t, `Host good
+    HostName 192.0.2.1
+    User u
+Host bad
+    HostName 192.0.2.2;id
+    User u
+`)
+	res, err := im.Run(cfgPath, false)
+	if err != nil {
+		t.Fatalf("one refused host failed the whole import: %v", err)
+	}
+	hosts := mustLoad(t, p).Profiles["imported"].Hosts
+	if len(hosts) != 1 || hosts[0].Alias != "good" {
+		t.Fatalf("manifest holds %+v, want only good", hosts)
+	}
+	if len(res.Skipped) != 1 || !strings.Contains(res.Skipped[0], "bad") {
+		t.Errorf("Skipped = %v, want the bad host named", res.Skipped)
+	}
+	if !strings.Contains(res.Format(), "skipped bad") {
+		t.Errorf("the summary does not report the skipped host:\n%s", res.Format())
 	}
 }

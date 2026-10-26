@@ -69,3 +69,7 @@ A JSON array works too, of spec strings or objects:
 - Without `--reconcile`, new hosts have no key until you run `sshmgr
   reconcile`. With it, the reconcile preview is shown and confirmed as usual
   (`-y` skips the prompt; `--no-pin` skips known_hosts auto-pinning).
+
+---
+
+[← Docs index](../../README.md#documentation)

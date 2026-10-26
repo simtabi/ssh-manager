@@ -1,7 +1,7 @@
 # bundle / restore - encrypted backup & migration
 
 ```sh
-sshmgr bundle [--recipient age1...] [--output DIR]
+sshmgr bundle [--recipient age1...] [--output DIR] [--keep N]
 sshmgr restore <bundle.age> [--identity age-identity.txt]
 ```
 

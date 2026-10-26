@@ -92,7 +92,7 @@ so explicitly instead of relying on the absence of a terminal.
 ## Passphrases
 
 Off by default, always a conscious choice. `--passphrase` prompts without echo
-and confirms; `--no-passphrase` scripts the other answer. The passphrase reaches
+and confirms; leaving it off mints the key without one, and nothing prompts. The passphrase reaches
 `ssh-keygen` through the askpass protocol, never through the command line, so it
 does not appear in the process list.
 

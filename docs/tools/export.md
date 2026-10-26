@@ -21,6 +21,9 @@ sshmgr config export --flat --out ~/flat.conf   # another file
 sshmgr config export --flat --out -             # stdout
 ```
 
+The flat export is always the whole config: it takes no `--skip` or `--include-git`, because it is a copy for a
+reader of ssh's own format, not a host list for another app.
+
 | In the export | Value |
 |---|---|
 | Hosts | every profile's hosts inline, in manifest order, whatever their category |
@@ -74,6 +77,7 @@ sshmgr termius keys dani-prd-db-00 --clear-after 60s   # ...and empty the clipbo
 sshmgr termius keys --clear                      # empty the clipboard now
 sshmgr termius keys dani-prd-db-00 --print       # key on stdout instead (warns on stderr; avoid)
 sshmgr termius keys github-me --include-git      # git hosts, as with export --include-git
+sshmgr termius keys --skip unc                   # leave a host out, as with export --skip
 ```
 
 The label is the key file's name (`adelsaiq_dani-prd-db-00-ed25519`). The key is copied with `pbcopy` (macOS),
