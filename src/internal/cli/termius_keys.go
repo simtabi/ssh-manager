@@ -13,7 +13,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
-	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/clipboard"
 )
 
 // Termius's CSV import has no key column (docs.termius.com, "Import existing
@@ -36,29 +36,8 @@ func stubClipboard(f func(string) error) (restore func()) {
 	return func() { clipboardWrite, clipboardSleep = prev, prevSleep }
 }
 
-// clipboardCommand picks the platform's clipboard writer: pbcopy on macOS,
-// clip on Windows, and wl-copy, xclip or xsel on Linux and the BSDs.
-func clipboardCommand() (string, []string, error) {
-	switch {
-	case platform.IsMacOS():
-		return "pbcopy", nil, nil
-	case platform.IsWindows():
-		return "clip", nil, nil
-	}
-	cands := [][]string{
-		{"xclip", "-selection", "clipboard"},
-		{"xsel", "--clipboard", "--input"},
-	}
-	if os.Getenv("WAYLAND_DISPLAY") != "" {
-		cands = append([][]string{{"wl-copy"}}, cands...)
-	}
-	for _, c := range cands {
-		if _, err := exec.LookPath(c[0]); err == nil {
-			return c[0], c[1:], nil
-		}
-	}
-	return "", nil, errors.New("no clipboard tool found (install wl-clipboard, xclip or xsel), or use --print")
-}
+// clipboardCommand picks the platform's clipboard writer; see clipboard.Command.
+func clipboardCommand() (string, []string, error) { return clipboard.Command() }
 
 func systemClipboardWrite(text string) error {
 	name, args, err := clipboardCommand()
