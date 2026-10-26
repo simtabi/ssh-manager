@@ -170,7 +170,7 @@ func newTermiusKeysCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&includeGit, "include-git", false, "also list git hosts, as `termius export --include-git` does")
+	cmd.Flags().BoolVar(&includeGit, "include-git", false, "also list git hosts, as 'termius export --include-git' does")
 	cmd.Flags().BoolVar(&printKey, "print", false, "print the private key to stdout instead of copying it (warns on stderr)")
 	cmd.Flags().BoolVar(&clear, "clear", false, "empty the clipboard and exit")
 	cmd.Flags().DurationVar(&clearAfter, "clear-after", 0, "after copying, wait this long (e.g. 60s) and empty the clipboard")

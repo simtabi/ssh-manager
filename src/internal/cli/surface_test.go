@@ -324,6 +324,34 @@ func TestTheCommandSurfaceMatchesTheOneItReplaced(t *testing.T) {
 	}
 }
 
+// pflag reads the first `backticked` word of a flag's usage as the value's name,
+// so "see `sshmgr providers`" printed as "--provider sshmgr providers" in --help.
+// A flag that names a value does it with a plain word instead.
+func TestFlagUsageHasNoBackticks(t *testing.T) {
+	var bad []string
+	inspected := 0
+	var check func(c *cobra.Command, prefix string)
+	check = func(c *cobra.Command, prefix string) {
+		c.LocalFlags().VisitAll(func(f *pflag.Flag) {
+			inspected++
+			if strings.Contains(f.Usage, "`") {
+				bad = append(bad, strings.TrimSpace(prefix+" --"+f.Name))
+			}
+		})
+		for _, sub := range c.Commands() {
+			check(sub, strings.TrimSpace(prefix+" "+sub.Name()))
+		}
+	}
+	check(newRootCmd(), "")
+	if inspected < 100 {
+		t.Fatalf("inspected only %d flags; the walk is not reaching the tree", inspected)
+	}
+	if len(bad) > 0 {
+		sort.Strings(bad)
+		t.Errorf("these flags show a backticked phrase as their value name in --help: %v", bad)
+	}
+}
+
 // The root's own contract: --version answers without a manifest, and an unknown
 // verb is an error rather than a silent no-op.
 func TestTheRootAnswersVersionAndRejectsAnUnknownVerb(t *testing.T) {

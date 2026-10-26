@@ -19,7 +19,7 @@ func intPtrIf(cmd *cobra.Command, flag string, val int) *int {
 }
 
 const proxyFlagHelp = "reach the host through a proxy: cloudflared (Cloudflare Access; ssh runs " +
-	"`cloudflared access ssh --hostname %h`)"
+	"'cloudflared access ssh --hostname %h')"
 
 func newHostCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "host", Short: "Manage a host within a profile (add/edit/delete/apply)"}
@@ -60,7 +60,7 @@ func newHostCmd() *cobra.Command {
 	add.Flags().StringVarP(&hostname, "hostname", "H", "", "host to connect to")
 	add.Flags().StringVarP(&user, "user", "u", "", "ssh user")
 	add.Flags().IntVarP(&port, "port", "p", 22, "ssh port")
-	add.Flags().StringVar(&provider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
+	add.Flags().StringVar(&provider, "provider", "", "deployment adapter for this host (see 'sshmgr providers')")
 	add.Flags().StringVar(&tokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
 	add.Flags().StringVar(&keyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	add.Flags().StringArrayVar(&tags, "tag", nil, "repeatable")
@@ -113,7 +113,7 @@ func newHostCmd() *cobra.Command {
 	edit.Flags().StringVarP(&eHostname, "hostname", "H", "", "host to connect to")
 	edit.Flags().StringVarP(&eUser, "user", "u", "", "ssh user")
 	edit.Flags().IntVarP(&ePort, "port", "p", 22, "ssh port")
-	edit.Flags().StringVar(&eProvider, "provider", "", "deployment adapter for this host (see `sshmgr providers`)")
+	edit.Flags().StringVar(&eProvider, "provider", "", "deployment adapter for this host (see 'sshmgr providers')")
 	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
 	edit.Flags().StringVar(&eKeyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	edit.Flags().StringVar(&eProxy, "proxy", "", proxyFlagHelp+`; "none" removes it`)
