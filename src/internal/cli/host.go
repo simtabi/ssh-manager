@@ -71,6 +71,7 @@ func newHostCmd() *cobra.Command {
 
 	var eHostname, eUser, eProvider, eTokenEnv, eKeyName, eProxy string
 	var ePort int
+	var eTags, eUntag []string
 	edit := &cobra.Command{
 		Use:   "edit <profile> <alias>",
 		Short: "Edit a host",
@@ -89,6 +90,10 @@ func newHostCmd() *cobra.Command {
 				TokenEnv: strPtrIf(c, "token-env", eTokenEnv),
 				KeyName:  strPtrIf(c, "key-name", eKeyName),
 				Proxy:    strPtrIf(c, "proxy", eProxy),
+				Untag:    eUntag,
+			}
+			if c.Flags().Changed("tag") {
+				f.SetTags = &eTags
 			}
 			snapshotBeforeMutation(p)
 			if err := editor.New(p).EditHost(args[0], args[1], f); err != nil {
@@ -117,6 +122,10 @@ func newHostCmd() *cobra.Command {
 	edit.Flags().StringVar(&eTokenEnv, "token-env", "", "env var holding the provider API token (e.g. GH_TOKEN_WORK)")
 	edit.Flags().StringVar(&eKeyName, "key-name", "", "use this key instead of the derived <profile>_<alias>-<algo> name")
 	edit.Flags().StringVar(&eProxy, "proxy", "", proxyFlagHelp+`; "none" removes it`)
+	edit.Flags().StringArrayVar(&eTags, "tag", nil,
+		"replace the host's tags with these (repeatable); --tag '' removes them all")
+	edit.Flags().StringArrayVar(&eUntag, "untag", nil,
+		"remove this tag (repeatable; applied after --tag; a tag the host lacks is ignored)")
 	cmd.AddCommand(edit)
 
 	var yes, revoke, purge, noKeyBackup bool

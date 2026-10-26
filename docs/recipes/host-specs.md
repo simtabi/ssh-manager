@@ -57,8 +57,9 @@ A JSON array works too, of spec strings or objects:
 
 - A new alias is added exactly as `host add` would add it.
 - An existing alias gets its hostname, user and (if given) port set, as `host
-  edit` would. The role and any `--tag` are merged into its tags; tags are
-  never removed.
+  edit` would. The role and any `--tag` are merged into its tags; `host apply`
+  never removes one. Use `sshmgr host edit <profile> <alias> --untag TAG` for that,
+  or `--tag` there to replace the whole list.
 - Each host is reported `added`, `updated` (with what changed) or `unchanged`.
   Running the same specs again reports everything unchanged.
 - The whole batch is validated by the manifest's rules and saved once; a bad or

@@ -391,7 +391,13 @@ type HostFields struct {
 	Provider *string
 	TokenEnv *string
 	KeyName  *string
-	Tags     []string
+	// Tags are the tags a new host starts with (AddHost only).
+	Tags []string
+	// SetTags replaces an existing host's tags with this list (de-duplicated); an
+	// empty list clears them. nil leaves them unchanged.
+	SetTags *[]string
+	// Untag removes these tags after any SetTags; a tag the host lacks is ignored.
+	Untag []string
 	// VM marks the host as a local VM whose address the hypervisor supplies at connect time.
 	VM *manifest.VMSpec
 	// Proxy names a proxy kind ("cloudflared"); "none" or "" clears it. nil leaves it unchanged.
@@ -467,8 +473,8 @@ func (e *Editor) EditHost(profile, alias string, f HostFields) error {
 	return nil
 }
 
-// editHostIn is EditHost's in-memory half, shared with ApplyHosts. Tags are
-// not touched here - `host edit` has never changed them.
+// editHostIn is EditHost's in-memory half, shared with ApplyHosts. Tags change
+// only through SetTags and Untag; Tags itself is for AddHost.
 func editHostIn(m *manifest.Manifest, profile, alias string, f HostFields) error {
 	idx, host, err := findHost(m, profile, alias)
 	if err != nil {
@@ -494,6 +500,23 @@ func editHostIn(m *manifest.Manifest, profile, alias string, f HostFields) error
 	}
 	if f.Proxy != nil {
 		host.Proxy = proxySpec(*f.Proxy)
+	}
+	if f.SetTags != nil {
+		host.Tags = nil
+		for _, t := range *f.SetTags {
+			if t != "" && !containsStr(host.Tags, t) {
+				host.Tags = append(host.Tags, t)
+			}
+		}
+	}
+	if len(f.Untag) > 0 {
+		kept := host.Tags[:0:0]
+		for _, t := range host.Tags {
+			if !containsStr(f.Untag, t) {
+				kept = append(kept, t)
+			}
+		}
+		host.Tags = kept
 	}
 	p := m.Profiles[profile]
 	p.Hosts[idx] = host
