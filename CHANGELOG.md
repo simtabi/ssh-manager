@@ -32,6 +32,19 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **An alias, hostname or user that ssh refuses is rejected when it is added.** `host add`, `host apply` and
+  `import` accepted shell metacharacters such as `;`, `&`, `|`, `$` or backticks, which ssh refuses at connect time
+  ("hostname contains invalid characters"). The host could never connect, and `config check` failed for every host
+  because `ssh -G` stopped on it. Validation now refuses the characters OpenSSH's own `valid_hostname` refuses in the
+  alias and hostname, and those `valid_ruser` refuses in the user (`$` and `\` stay allowed there, for `DOMAIN\user`).
+  A manifest that already holds such a value no longer loads, so the error now names the file, the profile and the
+  host to fix, and `import` skips a refused host and reports it instead of refusing the whole config.
+- **`restore` reports a config it could not re-render.** The bundle no longer carries the rendered files, so a
+  restore whose manifest failed to load left `~/.ssh` without its category configs while reporting success. It now
+  exits non-zero with the reason after listing what it restored.
+- **`--help` no longer shows a backticked phrase as a flag's value name.** pflag reads the first backticked word of a
+  usage line as the value's name, so `--provider`, `--proxy`, `--vm` and `termius keys --include-git` printed as
+  e.g. `--provider sshmgr providers`. A test now walks every flag.
 - **`reconcile` no longer claims to fix permissions it did not change.** The
   fixer counted every managed path it visited, so an already-correct tree
   printed `perms fixed on 53 paths` on every run, indistinguishable from real

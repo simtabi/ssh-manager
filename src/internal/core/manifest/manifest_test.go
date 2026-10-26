@@ -686,6 +686,31 @@ func TestAliasHostnameUserRejectConfigSyntax(t *testing.T) {
 	}
 }
 
+// ssh refuses a destination or HostName carrying shell metacharacters ("hostname
+// contains invalid characters") and a user carrying most of them, so a host
+// holding one could never connect, and `config check` failed for every host
+// because `ssh -G` stopped on it. The user keeps '$' and '\', which ssh allows
+// (DOMAIN\user on Windows).
+func TestAliasHostnameUserRejectWhatSSHRefuses(t *testing.T) {
+	for _, c := range []string{"`", ";", "&", "|", "<", ">", "(", ")", "{", "}"} {
+		for field, js := range map[string]string{
+			"alias":    `{"alias":"a` + c + `b","hostname":"h","user":"u"}`,
+			"hostname": `{"alias":"a","hostname":"h` + c + `id","user":"u"}`,
+			"user":     `{"alias":"a","hostname":"h","user":"u` + c + `v"}`,
+		} {
+			if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[`+js+`]}}}`); err == nil {
+				t.Errorf("%s with %q was accepted", field, c)
+			}
+		}
+	}
+	if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h$x","user":"u"}]}}}`); err == nil {
+		t.Error("hostname with '$' was accepted")
+	}
+	if _, err := loadJSON(t, `{"profiles":{"p":{"hosts":[{"alias":"a","hostname":"h","user":"CORP\\\\svc$"}]}}}`); err != nil {
+		t.Errorf(`user CORP\svc$ was rejected, though ssh accepts it: %v`, err)
+	}
+}
+
 // The values real manifests carry keep validating: IPs, dotted FQDNs, dashed
 // aliases, short user names.
 func TestOrdinaryHostValuesStillValidate(t *testing.T) {
@@ -705,6 +730,27 @@ func TestStarterManifestValidates(t *testing.T) {
 	for _, keychain := range []bool{true, false} {
 		if err := Starter(keychain).Validate(); err != nil {
 			t.Errorf("Starter(%v) is invalid: %v", keychain, err)
+		}
+	}
+}
+
+// A manifest an older release accepted can fail a newer, stricter check, and then
+// every command refuses to load it, `host edit` and `host delete` included. The
+// error is the only way out, so it names the file, the profile and the host.
+func TestLoadNamesTheFileAndHostThatFailValidation(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "manifest.json")
+	js := `{"version":1,"profiles":{"web":{"hosts":[{"alias":"good","hostname":"h","user":"u"},
+		{"alias":"bad","hostname":"192.0.2.2;id","user":"u"}]}}}`
+	if err := os.WriteFile(path, []byte(js), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	_, err := Load(path)
+	if err == nil {
+		t.Fatal("a refused hostname loaded")
+	}
+	for _, want := range []string{path, `profile "web"`, `host "bad"`, "hostname"} {
+		if !strings.Contains(err.Error(), want) {
+			t.Errorf("error %q does not name %s", err, want)
 		}
 	}
 }
