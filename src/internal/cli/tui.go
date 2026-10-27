@@ -115,20 +115,27 @@ type menuItem struct {
 	verb    string // the CLI that does the same thing - and an accepted answer
 	handler string
 	mutates bool
+	// formerly lists verbs the entry was once shown under, so an answer people
+	// learned from an older menu still selects it. Never drawn.
+	formerly []string
 }
 
 var tuiMenu = []menuItem{
-	{groupInspect, "Browse profiles & hosts", "list", "browse", false},
-	{groupInspect, "Show the rendered config", "config show", "show_config", false},
-	{groupInspect, "Expiry status", "expiry", "expiry", false},
-	{groupInspect, "Audit deployments & expiry", "audit", "audit", false},
+	{groupInspect, "Browse profiles & hosts", "list", "browse", false, nil},
+	{groupInspect, "Show the rendered config", "config show", "show_config", false, nil},
+	{groupInspect, "Expiry status", "expiry", "expiry", false, nil},
+	{groupInspect, "Audit deployments & expiry", "audit", "audit", false, nil},
 
-	{groupChange, "Reconcile - apply the manifest", "reconcile", "reconcile", true},
-	{groupChange, "Pin host keys into known_hosts", "knownhosts pin", "knownhosts", true},
-	{groupChange, "Deploy a key to its target", "deploy", "deploy", true},
-	{groupChange, "Rotate a key", "rotate", "rotate", true},
+	{groupChange, "Reconcile - apply the manifest", "reconcile", "reconcile", true, nil},
+	// The verb column teaches the CLI, so it names what the entry runs: a TOFU
+	// scan of every manifest host. It was shown as `knownhosts pin`, which asks
+	// per key and needs a host or --all; that answer still selects it.
+	{groupChange, "Pin host keys into known_hosts", "knownhosts init --all", "knownhosts", true,
+		[]string{"knownhosts pin"}},
+	{groupChange, "Deploy a key to its target", "deploy", "deploy", true, nil},
+	{groupChange, "Rotate a key", "rotate", "rotate", true, nil},
 
-	{groupRecover, "Snapshots - list and restore", "snapshots", "snapshots", true},
+	{groupRecover, "Snapshots - list and restore", "snapshots", "snapshots", true, nil},
 }
 
 // menuWidth is the label column, sized to the longest label so the verb column
@@ -190,6 +197,11 @@ func lookupMenu(answer string) (menuItem, bool) {
 	for _, m := range tuiMenu {
 		if a == m.verb || a == strings.ToLower(m.label) {
 			return m, true
+		}
+		for _, old := range m.formerly {
+			if a == old {
+				return m, true
+			}
 		}
 	}
 	return menuItem{}, false
@@ -389,7 +401,11 @@ func (t *tui) audit() {
 	t.print(report)
 }
 
+// reconcile follows reconcileApply, the CLI's applying half: lock before
+// reading, preview as the confirmation, snapshot, apply, pin unless
+// SSH_MANAGER_AUTO_PIN turns it off, then warn about keys nothing uses.
 func (t *tui) reconcile() {
+	lockForMutation(t.p) // before the reads, so a save cannot overwrite a newer copy
 	m := t.manifest()
 	if m == nil {
 		t.print("no manifest")
@@ -404,25 +420,35 @@ func (t *tui) reconcile() {
 	}
 	t.print(dry.Format())
 	if !t.pr.Confirm("Apply these changes to ~/.ssh?") {
+		t.print("cancelled")
 		return
 	}
-	snapshotBeforeMutation(t.p)
+	snap := snapshotBeforeMutation(t.p)
 	inv2, _ := inventory.Load(t.p.Inventory())
 	res, err := reconciler.New(t.p, m, inv2, emit).Reconcile(false, "")
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
 	}
-	if len(res.Minted) > 0 {
-		res.Pinned = knownhosts.New(t.p.SSHDir).AutoPin(m, nil, os.Getenv)
+	if snap != "" {
+		res.Snapshot = &snap
 	}
+	res.Pinned = knownhosts.New(t.p.SSHDir).AutoPin(m, nil, os.Getenv)
 	t.print(res.Format())
+	warnDangling(t.out, t.p, m)
 }
 
 func (t *tui) knownhosts() {
 	m := t.manifest()
 	if m == nil {
 		t.print("no manifest")
+		return
+	}
+	// The same notice `knownhosts init` confirms with: this is trust on first
+	// use, and the menu promises every Change entry asks before it writes.
+	if !t.pr.Confirm("Scan every manifest host it can reach and pin its keys into " +
+		"~/.ssh/known_hosts (trust on first use)?") {
+		t.print("cancelled")
 		return
 	}
 	snapshotBeforeMutation(t.p)
@@ -449,7 +475,24 @@ func (t *tui) deploy() {
 	if !ok || k == tuiBack {
 		return
 	}
+	// The guards `deploy` applies, in its order: dev mode refuses, the user
+	// confirms, then lock, re-read and snapshot before anything is installed.
+	if err := refuseInDevMode(t.p, "deploy",
+		"it uploads a public key to a live account, which is still there "+
+			"after the sandbox is deleted"); err != nil {
+		t.print("error: " + err.Error())
+		return
+	}
+	if !t.pr.Confirm(fmt.Sprintf("Install the public half of %s on its target?", k)) {
+		t.print("cancelled")
+		return
+	}
 	lockForMutation(t.p) // deploy records to the inventory: read it under the lock
+	if m = t.manifest(); m == nil {
+		t.print("no manifest")
+		return
+	}
+	snapshotBeforeMutation(t.p)
 	inv, _ := inventory.Load(t.p.Inventory())
 	report, err := deployer.New(t.p, m, inv).Deploy(k, "")
 	if err != nil {
@@ -481,6 +524,18 @@ func (t *tui) rotate() {
 	}
 	if !t.pr.Confirm(fmt.Sprintf("Rotate %s? (destructive; ~/.ssh snapshotted first)", k)) {
 		t.print("cancelled")
+		return
+	}
+	// `rotate` stops without an encrypted backup, because rotating discards
+	// the key before the one it archives. The TUI has no --no-key-backup, so
+	// it always needs SSH_MANAGER_AGE_RECIPIENT; the error says so.
+	lockForMutation(t.p)
+	if err := backupKeysBeforeDestroying(t.p, t.out, false); err != nil {
+		t.print("error: " + err.Error())
+		return
+	}
+	if m = t.manifest(); m == nil {
+		t.print("no manifest")
 		return
 	}
 	snapshotBeforeMutation(t.p)
