@@ -11,8 +11,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`key_comment` - choose the comment new keys carry.** A template on `defaults` or on a profile, with
   `{profile}`, `{alias}`, `{key}`, `{date}` and `{device}`; unset keeps `{profile}/{alias} {date}`, the comment
   every earlier release wrote. `profile add|edit --key-comment` sets it (`""` clears it on edit), and the manifest
-  schema lists it. It applies to keys minted from then on; an unknown placeholder is refused on load.
-- **`profile add --key-scope`**, the flag `profile edit` already takes.
+  schema lists it. It applies to keys minted from then on; an unknown placeholder is refused on load. `show
+  <profile>` names it when a profile uses its own.
+- **`profile add --key-scope` and `profile edit --shared`**, so both commands take both spellings: `--shared` is
+  shorthand for `--key-scope shared` (`--shared=false` for `per_service`), and the two are refused together only
+  when they disagree.
 
 ### Changed
 
@@ -24,13 +27,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **Rotation keeps a key's declared type.** A key declared under a profile's `keys` with its own `type` (say
+  `ecdsa`) came back from `rotate` as `defaults.key_type` (`ed25519`) under its `ecdsa` name, and its inventory
+  record said `ed25519`. Rotation now mints, and records, the type `reconcile` used.
 - **A rotated key's inventory comment matches the key.** The record said `profile/<key name> date` while the
   new `.pub` said `profile/<alias> date`; both now come from the same template.
-
-### Deprecated
-
-- **`profile add --shared`**, in favour of `--key-scope shared`. It still works, prints a deprecation notice, and
-  is hidden from `--help`; it will be removed no earlier than 4.0.0.
 
 ## [3.5.0] - 2026-10-26
 
