@@ -29,6 +29,7 @@ func newProvidersCmd() *cobra.Command {
 			}
 			out := c.OutOrStdout()
 			if export {
+				lockForMutation(p)
 				dest := p.Providers()
 				if fs.Exists(dest) && !force {
 					return fmt.Errorf("%s already exists - use --force to overwrite it", dest)

@@ -37,6 +37,9 @@ func newBundleCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// The bundle has to be of one consistent state, not of a manifest
+			// and inventory another command is halfway through writing.
+			lockForMutation(p)
 			recip := recipient
 			if recip == "" {
 				recip = os.Getenv("SSH_MANAGER_AGE_RECIPIENT")

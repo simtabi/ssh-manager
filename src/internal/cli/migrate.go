@@ -26,6 +26,7 @@ func newMigrateCmd() *cobra.Command {
 					"; with --force the current home is backed up aside and replaced.", yes); err != nil {
 				return err
 			}
+			lockForMutation(p)
 			res, err := migratesvc.Migrate(p, force, time.Now().Format("20060102-150405"))
 			if err != nil {
 				return err

@@ -120,6 +120,9 @@ func newGitCmd() *cobra.Command {
 					mode, len(args)), yes); err != nil {
 					return err
 				}
+				if p, err := resolvePaths(c); err == nil {
+					lockForMutation(p)
+				}
 			}
 			out := c.OutOrStdout()
 			var failed []string

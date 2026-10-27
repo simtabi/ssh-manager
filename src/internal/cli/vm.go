@@ -231,6 +231,9 @@ func newVMDockerContextCmd() *cobra.Command {
 			if _, err := exec.LookPath("docker"); err != nil {
 				return fmt.Errorf("docker CLI not found")
 			}
+			if p, err := resolvePaths(c); err == nil {
+				lockForMutation(p)
+			}
 			endpoint := "host=ssh://" + h.Alias
 			verb := "create"
 			if exec.Command("docker", "context", "inspect", h.Alias).Run() == nil {

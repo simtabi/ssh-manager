@@ -97,6 +97,13 @@ func newConfigCmd() *cobra.Command {
 						"/config from the manifest.\nContent outside the markers is preserved.", renderYes); err != nil {
 					return err
 				}
+				// Lock after the question, not before it, so nobody's reading time
+				// holds other commands; then read the manifest again under it, so
+				// the render is of what is there now.
+				lockForMutation(p)
+				if p, _, svc, err = loadConfigService(c); err != nil {
+					return err
+				}
 			}
 			if err := migrateLegacyKnownHosts(c, p, dryRun); err != nil {
 				return err
