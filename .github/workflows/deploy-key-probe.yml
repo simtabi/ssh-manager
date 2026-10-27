@@ -1,0 +1,62 @@
+name: Deploy key probe
+
+# Proves SCOOP_BUCKET_DEPLOY_KEY is the private half of the write deploy key on
+# simtabi/scoop-bucket, without cutting a release. GitHub answers an SSH login
+# with "Hi <owner>/<repo>!" naming the one repository a deploy key belongs to,
+# so the greeting is the proof; nothing is cloned or pushed.
+#
+# The secret was written six seconds after the key was added (2026-10-19), the
+# same pairing as HOMEBREW_TAP_DEPLOY_KEY, which v3.5.0 pushed with. But the
+# Scoop key had never been used when SKIP_SCOOP was set to false, so the next
+# release would otherwise be the first test of it.
+on:
+  workflow_dispatch:
+  # Runs on a pull request only when this file changes, so the PR adding or
+  # editing the probe proves the key and no other PR pays for it. Pull requests
+  # from forks get no secrets, so the step fails closed there.
+  pull_request:
+    branches: [main]
+    paths:
+      - .github/workflows/deploy-key-probe.yml
+
+permissions:
+  contents: read
+
+concurrency:
+  group: deploy-key-probe-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  scoop-bucket:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Authenticate to GitHub with the Scoop bucket deploy key
+        env:
+          DEPLOY_KEY: ${{ secrets.SCOOP_BUCKET_DEPLOY_KEY }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          if [ -z "$DEPLOY_KEY" ]; then
+            echo "::error::SCOOP_BUCKET_DEPLOY_KEY is empty or not visible to this run"
+            exit 1
+          fi
+          dir=$(mktemp -d)
+          trap 'rm -rf "$dir"' EXIT
+          umask 077
+          printf '%s\n' "$DEPLOY_KEY" > "$dir/key"
+          # Pin github.com's host keys from the API rather than trusting first use.
+          gh api meta --jq '.ssh_keys[]' | sed 's/^/github.com /' > "$dir/known_hosts"
+          # ssh -T exits 1 even on success (GitHub offers no shell), so judge the
+          # greeting, not the exit status. The key itself is never printed.
+          out=$(ssh -T -i "$dir/key" \
+                  -o IdentitiesOnly=yes -o BatchMode=yes \
+                  -o UserKnownHostsFile="$dir/known_hosts" -o StrictHostKeyChecking=yes \
+                  git@github.com 2>&1 || true)
+          echo "$out"
+          if printf '%s' "$out" | grep -qF 'Hi simtabi/scoop-bucket!'; then
+            echo "SCOOP_BUCKET_DEPLOY_KEY authenticates as the simtabi/scoop-bucket deploy key."
+          else
+            echo "::error::SCOOP_BUCKET_DEPLOY_KEY does not authenticate as the simtabi/scoop-bucket deploy key"
+            exit 1
+          fi
