@@ -94,9 +94,11 @@ jobs:
           args: release --clean --config src/.goreleaser.yaml --release-notes=${{ runner.temp }}/release_notes.md
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # Winget only: opening a PR on microsoft/winget-pkgs needs a token, which a deploy key
+          # cannot replace. Homebrew and Scoop no longer read it.
           TAP_GITHUB_TOKEN: ${{ secrets.TAP_GITHUB_TOKEN }}
-          # Write deploy keys on simtabi/homebrew-tap and simtabi/scoop-bucket. When set, GoReleaser
-          # pushes with them and the token is not used for those two.
+          # Write deploy keys on simtabi/homebrew-tap and simtabi/scoop-bucket, the only
+          # credentials GoReleaser uses for those two.
           HOMEBREW_TAP_DEPLOY_KEY: ${{ secrets.HOMEBREW_TAP_DEPLOY_KEY }}
           SCOOP_BUCKET_DEPLOY_KEY: ${{ secrets.SCOOP_BUCKET_DEPLOY_KEY }}
           # Scoop/Winget publishing is skipped until the bucket/fork exist. Set
