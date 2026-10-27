@@ -516,7 +516,9 @@ func (t *tui) snapshots() {
 		return
 	}
 	// RestoreByIDIn, as `snapshots restore` uses: it accepts the dev sandbox's
-	// ssh dir and reports the public keys it kept to avoid splitting a pair.
+	// ssh dir and reports the public keys it kept to avoid splitting a pair. It
+	// leaves the lock to its caller, as the CLI command now takes it.
+	lockForMutation(t.p)
 	res, err := snapshots.RestoreByIDIn(t.p, snapshotRetain(), choice)
 	if err != nil {
 		t.print("error: " + err.Error())

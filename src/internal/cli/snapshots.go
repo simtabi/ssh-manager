@@ -100,6 +100,9 @@ func newSnapshotsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// RestoreByIDIn leaves the lock to its caller. Without it a restore
+			// could rewrite ~/.ssh under a reconcile that was rendering into it.
+			lockForMutation(p)
 			res, err := snapshots.RestoreByIDIn(p, snapshotRetain(), id)
 			if err != nil {
 				return err
@@ -127,6 +130,8 @@ func newSnapshotsCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			// A mutating command may be writing the snapshot this would remove.
+			lockForMutation(p)
 			removed := snapshots.Prune(p.SnapshotsDir(), keep)
 			_, _ = fmt.Fprintf(c.OutOrStdout(), "pruned %d snapshot(s)\n", removed)
 			return nil
