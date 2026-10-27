@@ -288,6 +288,12 @@ Exactly one underscore (the profile prefix); the remainder is kebab-case. Names
 are **stable** (never carry a date - that lives in the key comment + inventory).
 Hardware keys end `-ed25519-sk`.
 
+When a key's type is a hardware one (`ed25519-sk`, `ecdsa-sk`) and no security key answers, sshmgr mints the
+software equivalent (`ed25519`) at the same path rather than failing, so a machine without the device can still
+connect. It says so in three places: the key's comment ends `(sk-fallback)`, the inventory records the software
+type, and `reconcile` or `rotate` prints a line naming the key. Insert the security key and `sshmgr rotate <key>`
+to replace it with a hardware one.
+
 ## Key comments
 
 The comment is the free text after the key in its `.pub` (`ssh-keygen -l` prints it, and servers and panels

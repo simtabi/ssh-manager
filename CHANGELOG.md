@@ -30,8 +30,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Rotation keeps a key's declared type.** A key declared under a profile's `keys` with its own `type` (say
   `ecdsa`) came back from `rotate` as `defaults.key_type` (`ed25519`) under its `ecdsa` name, and its inventory
   record said `ed25519`. Rotation now mints, and records, the type `reconcile` used.
+- **A hardware key that fell back to software is reported and recorded as software.** With no security key
+  answering, an `ed25519-sk` key is minted as `ed25519` (its comment ends `(sk-fallback)`); the inventory still said
+  `ed25519-sk` and nothing was printed, so the key looked hardware-bound. The record now names the type minted, and
+  `reconcile`, `rotate` and the TUI print a line saying the key is software and how to replace it.
 - **A rotated key's inventory comment matches the key.** The record said `profile/<key name> date` while the
-  new `.pub` said `profile/<alias> date`; both now come from the same template.
+  new `.pub` said `profile/<alias> date`; both now come from the same template. A 1Password key's rotation record
+  uses the same comment its first record had, rather than `profile/<key name> date`.
 
 ## [3.5.0] - 2026-10-26
 
