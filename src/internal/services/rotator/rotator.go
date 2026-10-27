@@ -203,8 +203,11 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	}
 	stagedPriv := filepath.Join(staging, keyName)
 	stagedPub := stagedPriv + ".pub"
-	comment := manifest.KeyComment(r.m, manifest.KeyRef{Profile: profile, KeyName: keyName}, hosts[0].Alias, inventory.Today())
-	gen, err := r.ks.Generate(stagedPriv, r.m.Defaults.KeyType, comment, passphrase, false)
+	ref := manifest.KeyRef{Profile: profile, KeyName: keyName}
+	comment := manifest.KeyComment(r.m, ref, hosts[0].Alias, inventory.Today())
+	// The key's own type, as reconcile minted it: defaults.key_type would turn
+	// a declared ecdsa key into ed25519 under its ecdsa name.
+	gen, err := r.ks.Generate(stagedPriv, r.m.KeyTypeFor(ref), comment, passphrase, false)
 	if err != nil {
 		return RotateReport{}, err
 	}
@@ -349,7 +352,7 @@ func (r *Rotator) updateInventory(profile, keyName, comment string, report Rotat
 	created := inventory.Today()
 	exp, _ := inventory.ComputeExpiry(created, r.m.Defaults.RotateAfterDays)
 	r.inv.Record(report.NewFingerprint, inventory.KeyRecord{
-		Profile: profile, Path: ident, Type: r.m.Defaults.KeyType,
+		Profile: profile, Path: ident, Type: r.m.KeyTypeFor(manifest.KeyRef{Profile: profile, KeyName: keyName}),
 		Comment: &comment, Created: &created, RotateAfterDays: r.m.Defaults.RotateAfterDays,
 		ExpiresOn: &exp, Deployments: deployments(results, created),
 	})
