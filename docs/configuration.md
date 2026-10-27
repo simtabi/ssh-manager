@@ -33,7 +33,7 @@ Include ~/.orbstack/ssh/config
 Match all
 Include ~/.ssh/profiles/internal/config   # only when a profile has a category
 ...
-Host github-imani                          # uncategorized profiles render inline
+Host github-imanimanyara                   # uncategorized profiles render inline
     ...
 Host *
     ...
@@ -103,6 +103,7 @@ guarantees each alias offers only its own key and trusts only its own host keys.
       "op_vault": null,                   // the 1Password vault holding this profile's keys
       "key_scope": "per_service",         // or "shared"
       "key_name": null,                    // set only when key_scope == "shared"
+      "key_comment": "imani-{device}-{date}", // optional: overrides defaults.key_comment
       "hosts": [
         {
           "alias": "hpc",                  // the ssh Host alias you type
@@ -141,6 +142,7 @@ step. See [Host specs](recipes/host-specs.md).
 | `expiry_check.debounce_hours` | `24` | min gap between inline banners |
 | `expiry_check.desktop_notify` | `true` | allow the scheduled desktop notification |
 | `global_options` | `{}` | ssh options emitted under `Host *` (e.g. `AddKeysToAgent`, macOS `UseKeychain`) |
+| `key_comment` | `{profile}/{alias} {date}` | comment template for new keys (see [Key comments](#key-comments)) |
 | `onepassword_agent` | platform default | the 1Password SSH agent socket for `key_store: 1password` profiles (see [Key stores](#key-stores)) |
 | `git.mode` | `profile` | default GitHub remote mode for `sshmgr git use`: `profile`, `ssh` or `https` |
 | `git.profile` | unset | the default identity: its GitHub key is bound to a rendered `Host github.com` (ssh mode), and it is used for owners `git.orgs` does not list. Unset, no `Host github.com` is rendered. The block is rendered once: in the profile's category file (`profiles/<category>/config`) when it has a category, otherwise in the root block; skipped if a host is already aliased `github.com` |
@@ -285,6 +287,30 @@ vault and archives the old key file to `old/`. See
 Exactly one underscore (the profile prefix); the remainder is kebab-case. Names
 are **stable** (never carry a date - that lives in the key comment + inventory).
 Hardware keys end `-ed25519-sk`.
+
+## Key comments
+
+The comment is the free text after the key in its `.pub` (`ssh-keygen -l` prints it, and servers and panels
+show it next to the key). sshmgr writes it once, when it mints the key, from a template: the profile's
+`key_comment`, else `defaults.key_comment`, else `{profile}/{alias} {date}`, which is what every release before
+the field wrote.
+
+| Placeholder | Expands to |
+|---|---|
+| `{profile}` | the profile name |
+| `{alias}` | the first host the key serves, or the key name for a key no host uses yet |
+| `{key}` | the key name, e.g. `work_hpc-ed25519` |
+| `{date}` | the day the key is minted, `YYYY-MM-DD` |
+| `{device}` | this machine's short host name, lowercased (`mbp.local` → `mbp`) |
+
+```sh
+sshmgr profile add oribi --key-comment 'imani-{device}-{date}'   # imani-mbp-2026-10-27
+sshmgr profile edit oribi --key-comment ''                         # back to defaults.key_comment
+```
+
+A changed template applies to keys minted from then on, by `reconcile`, `key add` or `rotate`; an existing key
+keeps the comment it was made with. An unknown placeholder or a control character is refused when the manifest
+loads. A key in 1Password carries no comment from sshmgr: 1Password generates it.
 
 ## Unmodeled ssh options - `raw_options`
 

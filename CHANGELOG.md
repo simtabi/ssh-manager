@@ -6,6 +6,32 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+
+- **`key_comment` - choose the comment new keys carry.** A template on `defaults` or on a profile, with
+  `{profile}`, `{alias}`, `{key}`, `{date}` and `{device}`; unset keeps `{profile}/{alias} {date}`, the comment
+  every earlier release wrote. `profile add|edit --key-comment` sets it (`""` clears it on edit), and the manifest
+  schema lists it. It applies to keys minted from then on; an unknown placeholder is refused on load.
+- **`profile add --key-scope`**, the flag `profile edit` already takes.
+
+### Changed
+
+- **`termius keys ALIAS` finds a git host without `--include-git`.** Naming the host is the choice; the flag now
+  only widens the list. `--skip` still leaves a named host out.
+- **Restore checks a key in a rendered slot by parsing it.** It used to lay down any file that began `ssh-` or
+  `-----BEGIN `; it now reads the public key's wire format, or the private key's PEM block and nothing after it
+  (an OpenSSH key through its clear public half, so a passphrase-protected key still passes).
+
+### Fixed
+
+- **A rotated key's inventory comment matches the key.** The record said `profile/<key name> date` while the
+  new `.pub` said `profile/<alias> date`; both now come from the same template.
+
+### Deprecated
+
+- **`profile add --shared`**, in favour of `--key-scope shared`. It still works, prints a deprecation notice, and
+  is hidden from `--help`; it will be removed no earlier than 4.0.0.
+
 ## [3.5.0] - 2026-10-26
 
 ### Added
