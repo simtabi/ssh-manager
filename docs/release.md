@@ -61,8 +61,9 @@ matching native one per OS. The binary version comes from the tag via ldflags
 Homebrew cask, Scoop manifest, and Linux packages (deb/rpm/apk) are not yet in
 `release.yml`. GoReleaser publishes the cask and the Scoop manifest with the
 write deploy keys `HOMEBREW_TAP_DEPLOY_KEY` (on `simtabi/homebrew-tap`) and `SCOOP_BUCKET_DEPLOY_KEY` (on `simtabi/scoop-bucket`), each a repository secret that reaches its one repository and nothing else. The tap requires a pull request on `main`, with deploy keys
-as its one bypass actor. `TAP_GITHUB_TOKEN` is only the fallback when a key is
-missing, and the Winget pull request's token.
+as its one bypass actor. The keys are the only credentials for those two
+repositories: a release without `HOMEBREW_TAP_DEPLOY_KEY` skips the cask, and
+`TAP_GITHUB_TOKEN` is read only for the Winget pull request.
 
 ## GitHub Actions hygiene
 

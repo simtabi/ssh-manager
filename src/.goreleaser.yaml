@@ -117,28 +117,24 @@ sboms:
   - id: archive
     artifacts: archive
 
-# Gated on the tap token the same way scoop and winget are. Without it
-# GoReleaser falls back to GITHUB_TOKEN, which cannot write to another repo, and
+# Gated on the tap deploy key. Without a credential GoReleaser falls back to
+# GITHUB_TOKEN, which cannot write to another repo, and
 # the whole release fails at the last step - after every artifact is uploaded but
 # before provenance is attested, leaving a published release that is unsigned.
 homebrew_casks:
   - name: sshmgr
     ids: [archive]
-    # Skipped unless a token or the deploy key is present, so `make dist` works in a
-    # shell that exported neither. envOrDefault is right here, but NOT in `token:`
-    # below: GoReleaser 2.18.3 does not define it in that field ("function
-    # envOrDefault not defined", measured), so the token stays .Env, which a skipped
-    # cask never evaluates and a git push with the key never needs.
-    skip_upload: '{{ if or (envOrDefault "TAP_GITHUB_TOKEN" "") (envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "") }}false{{ else }}true{{ end }}'
+    # Skipped unless the deploy key is present, so `make dist` works in a shell that
+    # did not export it. The key is the only way in: v3.4.0 and v3.5.0 pushed with it,
+    # and no TAP_GITHUB_TOKEN secret exists at repo or org level (checked 2026-10-27).
+    skip_upload: '{{ if envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "" }}false{{ else }}true{{ end }}'
     repository:
       owner: simtabi
       name: homebrew-tap
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
       # Write deploy key on simtabi/homebrew-tap (secret HOMEBREW_TAP_DEPLOY_KEY): reaches that
-      # one repository only. Set, git pushes with it; unset, the URL is empty and the token
-      # path above runs. Measured with GoReleaser 2.18.3.
+      # one repository only, and is the only credential used for it.
       git:
-        url: '{{ if envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "" }}git@github.com:simtabi/homebrew-tap.git{{ end }}'
+        url: git@github.com:simtabi/homebrew-tap.git
         private_key: '{{ envOrDefault "HOMEBREW_TAP_DEPLOY_KEY" "" }}'
     directory: Casks
     homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
@@ -158,12 +154,10 @@ scoops:
     repository:
       owner: simtabi
       name: scoop-bucket
-      token: "{{ .Env.TAP_GITHUB_TOKEN }}"
       # Write deploy key on simtabi/scoop-bucket (secret SCOOP_BUCKET_DEPLOY_KEY): reaches that
-      # one repository only. Set, git pushes with it; unset, the URL is empty and the token
-      # path above runs. Measured with GoReleaser 2.18.3.
+      # one repository only, and is the only credential used for it.
       git:
-        url: '{{ if envOrDefault "SCOOP_BUCKET_DEPLOY_KEY" "" }}git@github.com:simtabi/scoop-bucket.git{{ end }}'
+        url: git@github.com:simtabi/scoop-bucket.git
         private_key: '{{ envOrDefault "SCOOP_BUCKET_DEPLOY_KEY" "" }}'
     directory: bucket
     homepage: "https://opensource.simtabi.com/products/simtabi/ssh-manager"
