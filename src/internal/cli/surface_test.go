@@ -153,6 +153,8 @@ var goOnly = map[string]string{
 	// raw_options may not set a ProxyCommand.
 	"host add --proxy":  "cloudflare access - route the host through cloudflared",
 	"host edit --proxy": "cloudflare access - set or remove (none) the proxy",
+	"host edit --tag":   "G7 - replace a host's tags; nothing else could take one off",
+	"host edit --untag": "G7 - remove one tag from a host",
 
 	// Compact host specs (unreleased): add-or-update one host or many from
 	// `<alias> <host>[:port] <user> [role]`.

@@ -31,6 +31,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   profile is left behind), `--reconcile` mints the new keys afterwards, and
   `--dry-run`/`-y` behave as on `reconcile`.
 
+- **`sshmgr host edit --tag` and `--untag` - change a host's tags.** Tags could be set by `host add` and merged
+  by `host apply`, but nothing took one off. `--tag` (repeatable) now replaces the host's tags, `--tag ''` removes
+  them all, and `--untag` (repeatable) removes one after any `--tag`; a tag the host lacks is ignored. Without either
+  flag, `host edit` leaves tags alone, as before.
+- **`doctor` reports the tools the manifest relies on.** A VM host whose hypervisor CLI is not on PATH, and `git`
+  missing once `defaults.git` is set, are listed as `MISSING tool` and fail the verdict (JSON `needed_tools`): both
+  stop a connection or a `sshmgr git` command that the rest of the report calls healthy. A missing clipboard tool is
+  reported as advice (JSON `clipboard`), since `termius keys --print` works without one.
+
 ### Fixed
 
 - **An alias, hostname or user that ssh refuses is rejected when it is added.** `host add`, `host apply` and

@@ -22,6 +22,8 @@ sshmgr doctor --strict  # every dangling-key state is fatal (CI)
 | `agent` | whether `ssh-agent` is running and how many keys it holds |
 | `1Password` | when a profile uses `key_store: 1password`: that `op` is on PATH, the agent socket exists, and the agent serves the profile's vault (`agent.toml`) |
 | `proxy` | every `ProxyCommand` sshmgr rendered names a binary that still exists: the sshmgr binary for VM hosts (an upgrade that moved it fails the verdict, and `sshmgr config render` rewrites the path) and `cloudflared` for Cloudflare Access hosts (install it, then re-render) |
+| `MISSING tool` | a command the manifest relies on is not on PATH: the hypervisor CLI behind a VM host (its address comes from it at connect time), and `git` once `defaults.git` is set (fails the verdict) |
+| `clipboard` | no clipboard tool was found, so `termius keys` needs `--print` (advice; never fails the verdict) |
 | `known_hosts` | whether the trust store exists, and which hosts are unpinned |
 | `config drift` | whether the rendered block still matches the manifest |
 | `perms` | every managed path whose mode is not what it should be |
@@ -65,7 +67,8 @@ sshmgr doctor --json | jq -e '.perm_issues | length == 0'
 Keys: `ok`, `home`, `ssh_dir`, `preflight_ok`, `providers_source`, `agent`,
 `known_hosts`, `config_in_sync`, `perm_issues`, `orphan_keys`, `duplicate_keys`,
 `unpinned_hosts`, `alias_collisions`, `stale_proxy`, `old_keys`, `stale_old_keys`,
-`dangling_keys`, `stranded_legacy_home`, `shadowed_hosts`, `raw_option_overlaps`.
+`dangling_keys`, `stranded_legacy_home`, `shadowed_hosts`, `raw_option_overlaps`, `needed_tools`, `clipboard` (`null` when a
+clipboard tool was found).
 
 Diagnostics go to stderr, so the document on stdout is always parseable.
 
