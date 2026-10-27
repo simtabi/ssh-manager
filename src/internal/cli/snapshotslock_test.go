@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
 )
 
@@ -14,17 +15,14 @@ import (
 
 func freshLock(t *testing.T) {
 	t.Helper()
-	if heldLock != nil {
-		heldLock()
-		heldLock = nil
-	}
+	mutation.Release()
 }
 
 func TestSnapshotsPruneTakesTheLock(t *testing.T) {
 	editHome(t)
 	freshLock(t)
 	run(t, "snapshots", "prune")
-	if heldLock == nil {
+	if !mutation.Held() {
 		t.Error("snapshots prune deleted snapshots without taking the lock")
 	}
 }
@@ -44,7 +42,7 @@ func TestSnapshotsRestoreTakesTheLock(t *testing.T) {
 	if out, err := runIn(t, "", "snapshots", "restore", "--yes"); err != nil {
 		t.Fatalf("restore: %v\n%s", err, out)
 	}
-	if heldLock == nil {
+	if !mutation.Held() {
 		t.Error("snapshots restore rewrote ~/.ssh without taking the lock")
 	}
 }
@@ -65,7 +63,7 @@ func TestTuiSnapshotRestoreTakesTheLock(t *testing.T) {
 	}
 	tt.pr.(*scriptPrompter).answers = []string{"snapshots", filepath.Base(snap), "q"}
 	accepting(tt).run()
-	if heldLock == nil {
+	if !mutation.Held() {
 		t.Error("the TUI restored a snapshot without taking the lock")
 	}
 }

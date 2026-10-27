@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/lock"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
@@ -34,10 +35,7 @@ import (
 func releaseHeldLock(t *testing.T) {
 	t.Helper()
 	t.Cleanup(func() {
-		if heldLock != nil {
-			heldLock()
-			heldLock = nil
-		}
+		mutation.Release()
 	})
 }
 
@@ -153,7 +151,7 @@ func TestEditHomeIsolatesTheHomeOnEveryPlatform(t *testing.T) {
 }
 
 // The lock has to be closed, not just forgotten. A fixture that only sets
-// heldLock to nil leaks the descriptor: on Windows an open file cannot be
+// the held lock to nil leaks the descriptor: on Windows an open file cannot be
 // unlinked, so t.TempDir's cleanup fails and the test is reported as failing
 // after it has already passed. Three fixtures got this wrong in three different
 // ways before releaseHeldLock existed.
@@ -169,17 +167,14 @@ func TestReleasingTheHeldLockClosesItRatherThanForgettingIt(t *testing.T) {
 
 	t.Run("scope", func(t *testing.T) {
 		releaseHeldLock(t)
-		if heldLock != nil { // another test in this binary may hold it
-			heldLock()
-			heldLock = nil
-		}
+		mutation.Release() // another test in this binary may hold it
 		snapshotBeforeMutation(p)
-		if heldLock == nil {
+		if !mutation.Held() {
 			t.Skip("the lock could not be taken here; nothing to release")
 		}
 	}) // cleanup runs at the end of the subtest
 
-	if heldLock != nil {
+	if mutation.Held() {
 		t.Fatal("the lock survived its own cleanup")
 	}
 

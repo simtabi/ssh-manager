@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
 )
 
@@ -98,14 +99,11 @@ func TestTuiRotateRefusesWithoutAKeyBackup(t *testing.T) {
 // The TUI's Reconcile read both first.
 func TestTuiReconcileLocksBeforeItReads(t *testing.T) {
 	releaseHeldLock(t)
-	if heldLock != nil {
-		heldLock()
-		heldLock = nil
-	}
+	mutation.Release()
 	t.Setenv("SSH_MANAGER_AUTO_PIN", "0")
 	tt, _ := tuiWith(t, "reconcile", "q")
 	declining(tt).run()
-	if heldLock == nil {
+	if !mutation.Held() {
 		t.Error("reconcile read the manifest without taking the lock")
 	}
 	noSnapshots(t, tt, "reconcile")

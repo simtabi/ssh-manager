@@ -5,6 +5,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
@@ -19,10 +20,7 @@ func TestMutationGuardDoesNotDeadlockOnItself(t *testing.T) {
 	// Package state: another test in this binary may already hold it. Closing
 	// the fd matters, not just clearing the variable - see releaseHeldLock.
 	releaseHeldLock(t)
-	if heldLock != nil {
-		heldLock()
-		heldLock = nil
-	}
+	mutation.Release()
 
 	done := make(chan struct{})
 	go func() {
@@ -36,7 +34,7 @@ func TestMutationGuardDoesNotDeadlockOnItself(t *testing.T) {
 	case <-time.After(10 * time.Second):
 		t.Fatal("the mutation guard blocked on a lock this process already holds")
 	}
-	if heldLock == nil {
+	if !mutation.Held() {
 		t.Error("the guard should be holding the lock after running")
 	}
 }
