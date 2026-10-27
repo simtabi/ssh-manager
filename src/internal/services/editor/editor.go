@@ -123,6 +123,27 @@ func (e *Editor) EditProfile(name string, keyScope *string, keyName *string) err
 	return nil
 }
 
+// SetKeyComment sets a profile's key_comment template; "" returns it to
+// defaults.key_comment. It applies to keys minted from now on: a key's comment
+// is written into its .pub when ssh-keygen creates it.
+func (e *Editor) SetKeyComment(name, tmpl string) error {
+	m, err := e.load()
+	if err != nil {
+		return err
+	}
+	p, ok := m.Profiles[name]
+	if !ok {
+		return fmt.Errorf("unknown profile: %q", name)
+	}
+	p.KeyComment = tmpl
+	m.SetProfile(name, p)
+	if err := e.save(m); err != nil {
+		return err
+	}
+	log.Audit(e.p.AuditLog(), "profile.edit", log.Field{Key: "profile", Value: name})
+	return nil
+}
+
 // CategoryResult reports what SetCategory changed on disk.
 type CategoryResult struct {
 	From, To       string // profile directories, relative to ~/.ssh

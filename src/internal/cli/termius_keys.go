@@ -93,7 +93,10 @@ func newTermiusKeysCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			exp, err := renderer.RenderTermiusCSV(m, exportPaths(p), renderer.TermiusOptions{IncludeGit: includeGit, Skip: skip})
+			// Naming a host is the choice --include-git makes for the list: a git
+			// host has a key to copy too, so an ALIAS finds it either way.
+			withGit := includeGit || len(args) > 0
+			exp, err := renderer.RenderTermiusCSV(m, exportPaths(p), renderer.TermiusOptions{IncludeGit: withGit, Skip: skip})
 			if err != nil {
 				return err
 			}
@@ -111,7 +114,7 @@ func newTermiusKeysCmd() *cobra.Command {
 				}
 			}
 			if key == nil {
-				return fmt.Errorf("no exported host %q (git hosts need --include-git; see `sshmgr termius keys`)", args[0])
+				return fmt.Errorf("no exported host %q (not in the manifest, or left out by --skip; see `sshmgr termius keys --include-git`)", args[0])
 			}
 			if key.Agent != "" {
 				return fmt.Errorf("%s uses a key in 1Password; add it to Termius from 1Password, there is no file to copy", args[0])
@@ -150,7 +153,7 @@ func newTermiusKeysCmd() *cobra.Command {
 			return nil
 		},
 	}
-	cmd.Flags().BoolVar(&includeGit, "include-git", false, "also list git hosts, as 'termius export --include-git' does")
+	cmd.Flags().BoolVar(&includeGit, "include-git", false, "also list git hosts, as 'termius export --include-git' does (an ALIAS finds a git host without it)")
 	cmd.Flags().StringArrayVar(&skip, "skip", nil, "leave out this alias, as 'termius export --skip' does (repeatable)")
 	cmd.Flags().BoolVar(&printKey, "print", false, "print the private key to stdout instead of copying it (warns on stderr)")
 	cmd.Flags().BoolVar(&clear, "clear", false, "empty the clipboard and exit")

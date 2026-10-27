@@ -534,7 +534,7 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 		subject = pk.Hosts[0].Alias
 	}
 	keyType := r.m.KeyTypeFor(ref)
-	comment := fmt.Sprintf("%s/%s %s", ref.Profile, subject, inventory.Today())
+	comment := manifest.KeyComment(r.m, ref, subject, inventory.Today())
 	// An overwrite moves the key it replaces into old/ (keystore's
 	// archivePredecessor), so its record has to follow it there.
 	archived := overwrite && fs.Exists(priv)

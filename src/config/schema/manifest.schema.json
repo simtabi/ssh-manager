@@ -57,6 +57,10 @@
             ]
           }
         },
+        "key_comment": {
+          "type": "string",
+          "description": "ssh-keygen -C template for new keys. Placeholders: {profile} {alias} {key} {date} {device}. Empty = {profile}/{alias} {date}."
+        },
         "onepassword_agent": {
           "type": "string",
           "description": "1Password SSH agent socket for key_store 1password profiles; empty = the platform default."
@@ -235,6 +239,10 @@
           "op_vault": {
             "type": "string",
             "description": "1Password vault for key_store 1password."
+          },
+          "key_comment": {
+            "type": "string",
+            "description": "ssh-keygen -C template for keys minted in this profile; empty inherits defaults.key_comment."
           },
           "keys": {
             "type": "array",

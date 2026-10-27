@@ -203,7 +203,7 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	}
 	stagedPriv := filepath.Join(staging, keyName)
 	stagedPub := stagedPriv + ".pub"
-	comment := fmt.Sprintf("%s/%s %s", profile, hosts[0].Alias, inventory.Today())
+	comment := manifest.KeyComment(r.m, manifest.KeyRef{Profile: profile, KeyName: keyName}, hosts[0].Alias, inventory.Today())
 	gen, err := r.ks.Generate(stagedPriv, r.m.Defaults.KeyType, comment, passphrase, false)
 	if err != nil {
 		return RotateReport{}, err
@@ -305,14 +305,16 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	}
 	report.Targets = results
 
-	r.updateInventory(profile, keyName, report, results)
+	r.updateInventory(profile, keyName, comment, report, results)
 	report.Committed = true
 	log.Audit(r.p.AuditLog(), "rotate", log.Field{Key: "key", Value: keyName},
 		log.Field{Key: "old", Value: report.OldFingerprint}, log.Field{Key: "new", Value: report.NewFingerprint})
 	return report, nil
 }
 
-func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, results []TargetResult) {
+// comment is what the new key carries, so the record names it the way
+// ssh-keygen -l does.
+func (r *Rotator) updateInventory(profile, keyName, comment string, report RotateReport, results []TargetResult) {
 	ident := r.m.IdentityFile(profile, keyName)
 	oldIdent := r.m.IdentityFile(profile, "old/"+keyName)
 	// Drop any stale record still at the single /old/ slot (a prior predecessor).
@@ -346,7 +348,6 @@ func (r *Rotator) updateInventory(profile, keyName string, report RotateReport, 
 	}
 	created := inventory.Today()
 	exp, _ := inventory.ComputeExpiry(created, r.m.Defaults.RotateAfterDays)
-	comment := fmt.Sprintf("%s/%s %s", profile, keyName, created)
 	r.inv.Record(report.NewFingerprint, inventory.KeyRecord{
 		Profile: profile, Path: ident, Type: r.m.Defaults.KeyType,
 		Comment: &comment, Created: &created, RotateAfterDays: r.m.Defaults.RotateAfterDays,

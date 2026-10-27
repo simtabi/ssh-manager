@@ -160,8 +160,11 @@ var goOnly = map[string]string{
 	// `<alias> <host>[:port] <user> [role]`.
 	"host apply": "host specs - upsert hosts from compact specs, a file or JSON",
 
-	"profile add --category":  "categories - file a new profile under profiles/<category>/",
-	"profile edit --category": "categories - move a profile's keys and records under profiles/<category>/",
+	"profile add --category":     "categories - file a new profile under profiles/<category>/",
+	"profile add --key-scope":    "G8 - the --key-scope profile edit takes; --shared is its deprecated spelling",
+	"profile add --key-comment":  "G11 - ssh-keygen -C template for the profile's keys",
+	"profile edit --key-comment": "G11 - set or clear (\"\") the profile's key_comment",
+	"profile edit --category":    "categories - move a profile's keys and records under profiles/<category>/",
 
 	// Confirmation and safety flags. v1 prompted; the Go verbs take an
 	// explicit --yes so they are usable from a script, and refuse to destroy key

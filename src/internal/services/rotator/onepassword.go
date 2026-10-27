@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/opstore"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/fs"
@@ -225,7 +226,9 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 		results[i].Revoked = r.provider(hosts[i]).Remove(r.target(hosts[i], profile, oldPub, oldPubText, ""))
 	}
 	report.Targets = results
-	r.updateInventory(profile, keyName, report, results)
+	// 1Password writes no comment into the key; the record keeps the shape it
+	// always had.
+	r.updateInventory(profile, keyName, fmt.Sprintf("%s/%s %s", profile, keyName, inventory.Today()), report, results)
 	report.Committed = true
 	log.Audit(r.p.AuditLog(), "rotate", log.Field{Key: "key", Value: keyName}, log.Field{Key: "store", Value: "1password"},
 		log.Field{Key: "old", Value: report.OldFingerprint}, log.Field{Key: "new", Value: report.NewFingerprint})
