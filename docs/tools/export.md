@@ -76,7 +76,8 @@ sshmgr termius keys dani-prd-db-00               # copy its private key to the c
 sshmgr termius keys dani-prd-db-00 --clear-after 60s   # ...and empty the clipboard after 60 seconds
 sshmgr termius keys --clear                      # empty the clipboard now
 sshmgr termius keys dani-prd-db-00 --print       # key on stdout instead (warns on stderr; avoid)
-sshmgr termius keys github-me --include-git      # git hosts, as with export --include-git
+sshmgr termius keys github-me                    # a git host: naming it is enough
+sshmgr termius keys --include-git                # list git hosts too, as with export --include-git
 sshmgr termius keys --skip unc                   # leave a host out, as with export --skip
 ```
 

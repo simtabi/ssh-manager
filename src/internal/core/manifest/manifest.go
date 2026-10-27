@@ -274,13 +274,16 @@ func (k *KeySpec) UnmarshalJSON(b []byte) error {
 // written as an omitted field) keeps them under ~/.ssh; "1password" keeps them
 // as SSH Key items in OPVault, with only the public half on disk.
 type Profile struct {
-	Category string    `json:"category,omitempty"`
-	KeyStore string    `json:"key_store,omitempty"`
-	OPVault  string    `json:"op_vault,omitempty"`
-	KeyScope string    `json:"key_scope"`
-	KeyName  *string   `json:"key_name,omitempty"`
-	Keys     []KeySpec `json:"keys,omitempty"`
-	Hosts    []Host    `json:"hosts"`
+	Category string  `json:"category,omitempty"`
+	KeyStore string  `json:"key_store,omitempty"`
+	OPVault  string  `json:"op_vault,omitempty"`
+	KeyScope string  `json:"key_scope"`
+	KeyName  *string `json:"key_name,omitempty"`
+	// KeyComment is the ssh-keygen -C template for keys minted in this
+	// profile; empty inherits defaults.key_comment (see KeyCommentTemplate).
+	KeyComment string    `json:"key_comment,omitempty"`
+	Keys       []KeySpec `json:"keys,omitempty"`
+	Hosts      []Host    `json:"hosts"`
 }
 
 func (p *Profile) UnmarshalJSON(b []byte) error {
@@ -300,19 +303,20 @@ func (p *Profile) UnmarshalJSON(b []byte) error {
 // written before these fields existed - byte-identical across a load/save cycle.
 func (p Profile) MarshalJSON() ([]byte, error) {
 	type wire struct {
-		Category string    `json:"category,omitempty"`
-		KeyStore string    `json:"key_store,omitempty"`
-		OPVault  string    `json:"op_vault,omitempty"`
-		KeyScope string    `json:"key_scope"`
-		KeyName  *string   `json:"key_name"`
-		Keys     []KeySpec `json:"keys,omitempty"`
-		Hosts    []Host    `json:"hosts"`
+		Category   string    `json:"category,omitempty"`
+		KeyStore   string    `json:"key_store,omitempty"`
+		OPVault    string    `json:"op_vault,omitempty"`
+		KeyScope   string    `json:"key_scope"`
+		KeyName    *string   `json:"key_name"`
+		KeyComment string    `json:"key_comment,omitempty"`
+		Keys       []KeySpec `json:"keys,omitempty"`
+		Hosts      []Host    `json:"hosts"`
 	}
 	hosts := p.Hosts
 	if hosts == nil {
 		hosts = []Host{}
 	}
-	return json.Marshal(wire{Category: p.Category, KeyStore: p.KeyStore, OPVault: p.OPVault, KeyScope: p.KeyScope, KeyName: p.KeyName, Keys: p.Keys, Hosts: hosts})
+	return json.Marshal(wire{Category: p.Category, KeyStore: p.KeyStore, OPVault: p.OPVault, KeyScope: p.KeyScope, KeyName: p.KeyName, KeyComment: p.KeyComment, Keys: p.Keys, Hosts: hosts})
 }
 
 // ExpiryCheck is the notifier policy.
@@ -348,6 +352,9 @@ type Defaults struct {
 	// key_store "1password" renders as its IdentityAgent. Empty = the
 	// platform's standard path (see OnePasswordAgentSocket).
 	OnePasswordAgent string `json:"onepassword_agent,omitempty"`
+	// KeyComment is the ssh-keygen -C template every profile inherits; empty
+	// means DefaultKeyComment.
+	KeyComment string `json:"key_comment,omitempty"`
 	// Git configures `sshmgr git` and the rendered `Host github.com` block.
 	Git *GitDefaults `json:"git,omitempty"`
 }
@@ -381,6 +388,7 @@ func (d Defaults) MarshalJSON() ([]byte, error) {
 		ExpiryCheck      ExpiryCheck    `json:"expiry_check"`
 		GlobalOptions    OrderedOptions `json:"global_options"`
 		OnePasswordAgent string         `json:"onepassword_agent,omitempty"`
+		KeyComment       string         `json:"key_comment,omitempty"`
 		Git              *GitDefaults   `json:"git,omitempty"`
 	}
 	warn := d.WarnBeforeDays
@@ -390,7 +398,7 @@ func (d Defaults) MarshalJSON() ([]byte, error) {
 	return json.Marshal(wire{
 		KeyType: d.KeyType, KeyScope: d.KeyScope, RotateAfterDays: d.RotateAfterDays,
 		WarnBeforeDays: warn, ExpiryCheck: d.ExpiryCheck, GlobalOptions: d.GlobalOptions,
-		OnePasswordAgent: d.OnePasswordAgent, Git: d.Git,
+		OnePasswordAgent: d.OnePasswordAgent, KeyComment: d.KeyComment, Git: d.Git,
 	})
 }
 
@@ -895,6 +903,9 @@ func (m *Manifest) validate() error {
 	if err := checkKeyScope(m.Defaults.KeyScope); err != nil {
 		return err
 	}
+	if err := checkKeyComment("defaults.key_comment", m.Defaults.KeyComment); err != nil {
+		return err
+	}
 	if err := checkAliasCollisions(m); err != nil {
 		return err
 	}
@@ -918,6 +929,9 @@ func (m *Manifest) validate() error {
 			if err := safeSegment("profile key_name", *p.KeyName); err != nil {
 				return err
 			}
+		}
+		if err := checkKeyComment(fmt.Sprintf("profile %q key_comment", name), p.KeyComment); err != nil {
+			return err
 		}
 		if err := checkDeclaredKeys(name, p); err != nil {
 			return err

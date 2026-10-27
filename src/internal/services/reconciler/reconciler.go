@@ -33,6 +33,9 @@ type MintedKey struct {
 	Profile     string
 	Fingerprint string
 	Path        string
+	// Fallback names the software type minted when the hardware *-sk type the
+	// manifest asks for had no security key to answer; "" otherwise.
+	Fallback string `json:",omitempty"`
 }
 
 // ReconcileResult summarizes a reconcile run.
@@ -62,6 +65,10 @@ func (r *ReconcileResult) Format() string {
 	}
 	for _, m := range r.Minted {
 		lines = append(lines, fmt.Sprintf("  mint %s: %s  %s  (needs-redeploy)", verb, m.KeyName, m.Fingerprint))
+		if m.Fallback != "" {
+			lines = append(lines, fmt.Sprintf("    no security key answered: this is a software %s key, not a hardware one; "+
+				"insert the key and run `sshmgr rotate %s` to replace it", m.Fallback, m.KeyName))
+		}
 	}
 	if len(r.Minted) == 0 {
 		lines = append(lines, fmt.Sprintf("  keys: all %d present (none minted)", len(r.ExistingKeys)))
@@ -534,7 +541,7 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 		subject = pk.Hosts[0].Alias
 	}
 	keyType := r.m.KeyTypeFor(ref)
-	comment := fmt.Sprintf("%s/%s %s", ref.Profile, subject, inventory.Today())
+	comment := manifest.KeyComment(r.m, ref, subject, inventory.Today())
 	// An overwrite moves the key it replaces into old/ (keystore's
 	// archivePredecessor), so its record has to follow it there.
 	archived := overwrite && fs.Exists(priv)
@@ -548,6 +555,15 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 	}
 	if err != nil {
 		return MintedKey{}, err
+	}
+	fallback := ""
+	if gen.Created && gen.Type != "" {
+		// Record the key that exists: a hardware type with no device answering
+		// was minted as its software equivalent.
+		if gen.Fallback {
+			fallback = gen.Type
+		}
+		keyType, comment = gen.Type, gen.Comment
 	}
 	created := inventory.Today()
 	ident := r.m.IdentityFile(ref.Profile, ref.KeyName)
@@ -577,7 +593,7 @@ func (r *Reconciler) mintOne(pk plannedKey, passphrase string, overwrite bool) (
 		log.Field{Key: "key", Value: ref.KeyName},
 		log.Field{Key: "fingerprint", Value: gen.Fingerprint},
 		log.Field{Key: "profile", Value: ref.Profile})
-	return MintedKey{KeyName: ref.KeyName, Profile: ref.Profile, Fingerprint: gen.Fingerprint, Path: priv}, nil
+	return MintedKey{KeyName: ref.KeyName, Profile: ref.Profile, Fingerprint: gen.Fingerprint, Path: priv, Fallback: fallback}, nil
 }
 
 // archiveRecord moves the record of the key an overwrite just displaced from

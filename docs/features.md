@@ -44,7 +44,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `config show [alias]` | Print resolved config, or `ssh -G` for one alias. | U·F |
 | `config export --flat [--out PATH\|-]` | Write every host inline in one file, absolute paths, no `Include` (for tools that read one `ssh_config`). Never touches `~/.ssh`; refuses any target inside `~/.ssh`. | U·F |
 | `termius export [--out PATH\|-] [--skip ALIAS] [--include-git] [--open]` | Write a Termius CSV import (group = profile, label = alias) and list the key to attach to each host; `--open` opens Termius on macOS. | U·F |
-| `termius keys [ALIAS] [--clear-after DUR] [--clear] [--print] [--include-git]` | The CSV carries no keys: list each host's Termius key label and key path, or copy one host's private key to the clipboard (never printed unless `--print`) with the label to paste into Keychain → New Key. | U·F |
+| `termius keys [ALIAS] [--clear-after DUR] [--clear] [--print] [--include-git] [--skip ALIAS]` | The CSV carries no keys: list each host's Termius key label and key path, or copy one host's private key to the clipboard (never printed unless `--print`) with the label to paste into Keychain → New Key. `--include-git` widens the list; a named git host is found without it. | U·F |
 | `import [path] [--force] [--dry-run] [-y]` | Onboard an existing `~/.ssh` (adopt keys + hosts) into the manifest + inventory. Refuses to replace a non-empty manifest without `--force` (which backs it up first). | U·F |
 | `diff` | Preview manifest vs. on-disk reality (config + which keys are missing/present). | U·F |
 
@@ -101,8 +101,8 @@ bounded SSH-level reachability probe first, so a down or VPN-gated host (includi
 
 | Command | What it does | Tests |
 |---|---|---|
-| `profile add <name> [--shared] [--key-name] [--category]` | Add a profile, optionally filed under `profiles/<category>/`. A profile keeps its keys on disk, or in 1Password with `key_store: 1password` (see [Key stores](configuration.md#key-stores)). | U·F |
-| `profile edit <name> [--key-scope] [--key-name] [--category]` | Change a profile in place. `--category` moves its key directory under `profiles/<category>/` (or back, with `""`) and re-points its inventory records. | U |
+| `profile add <name> [--key-scope\|--shared] [--key-name] [--key-comment] [--category]` | Add a profile, optionally filed under `profiles/<category>/`. `--shared` is shorthand for `--key-scope shared`. A profile keeps its keys on disk, or in 1Password with `key_store: 1password` (see [Key stores](configuration.md#key-stores)). | U·F |
+| `profile edit <name> [--key-scope\|--shared] [--key-name] [--key-comment] [--category]` | Change a profile in place. `--key-comment` sets the comment template for keys minted from now on (see [Key comments](configuration.md#key-comments)). `--category` moves its key directory under `profiles/<category>/` (or back, with `""`) and re-points its inventory records. | U |
 | `profile delete <name> [--yes] [--revoke] [--purge] [--no-key-backup]` | Remove a profile and its hosts; `--revoke` pulls its keys off their targets. | U·F |
 | `host add <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--tag] [--proxy cloudflared]` | Add a host to a profile (alias is **positional**). `--proxy cloudflared` reaches it through Cloudflare Access. | U·F |
 | `host edit <profile> <alias> [-H] [-u] [-p] [--provider] [--token-env] [--key-name] [--proxy cloudflared\|none] [--tag]... [--untag]...` | Change a host in place. `--tag` replaces its tags (`--tag ''` removes them all); `--untag` removes one, after any `--tag`. Without either, tags are left alone. | U·F |

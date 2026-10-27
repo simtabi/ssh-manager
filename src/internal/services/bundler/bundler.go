@@ -274,18 +274,6 @@ func isRenderedFile(rel, path string) bool {
 	return err == nil && renderer.IsManagedFile(string(b))
 }
 
-// looksLikeKey reports whether data is an SSH private or public key, the only
-// thing restore lays down in a rendered slot.
-func looksLikeKey(data []byte) bool {
-	s := strings.TrimSpace(string(data))
-	for _, prefix := range []string{"-----BEGIN ", "ssh-", "ecdsa-", "sk-ssh-", "sk-ecdsa-"} {
-		if strings.HasPrefix(s, prefix) {
-			return true
-		}
-	}
-	return false
-}
-
 func hasStaging(rel string) bool {
 	for _, part := range strings.Split(rel, "/") {
 		if part == ".staging" {

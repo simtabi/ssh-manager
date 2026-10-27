@@ -11,6 +11,32 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/lifecycle"
 )
 
+// keyCommentFlagHelp describes the key_comment template on profile add and edit.
+const keyCommentFlagHelp = "comment template for keys minted from now on: {profile} {alias} {key} {date} {device} (default {profile}/{alias} {date})"
+
+// sharedFlagHelp describes --shared, the shorthand profile add and edit share.
+const sharedFlagHelp = "shorthand for --key-scope shared (--shared=false: per_service)"
+
+// scopeFlags resolves --key-scope and its shorthand --shared into one value,
+// "" when neither was given. Both may be given only when they agree, so a
+// script that says --shared --key-scope per_service is told, not guessed at.
+func scopeFlags(c *cobra.Command, scope string, shared bool) (string, error) {
+	if !c.Flags().Changed("shared") {
+		if c.Flags().Changed("key-scope") {
+			return scope, nil
+		}
+		return "", nil
+	}
+	want := "per_service"
+	if shared {
+		want = "shared"
+	}
+	if c.Flags().Changed("key-scope") && scope != want {
+		return "", fmt.Errorf("--shared=%t conflicts with --key-scope %s", shared, scope)
+	}
+	return want, nil
+}
+
 // strPtrIf returns &val if the named flag was set, else nil.
 func strPtrIf(cmd *cobra.Command, flag, val string) *string {
 	if cmd.Flags().Changed(flag) {
@@ -23,15 +49,18 @@ func newProfileCmd() *cobra.Command {
 	cmd := &cobra.Command{Use: "profile", Short: "Manage a profile (add/edit/delete)"}
 
 	var shared bool
-	var keyName, addCategory string
+	var addScope, keyName, addCategory, addComment string
 	add := &cobra.Command{
 		Use:   "add <name>",
 		Short: "Add a profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
-			scope := "per_service"
-			if shared {
-				scope = "shared"
+			scope, err := scopeFlags(c, addScope, shared)
+			if err != nil {
+				return err
+			}
+			if scope == "" {
+				scope = "per_service"
 			}
 			p, err := resolvePaths(c)
 			if err != nil {
@@ -48,23 +77,35 @@ func newProfileCmd() *cobra.Command {
 					return err
 				}
 			}
+			if addComment != "" {
+				if err := ed.SetKeyComment(args[0], addComment); err != nil {
+					return err
+				}
+			}
 			_, _ = fmt.Fprintf(c.OutOrStdout(), "added profile %s (no hosts yet - add one with "+
 				"`sshmgr host add %s <alias>`)\n", args[0], args[0])
 			return applyManifestEdit(c, p)
 		},
 	}
-	add.Flags().BoolVar(&shared, "shared", false, "key_scope=shared (one key per profile)")
+	add.Flags().StringVar(&addScope, "key-scope", "per_service", "per_service | shared (shared: one key, --key-name, for every host)")
+	add.Flags().BoolVar(&shared, "shared", false, sharedFlagHelp)
 	add.Flags().StringVar(&keyName, "key-name", "", "profile key name (shared scope)")
+	add.Flags().StringVar(&addComment, "key-comment", "", keyCommentFlagHelp)
 	add.Flags().StringVar(&addCategory, "category", "",
 		"file the profile under profiles/<category>/ and render its hosts into profiles/<category>/config")
 	cmd.AddCommand(add)
 
-	var editScope, editKeyName, editCategory string
+	var editShared bool
+	var editScope, editKeyName, editCategory, editComment string
 	edit := &cobra.Command{
 		Use:   "edit <name>",
 		Short: "Edit a profile",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(c *cobra.Command, args []string) error {
+			scope, err := scopeFlags(c, editScope, editShared)
+			if err != nil {
+				return err
+			}
 			p, err := resolvePaths(c)
 			if err != nil {
 				return err
@@ -86,9 +127,18 @@ func newProfileCmd() *cobra.Command {
 						args[0], verb, res.To, res.From, res.RecordsUpdated)
 				}
 			}
-			if c.Flags().Changed("key-scope") || c.Flags().Changed("key-name") || !c.Flags().Changed("category") {
-				if err := ed.EditProfile(args[0],
-					strPtrIf(c, "key-scope", editScope), strPtrIf(c, "key-name", editKeyName)); err != nil {
+			if c.Flags().Changed("key-comment") {
+				if err := ed.SetKeyComment(args[0], editComment); err != nil {
+					return err
+				}
+			}
+			var scopePtr *string
+			if scope != "" {
+				scopePtr = &scope
+			}
+			if scopePtr != nil || c.Flags().Changed("key-name") ||
+				!c.Flags().Changed("category") && !c.Flags().Changed("key-comment") {
+				if err := ed.EditProfile(args[0], scopePtr, strPtrIf(c, "key-name", editKeyName)); err != nil {
 					return err
 				}
 			}
@@ -108,7 +158,9 @@ func newProfileCmd() *cobra.Command {
 		},
 	}
 	edit.Flags().StringVar(&editScope, "key-scope", "", "per_service | shared")
+	edit.Flags().BoolVar(&editShared, "shared", false, sharedFlagHelp)
 	edit.Flags().StringVar(&editKeyName, "key-name", "", "the shared key every host in this profile uses (key_scope: shared)")
+	edit.Flags().StringVar(&editComment, "key-comment", "", keyCommentFlagHelp+"; \"\" inherits defaults.key_comment")
 	edit.Flags().StringVar(&editCategory, "category", "",
 		"move the profile under profiles/<category>/ (its key directory and inventory records follow); \"\" returns it to the flat layout")
 	cmd.AddCommand(edit)

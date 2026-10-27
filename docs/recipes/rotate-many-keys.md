@@ -13,7 +13,7 @@ Rotate by category, profile, host alias or key, in any mix:
 
 ```sh
 sshmgr rotate --category clients
-sshmgr rotate simtabi github-imani
+sshmgr rotate simtabi github-imanimanyara
 ```
 
 The batch asks once, writes one backup, then rotates each key with the usual

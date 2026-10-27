@@ -23,6 +23,13 @@ type GenResult struct {
 	Path        string
 	Fingerprint string
 	Created     bool
+	// Type and Comment are what ssh-keygen was actually run with, set when
+	// Created. They differ from the request only for a hardware *-sk type that
+	// fell back to software (Fallback), so callers record the key that exists
+	// rather than the one asked for.
+	Type     string
+	Comment  string
+	Fallback bool
 }
 
 // KeyStore mints and inspects keys.
@@ -74,7 +81,7 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 		return GenResult{}, err
 	}
 
-	staged, cleanup, err := mint(parent, keyType, comment, passphrase)
+	staged, used, cleanup, err := mint(parent, keyType, comment, passphrase)
 	defer cleanup()
 	if err != nil {
 		return GenResult{}, err
@@ -102,7 +109,8 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 	if err != nil {
 		return GenResult{}, err
 	}
-	return GenResult{Path: privPath, Fingerprint: fp, Created: true}, nil
+	return GenResult{Path: privPath, Fingerprint: fp, Created: true,
+		Type: used.Type, Comment: used.Comment, Fallback: used.Type != keyType}, nil
 }
 
 // mint generates a pair inside a directory created for this call, and returns the
@@ -112,14 +120,15 @@ func (k *KeyStore) Generate(privPath, keyType, comment, passphrase string, overw
 // material through a symlink planted there by someone else, and would leave the
 // key readable for however long it took to chmod it afterwards. A directory that
 // did not exist a moment ago can contain neither.
-func mint(parent, keyType, comment, passphrase string) (string, func(), error) {
+func mint(parent, keyType, comment, passphrase string) (string, GenResult, func(), error) {
+	used := GenResult{Type: keyType, Comment: comment}
 	dir, err := os.MkdirTemp(parent, ".mint-")
 	if err != nil {
-		return "", func() {}, err
+		return "", used, func() {}, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
 	if err := perms.SetPerms(dir, perms.DirMode); err != nil {
-		return "", cleanup, err
+		return "", used, cleanup, err
 	}
 	staged := filepath.Join(dir, "key")
 
@@ -130,12 +139,13 @@ func mint(parent, keyType, comment, passphrase string) (string, func(), error) {
 		_ = os.Remove(staged)
 		_ = os.Remove(pubPath(staged))
 		fallback := strings.TrimSuffix(keyType, "-sk") // ed25519-sk -> ed25519
-		err = runKeygen(fallback, staged, comment+" (sk-fallback)", passphrase)
+		used = GenResult{Type: fallback, Comment: comment + " (sk-fallback)"}
+		err = runKeygen(used.Type, staged, used.Comment, passphrase)
 	}
 	if err != nil {
-		return "", cleanup, fmt.Errorf("ssh-keygen failed: %w", err)
+		return "", used, cleanup, fmt.Errorf("ssh-keygen failed: %w", err)
 	}
-	return staged, cleanup, nil
+	return staged, used, cleanup, nil
 }
 
 func runKeygen(keyType, privPath, comment, passphrase string) error {

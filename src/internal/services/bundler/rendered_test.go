@@ -40,7 +40,9 @@ func writeArchiveWith(t *testing.T, members [][2]string) string {
 	return agePath
 }
 
-const privKeyBody = "-----BEGIN OPENSSH PRIVATE KEY-----\nAAAA\n-----END OPENSSH PRIVATE KEY-----\n"
+// privKeyBody is a key restore accepts in a rendered slot: looksLikeKey parses
+// it, so it has to be well formed.
+var privKeyBody = testOpenSSHKey("none")
 
 // A bundle carries keys and the manifest, not files sshmgr renders from the
 // manifest: a rendered category config is rebuilt on restore, and carrying it
