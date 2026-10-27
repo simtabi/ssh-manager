@@ -24,8 +24,8 @@ import (
 // where before it only ran for people who had installed pre-commit.
 //
 // Not covered: YAML and TOML parse checks. There is no TOML left in the tree,
-// and validating YAML would mean adding a dependency to a binary whose single
-// direct dependency is asserted by TestTheBinaryHasExactlyOneDirectDependency.
+// and validating YAML would mean adding a dependency to a binary whose linked
+// modules are pinned by TestTheBinaryLinksOnlyItsTwoChosenDependencies.
 // The YAML that matters is checked anyway - GitHub rejects a malformed workflow,
 // and `goreleaser check` parses the release config.
 

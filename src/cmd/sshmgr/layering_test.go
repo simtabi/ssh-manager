@@ -157,8 +157,8 @@ func TestTheLayersPointOneWay(t *testing.T) {
 // U12 - the presentation layer is dissolved, and D2's zero-dependency claim.
 //
 // The cheapest possible proof that there is no `rich` equivalent: there is
-// nowhere for one to hide. One CLI framework, and everything else the binary
-// links is that framework's own closure.
+// nowhere for one to hide. One CLI framework and one database driver, and
+// everything else the binary links is their own closure.
 //
 // It asks the toolchain what ./cmd/sshmgr links rather than parsing go.mod,
 // because the two answer different questions. go.mod records test requirements
@@ -166,7 +166,7 @@ func TestTheLayersPointOneWay(t *testing.T) {
 // test-only requirement says nothing about what ships. The go.mod version of
 // this test failed the first time `go mod tidy` ran, over a package that was
 // already in the binary via cobra and had simply been listed as indirect.
-func TestTheBinaryHasExactlyOneDirectDependency(t *testing.T) {
+func TestTheBinaryLinksOnlyItsTwoChosenDependencies(t *testing.T) {
 	if _, err := exec.LookPath("go"); err != nil {
 		t.Skip("no go toolchain")
 	}
@@ -178,12 +178,25 @@ func TestTheBinaryHasExactlyOneDirectDependency(t *testing.T) {
 	}
 
 	const self = "github.com/simtabi/ssh-manager/src/v3"
-	// cobra is the single decision. pflag and mousetrap are cobra's own
-	// requirements rather than ours, and neither one renders anything.
+	// Two decisions. cobra is the command line; pflag and mousetrap are its
+	// own requirements, and neither renders anything. modernc.org/sqlite is the
+	// operation history's store (web UI plan, D2: pure Go, so CGO_ENABLED=0
+	// still builds every target); the rest of this list is what it links,
+	// measured with `go list -deps` on linux, darwin and windows, 2026-10-27.
 	allowed := map[string]bool{
 		"github.com/spf13/cobra":               true,
 		"github.com/spf13/pflag":               true,
 		"github.com/inconshreveable/mousetrap": true, // via cobra, windows only
+		"modernc.org/sqlite":                   true,
+		"modernc.org/libc":                     true,
+		"modernc.org/mathutil":                 true,
+		"modernc.org/memory":                   true,
+		"github.com/dustin/go-humanize":        true,
+		"github.com/google/uuid":               true,
+		"github.com/remyoudompheng/bigfft":     true,
+		"github.com/mattn/go-isatty":           true,
+		"github.com/ncruces/go-strftime":       true,
+		"golang.org/x/sys":                     true,
 	}
 	var linked []string
 	for _, line := range strings.Split(strings.TrimSpace(string(out)), "\n") {
@@ -201,8 +214,8 @@ func TestTheBinaryHasExactlyOneDirectDependency(t *testing.T) {
 	sort.Strings(linked)
 	// Without this the test passes for the wrong reason if `go list` ever stops
 	// reporting modules: an empty set satisfies every allowlist.
-	if !slices.Contains(linked, "github.com/spf13/cobra") {
-		t.Errorf("cobra is not among the linked modules %v; this test has stopped measuring anything", linked)
+	if !slices.Contains(linked, "github.com/spf13/cobra") || !slices.Contains(linked, "modernc.org/sqlite") {
+		t.Errorf("cobra or sqlite is not among the linked modules %v; this test has stopped measuring anything", linked)
 	}
 }
 
