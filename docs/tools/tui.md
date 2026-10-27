@@ -63,7 +63,7 @@ Entries are grouped by consequence, not by frequency — everything above *Chang
 
   Change ~/.ssh   (each one asks before it writes)
    5  Reconcile - apply the manifest  reconcile
-   6  Pin host keys into known_hosts  knownhosts pin
+   6  Pin host keys into known_hosts  knownhosts init --all
    7  Deploy a key to its target      deploy
    8  Rotate a key                    rotate
 
@@ -77,6 +77,11 @@ The right-hand column is the CLI verb that does the same thing, and it is also
 an accepted answer — typing what is on screen is never a dead end. So `5`,
 `reconcile`, and the full label all select the same entry.
 
+Entry 6 runs `knownhosts init --all`: a trust-on-first-use scan of every manifest
+host. Earlier releases listed it as `knownhosts pin`, which is a different command
+(it asks about each key and needs a host or `--all`); that answer still selects
+the entry.
+
 ## Answering it
 
 A number, a command name, or `q`. Anything else re-prompts rather than selecting:
@@ -85,9 +90,14 @@ an accidental key as a choice would run whichever action happened to be first,
 and one that exited on a typo would cost you the session for a slip. A bare Enter
 redraws the menu without comment; a closed input ends the session.
 
-Destructive actions — rotate, snapshot restore — confirm before proceeding, and
-`~/.ssh` is snapshotted before any mutation regardless, by the same guard every
-CLI verb passes through.
+Every entry under *Change `~/.ssh`*, and snapshot restore, asks before it writes,
+and each applies the same guards as its CLI command: it takes the advisory lock
+before reading the manifest, and `~/.ssh` is snapshotted before any change.
+Reconcile shows its dry run as the question and pins host keys afterwards unless
+`SSH_MANAGER_AUTO_PIN=0`. Deploy is refused in dev mode. Rotate writes an
+encrypted key backup first, as `sshmgr rotate` does, so it needs
+`SSH_MANAGER_AGE_RECIPIENT`; the TUI has no `--no-key-backup`, so without a
+recipient it stops and says so.
 
 It needs an interactive terminal. In a script or a pipe it prints a hint and
 exits; use the CLI verbs there.

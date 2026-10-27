@@ -37,6 +37,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A rotated key's inventory comment matches the key.** The record said `profile/<key name> date` while the
   new `.pub` said `profile/<alias> date`; both now come from the same template. A 1Password key's rotation record
   uses the same comment its first record had, rather than `profile/<key name> date`.
+- **The TUI's Change entries apply the same guards as their CLI commands.** Rotate skipped the encrypted key
+  backup `sshmgr rotate` requires, so a TUI rotation could discard the previous key with nothing to restore it
+  from; it now writes the backup first and stops without `SSH_MANAGER_AGE_RECIPIENT`. Pin wrote without asking,
+  under a heading promising every entry asks first; it now asks, and is listed as `knownhosts init --all`, the
+  command it runs (`knownhosts pin` still selects it). Deploy neither asked nor snapshotted, and ran in dev mode;
+  it now does all three as `deploy` does. Reconcile read the manifest before taking the lock, pinned only when it
+  minted a key, and skipped the unused-key warning; it now matches `reconcile`.
+- **`snapshots restore` and `snapshots prune` take the advisory lock**, in the CLI and the TUI, so neither can run
+  under another sshmgr command writing the same tree.
 
 ## [3.5.0] - 2026-10-26
 
