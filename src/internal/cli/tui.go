@@ -18,7 +18,9 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/deployer"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/notifier"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/query"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
@@ -266,7 +268,15 @@ func (t *tui) run() {
 			t.print("  not a choice: " + answer + "   (a number, a command name, or q)\n")
 			continue
 		}
+		// Each change chosen from the menu is its own operation in the
+		// history, not one long "tui" operation covering the whole session.
+		if item.mutates {
+			mutation.Begin(mutation.Scope{Command: item.verb, Source: history.SourceTUI})
+		}
 		t.dispatch(item.handler)
+		if item.mutates {
+			mutation.End(mutation.Outcome{})
+		}
 		t.print("")
 		// A mutating action changes what the banner reports - drift, pin
 		// coverage, key counts - so redraw it. Seeing "drifted" become "in

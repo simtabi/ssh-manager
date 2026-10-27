@@ -147,6 +147,17 @@ var goOnly = map[string]string{
 	"termius keys --include-git":   "exports - also list git hosts",
 	"termius keys --print":         "exports - print the key instead of copying, with a stderr warning",
 	"termius keys --clear":         "exports - empty the clipboard",
+	"history":                      "history - the operation history in log/history.db",
+	"history --host":               "history - filter by host alias",
+	"history --profile":            "history - filter by profile",
+	"history --key":                "history - filter by key",
+	"history --since":              "history - lower time bound",
+	"history --until":              "history - upper time bound",
+	"history --command":            "history - filter by command or command group",
+	"history --source":             "history - filter by cli, tui, web or backfill",
+	"history --limit":              "history - cap the number listed",
+	"history --json":               "history - one JSON object per operation",
+	"history show":                 "history - one operation, its events and its manifest diff",
 	"termius keys --clear-after":   "exports - auto-clear the clipboard after a delay",
 
 	// Cloudflare Access (3.4.0): a host reached through cloudflared, rendered by sshmgr since

@@ -37,7 +37,8 @@ var heldLock func()
 func SnapshotBeforeMutation(p paths.Paths, retain int) string {
 	LockForMutation(p)
 	snapshots.CleanTempArtifacts(p.SSHDir)
-	snap, _ := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), retain, "")
+	snap, err := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), retain, "")
+	recordSnapshot(snap, err)
 	return snap
 }
 
@@ -62,6 +63,7 @@ func LockForMutation(p paths.Paths) {
 			heldLock = rel
 		}
 	}
+	opening(p)
 }
 
 // Held reports whether this process holds the advisory lock.
@@ -75,4 +77,17 @@ func Release() {
 		heldLock()
 		heldLock = nil
 	}
+}
+
+// Scoped runs fn as one operation under the lock and releases the lock when fn
+// returns. It is for a long-lived process: a CLI command holds the lock until
+// it exits, which a server cannot do without blocking every other sshmgr
+// command for as long as it runs. fn must not call Scoped itself.
+func Scoped(p paths.Paths, s Scope, fn func() error) error {
+	Begin(s)
+	LockForMutation(p)
+	err := fn()
+	End(Outcome{Err: err})
+	Release()
+	return err
 }

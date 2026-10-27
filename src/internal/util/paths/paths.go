@@ -110,6 +110,7 @@ func (p Paths) EnvFile() string      { return filepath.Join(p.ConfigDir, ".env")
 func (p Paths) AgeIdentity() string  { return filepath.Join(p.ConfigDir, "age-identity.txt") }
 func (p Paths) LogDir() string       { return filepath.Join(p.ConfigDir, "log") }
 func (p Paths) AuditLog() string     { return filepath.Join(p.LogDir(), "audit.log") }
+func (p Paths) HistoryDB() string    { return filepath.Join(p.LogDir(), "history.db") }
 func (p Paths) SnapshotsDir() string { return filepath.Join(p.ConfigDir, "snapshots") }
 func (p Paths) DistDir() string      { return filepath.Join(p.ConfigDir, "dist") }
 func (p Paths) StateDir() string     { return filepath.Join(p.ConfigDir, ".state") }
