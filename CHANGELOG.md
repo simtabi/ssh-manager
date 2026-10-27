@@ -8,6 +8,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`sshmgr history` - every change sshmgr has made.** A SQLite store at `log/history.db` records one operation
+  per command that takes the lock: the command and its arguments (names only; other values read `<set>`), how it
+  ended, the snapshot it took, the audit events it raised, and the manifest before and after. `--host`,
+  `--profile`, `--key`, `--since`, `--until`, `--command`, `--source`, `--limit` and `--json` filter it, and
+  `history show <op_id>` diffs the manifest across one operation. The first run imports `audit.log`, the
+  inventory's dates and the snapshots already on disk. `audit.log` is written as before; `SSH_MANAGER_HISTORY=0`
+  turns the store off. The binary now links `modernc.org/sqlite`, a pure-Go driver, so every release target still
+  builds with `CGO_ENABLED=0`.
+
 - **`key_comment` - choose the comment new keys carry.** A template on `defaults` or on a profile, with
   `{profile}`, `{alias}`, `{key}`, `{date}` and `{device}`; unset keeps `{profile}/{alias} {date}`, the comment
   every earlier release wrote. `profile add|edit --key-comment` sets it (`""` clears it on edit), and the manifest
@@ -18,6 +27,12 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   when they disagree.
 
 ### Changed
+
+- **`config render`, `doctor --fix`, `providers --export`, `bundle`, `git use`, `vm docker-context`, `init`,
+  `migrate` and `notify install` take the advisory lock.** Each changes state and none was serialized with the
+  other commands; `config render` now also re-reads the manifest after its confirmation, under the lock.
+- **A snapshot that fails is on the record.** The guard used to drop the error; the operation now carries a
+  `snapshot.failed` event with the reason. The command still runs.
 
 - **`termius keys ALIAS` finds a git host without `--include-git`.** Naming the host is the choice; the flag now
   only widens the list. `--skip` still leaves a named host out.

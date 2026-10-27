@@ -366,6 +366,12 @@ token (the provider falls back to the manual paste path). Note: a literal token
 that itself begins with `cmd:` would be treated as a command - real OAuth/PAT
 tokens never do, but if needed, fetch such a value via `cmd:` instead.
 
+## Operation history
+
+Every command that changes something is recorded in `~/.config/ssh-manager/log/history.db`, beside
+`audit.log`. `sshmgr history` reads it. Set `SSH_MANAGER_HISTORY=0` to record nothing; `audit.log` is
+written either way. See [`history`](tools/history.md).
+
 ## Dev mode
 
 `--dev-root <dir>` (or `$SSHMGR_DEV_ROOT`) points the whole tool at a scratch

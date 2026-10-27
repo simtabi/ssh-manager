@@ -85,6 +85,7 @@ else is in the [documentation index](#documentation).
 - [`net`](docs/tools/network.md) — reachability and VPN-gated hosts.
 - [`validate`](docs/tools/validate.md) — keypair integrity checks.
 - [`bundle`](docs/tools/bundle.md) — encrypted backup and restore.
+- [`history`](docs/tools/history.md) — every change sshmgr has made, filtered by host, profile or key.
 - [`recover`](docs/tools/recover.md) — break-glass when you are locked out.
 - [`tui`](docs/tools/tui.md) — the interactive menu.
 
