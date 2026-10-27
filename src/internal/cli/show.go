@@ -73,6 +73,11 @@ func showProfile(out io.Writer, m *manifest.Manifest, keys *keysvc.Service, kh *
 	if prof.KeyName != nil && *prof.KeyName != "" {
 		_, _ = fmt.Fprintf(out, ", key_name: %s", *prof.KeyName)
 	}
+	// Only when it differs from what every key would get anyway, so a profile
+	// that never set one prints exactly as before.
+	if t := manifest.KeyCommentTemplate(m, name); t != manifest.DefaultKeyComment {
+		_, _ = fmt.Fprintf(out, ", key_comment: %s", t)
+	}
 	_, _ = fmt.Fprintln(out, ")")
 
 	rows, err := keys.Rows("")

@@ -161,7 +161,8 @@ var goOnly = map[string]string{
 	"host apply": "host specs - upsert hosts from compact specs, a file or JSON",
 
 	"profile add --category":     "categories - file a new profile under profiles/<category>/",
-	"profile add --key-scope":    "G8 - the --key-scope profile edit takes; --shared is its deprecated spelling",
+	"profile add --key-scope":    "G8 - the --key-scope profile edit takes; --shared is its shorthand",
+	"profile edit --shared":      "G8 - the shorthand profile add takes, so the two commands match",
 	"profile add --key-comment":  "G11 - ssh-keygen -C template for the profile's keys",
 	"profile edit --key-comment": "G11 - set or clear (\"\") the profile's key_comment",
 	"profile edit --category":    "categories - move a profile's keys and records under profiles/<category>/",

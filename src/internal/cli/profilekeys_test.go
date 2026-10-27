@@ -11,30 +11,45 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 )
 
-// G8: profile add takes the same --key-scope profile edit does; --shared still
-// works, deprecated, and the two cannot disagree.
-func TestProfileAddKeyScope(t *testing.T) {
+// G8: profile add takes the same --key-scope profile edit does, and both take
+// --shared as its shorthand. The two may only be combined when they agree.
+func TestProfileKeyScopeAndShared(t *testing.T) {
 	p := editHome(t)
 	run(t, "profile", "add", "team", "--key-scope", "shared", "--key-name", "team-ed25519")
-	out := run(t, "profile", "add", "old", "--shared", "--key-name", "old-ed25519")
-	if !strings.Contains(out, "deprecated") || !strings.Contains(out, "--key-scope shared") {
-		t.Errorf("--shared should say it is deprecated and name its replacement:\n%s", out)
+	out := run(t, "profile", "add", "short", "--shared", "--key-name", "short-ed25519")
+	if strings.Contains(out, "deprecated") {
+		t.Errorf("--shared is a supported shorthand, not deprecated:\n%s", out)
 	}
+	run(t, "profile", "add", "both", "--shared", "--key-scope", "shared", "--key-name", "both-ed25519")
 	run(t, "profile", "add", "plain")
+	run(t, "profile", "add", "flip", "--shared", "--key-name", "flip-ed25519")
+	run(t, "profile", "edit", "flip", "--shared=false")
+	run(t, "profile", "edit", "plain", "--shared", "--key-name", "plain-ed25519")
 	m, err := manifest.Load(p.Manifest())
 	if err != nil {
 		t.Fatal(err)
 	}
-	for name, want := range map[string]string{"team": "shared", "old": "shared", "plain": "per_service"} {
+	for name, want := range map[string]string{
+		"team": "shared", "short": "shared", "both": "shared", "plain": "shared", "flip": "per_service",
+	} {
 		if got := m.Profiles[name].KeyScope; got != want {
 			t.Errorf("%s: key_scope %q, want %q", name, got, want)
 		}
 	}
-	if _, err := runErr(t, "profile", "add", "clash", "--shared", "--key-scope", "per_service"); err == nil {
-		t.Error("--shared with --key-scope per_service should be refused")
+	for _, args := range [][]string{
+		{"profile", "add", "clash", "--shared", "--key-scope", "per_service"},
+		{"profile", "edit", "team", "--shared=false", "--key-scope", "shared"},
+		{"profile", "add", "bad", "--key-scope", "everything"},
+	} {
+		if _, err := runErr(t, args...); err == nil {
+			t.Errorf("%v should be refused", args)
+		}
 	}
-	if _, err := runErr(t, "profile", "add", "bad", "--key-scope", "everything"); err == nil {
-		t.Error("an unknown --key-scope should be refused")
+	if m, err = manifest.Load(p.Manifest()); err != nil {
+		t.Fatal(err)
+	}
+	if _, ok := m.Profiles["clash"]; ok {
+		t.Error("a refused add must not leave a profile behind")
 	}
 }
 
@@ -85,6 +100,12 @@ func TestProfileKeyComment(t *testing.T) {
 		t.Errorf("the default comment changed: %q", b)
 	}
 
+	if out := run(t, "show", "work"); !strings.Contains(out, "key_comment: imani-{device}-{date}") {
+		t.Errorf("show should name a profile's own key_comment:\n%s", out)
+	}
+	if out := run(t, "show", "home"); strings.Contains(out, "key_comment") {
+		t.Errorf("show should say nothing new for a profile on the default:\n%s", out)
+	}
 	if _, err := runErr(t, "profile", "edit", "work", "--key-comment", "{user}@{device}"); err == nil {
 		t.Error("an unknown placeholder should be refused")
 	}
