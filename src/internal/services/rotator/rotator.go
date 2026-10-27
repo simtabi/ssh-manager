@@ -45,6 +45,9 @@ type RotateReport struct {
 	Committed      bool
 	Message        string
 	Targets        []TargetResult
+	// Fallback names the software type minted when the hardware *-sk type had
+	// no security key to answer; "" otherwise.
+	Fallback string `json:",omitempty"`
 }
 
 // Format renders the rotation summary (mirrors RotateReport.format).
@@ -67,6 +70,10 @@ func (r RotateReport) Format() string {
 			lines = append(lines, fmt.Sprintf("    remove the old key (%s) from %s by hand: it still logs in until you do",
 				r.OldFingerprint, t.ManageURL))
 		}
+	}
+	if r.Fallback != "" {
+		lines = append(lines, fmt.Sprintf("  no security key answered: the new key is a software %s key, not a hardware one; "+
+			"insert the key and rotate again to replace it", r.Fallback))
 	}
 	if r.Message != "" {
 		lines = append(lines, "  "+r.Message)
@@ -207,9 +214,17 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	comment := manifest.KeyComment(r.m, ref, hosts[0].Alias, inventory.Today())
 	// The key's own type, as reconcile minted it: defaults.key_type would turn
 	// a declared ecdsa key into ed25519 under its ecdsa name.
-	gen, err := r.ks.Generate(stagedPriv, r.m.KeyTypeFor(ref), comment, passphrase, false)
+	keyType := r.m.KeyTypeFor(ref)
+	gen, err := r.ks.Generate(stagedPriv, keyType, comment, passphrase, false)
 	if err != nil {
 		return RotateReport{}, err
+	}
+	if gen.Type != "" {
+		// What was minted, which differs only for a hardware fallback.
+		keyType, comment = gen.Type, gen.Comment
+		if gen.Fallback {
+			report.Fallback = gen.Type
+		}
 	}
 	report.NewFingerprint = gen.Fingerprint
 
@@ -308,16 +323,16 @@ func (r *Rotator) Rotate(selector string, allowUnverified bool, passphrase strin
 	}
 	report.Targets = results
 
-	r.updateInventory(profile, keyName, comment, report, results)
+	r.updateInventory(profile, keyName, keyType, comment, report, results)
 	report.Committed = true
 	log.Audit(r.p.AuditLog(), "rotate", log.Field{Key: "key", Value: keyName},
 		log.Field{Key: "old", Value: report.OldFingerprint}, log.Field{Key: "new", Value: report.NewFingerprint})
 	return report, nil
 }
 
-// comment is what the new key carries, so the record names it the way
+// keyType and comment are what the new key is and carries, so the record names it the way
 // ssh-keygen -l does.
-func (r *Rotator) updateInventory(profile, keyName, comment string, report RotateReport, results []TargetResult) {
+func (r *Rotator) updateInventory(profile, keyName, keyType, comment string, report RotateReport, results []TargetResult) {
 	ident := r.m.IdentityFile(profile, keyName)
 	oldIdent := r.m.IdentityFile(profile, "old/"+keyName)
 	// Drop any stale record still at the single /old/ slot (a prior predecessor).
@@ -352,7 +367,7 @@ func (r *Rotator) updateInventory(profile, keyName, comment string, report Rotat
 	created := inventory.Today()
 	exp, _ := inventory.ComputeExpiry(created, r.m.Defaults.RotateAfterDays)
 	r.inv.Record(report.NewFingerprint, inventory.KeyRecord{
-		Profile: profile, Path: ident, Type: r.m.KeyTypeFor(manifest.KeyRef{Profile: profile, KeyName: keyName}),
+		Profile: profile, Path: ident, Type: keyType,
 		Comment: &comment, Created: &created, RotateAfterDays: r.m.Defaults.RotateAfterDays,
 		ExpiresOn: &exp, Deployments: deployments(results, created),
 	})

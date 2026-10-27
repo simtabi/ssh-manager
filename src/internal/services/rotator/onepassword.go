@@ -226,9 +226,11 @@ func (r *Rotator) rotateOnePassword(profile, keyName string, hosts []manifest.Ho
 		results[i].Revoked = r.provider(hosts[i]).Remove(r.target(hosts[i], profile, oldPub, oldPubText, ""))
 	}
 	report.Targets = results
-	// 1Password writes no comment into the key; the record keeps the shape it
-	// always had.
-	r.updateInventory(profile, keyName, fmt.Sprintf("%s/%s %s", profile, keyName, inventory.Today()), report, results)
+	// 1Password writes no comment into the key, so the record carries the one
+	// reconcile records for a 1Password key: the profile's key_comment.
+	ref := manifest.KeyRef{Profile: profile, KeyName: keyName}
+	r.updateInventory(profile, keyName, r.m.KeyTypeFor(ref),
+		manifest.KeyComment(r.m, ref, hosts[0].Alias, inventory.Today()), report, results)
 	report.Committed = true
 	log.Audit(r.p.AuditLog(), "rotate", log.Field{Key: "key", Value: keyName}, log.Field{Key: "store", Value: "1password"},
 		log.Field{Key: "old", Value: report.OldFingerprint}, log.Field{Key: "new", Value: report.NewFingerprint})
