@@ -8,7 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
-- **`sshmgr serve` (alias `ui`) - a read-only web UI on this machine.** An overview built from the same rows the
+- **The web UI makes changes, each previewed first.** Profiles, hosts and VM hosts can be added, edited
+  and deleted from the pages; a declared key no host uses can be deleted; and `~/.ssh/config` can be
+  re-rendered. A preview runs the change for real on a throwaway copy of the home that holds no
+  private key, and shows every file it would write. Confirming takes the lock, previews again, and makes
+  the change only if nothing moved since; otherwise it shows the new preview. The lock is held only for
+  that. Each change is in the history with source `web`, and the CLI and the web leave the home
+  byte-identical (a test holds every change to its command). `--read-only` serves no change.
+- **`sshmgr serve` (alias `ui`) - a web UI on this machine.** An overview built from the same rows the
   menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
   snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's
   manifest diff, and the doctor and audit reports. It listens on `127.0.0.1:7822`, signs a browser in with a

@@ -1,6 +1,7 @@
 # `serve`
 
-`sshmgr serve` opens a read-only web UI for one sshmgr home in a browser on this machine.
+`sshmgr serve` opens a web UI for one sshmgr home in a browser on this machine. It shows everything,
+and makes the everyday manifest changes, each previewed before it is made.
 
 ## Starting it
 
@@ -36,16 +37,53 @@ when that port is taken.
 | History | the [`history`](history.md), filtered the same way. An operation's page shows its events and the manifest before and after |
 | Doctor, Audit | the reports `sshmgr doctor` and `sshmgr audit` print |
 
+## Changes
+
+These changes can be made from the pages:
+
+| Change | Where | The same as |
+|---|---|---|
+| Add a profile | Profiles | `sshmgr profile add` |
+| Change a profile's key scope | Profiles | `sshmgr profile edit --key-scope --key-name` |
+| Delete a profile | Profiles | `sshmgr profile delete --yes` |
+| Add a host, or a VM host | Hosts | `sshmgr host add`, `sshmgr vm add` |
+| Edit a host's hostname, user, port or tags | the host's page | `sshmgr host edit` |
+| Delete a host and its pins | the host's page | `sshmgr host delete --yes` |
+| Delete a declared key that no host uses | Keys | `sshmgr key delete --yes` |
+| Re-render `~/.ssh/config` | Overview | `sshmgr config render --yes` |
+
+Each change takes two steps:
+
+1. **Preview.** The change runs for real against a private, throwaway copy of the home. The copy
+   holds the config files, plus the files from `~/.ssh` that a snapshot may hold: config,
+   `known_hosts` and public keys. No private key is copied. The page shows the command line it
+   stands for, what sshmgr would say, and a diff of every file the change would write.
+2. **Confirm.** sshmgr takes the lock, then previews the change again. If the new preview differs
+   from the one you saw, the change isn't made: someone else may have changed the home since
+   (a CLI command, the menu, another tab). The page shows the new preview to confirm instead.
+   Otherwise sshmgr snapshots `~/.ssh`, makes the change, releases the lock, and links to the
+   change in the [`history`](history.md), where it shows with source `web`.
+
+The lock is held only while a change is checked and made, never while you read a preview.
+
+Some changes are terminal-only, because a preview could not show them truthfully:
+
+- minting or rotating a key: `reconcile`, `keygen`, `key add`, `rotate`. A new key is different
+  every time it is made.
+- `--purge`: it deletes private keys, which a preview never copies.
+- moving a profile to a category: it moves key directories.
+
+`--read-only` serves none of these changes, and the pages show no forms.
+
 ## What it will not do
 
-- **Change anything.** Every route is a GET. Make changes with the CLI or the menu, then reload the
-  page.
-- **Hold the lock.** A running server never holds up an sshmgr command.
+- **Hold the lock while you read.** It holds the lock only while it checks and makes a change you
+  confirmed.
 - **Open a snapshot that holds private keys.** A snapshot written before private keys were left out
   is listed but never opened. `sshmgr snapshots prune --keep 0` removes it.
 - **Show private keys.** Pages read public keys, `known_hosts` and config only.
-- **Create the history.** A page view reads `log/history.db` if it exists. Only a command that holds
-  the lock creates it or imports into it.
+- **Create the history from a page view.** A page reads `log/history.db` if it exists. Only a change
+  creates the database or imports into it, and only while it holds the lock.
 
 ## Security
 
@@ -54,8 +92,11 @@ when that port is taken.
   `ssh -L 7822:127.0.0.1:7822 <host>`.
 - **Host check.** The server answers only to `127.0.0.1`, `localhost` and `::1` at its port, plus
   any `--allow-host`. That stops a page on another site from rebinding its name to this machine.
-- **Session cookie.** `HttpOnly` and `SameSite=Strict`. Every request that could change state is also
-  held to the page's own origin and a per-session token.
+- **Session cookie.** `HttpOnly` and `SameSite=Strict`. Every change is also held to the page's own
+  origin and a per-session form token.
+- **Forms take names, never paths.** Profile, host and key names must be letters, digits, `.`, `_`
+  and `-`. A hostname or user with a control character in it is refused, so a form cannot smuggle a
+  line into `~/.ssh/config`.
 - **Headers.** Every response sends a strict Content-Security-Policy with no inline script or style,
   plus `nosniff`, `X-Frame-Options: DENY`, `no-referrer` and same-origin COOP and CORP.
 - **No network.** The page loads nothing from the network: Tabler, its icons and the page's own script
@@ -71,7 +112,7 @@ when that port is taken.
 | `--port` | port; pinned when given |
 | `--allow-remote` | permit a non-loopback `--addr` |
 | `--allow-host` | an extra Host header to accept, such as a proxy's name (repeatable) |
-| `--read-only` | serve no route that changes anything. Every route is read-only for now, so this has no effect yet. |
+| `--read-only` | serve no route that changes anything, and show no form |
 | `--no-open` | do not open a browser |
 | `--token-file` | also write the sign-in address to this file |
 
