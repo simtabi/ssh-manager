@@ -5,7 +5,7 @@
   <div class="table-responsive">
     <table class="table table-vcenter card-table">
       <caption class="visually-hidden">Every key the manifest declares or a host uses</caption>
-      <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Expires</th><th scope="col">Hosts</th><th scope="col">On disk</th></tr></thead>
+      <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Expires</th><th scope="col">Hosts</th><th scope="col">On disk</th>{{if not $.ReadOnly}}<th scope="col"><span class="visually-hidden">Actions</span></th>{{end}}</tr></thead>
       <tbody>
         {{range .Data}}
         <tr>
@@ -15,6 +15,7 @@
           <td>{{orDash .ExpiresOn}}</td>
           <td>{{orDash (join .Hosts ", ")}}</td>
           <td>{{if .Vault}}1Password <span class="text-secondary">({{.Vault}})</span>{{else if .PrivateOnDisk}}<span class="badge badge-ok">yes</span>{{else}}<span class="badge badge-warn">not minted</span>{{end}}</td>
+          {{if not $.ReadOnly}}<td class="text-end">{{if and .Declared (not .Hosts)}}{{template "change_open" $}}<input type="hidden" name="action" value="key-delete"><input type="hidden" name="profile" value="{{.Ref.Profile}}"><input type="hidden" name="key" value="{{.Ref.KeyName}}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete key {{.Ref.KeyName}}</button></form>{{end}}</td>{{end}}
         </tr>
         {{end}}
       </tbody>
@@ -22,4 +23,5 @@
   </div>
   {{else}}<div class="card-body text-secondary">No keys in the manifest yet.</div>{{end}}
 </div>
+<p class="text-secondary mt-2">A declared key no host uses can be deleted here: the declaration and its record go, the files stay. Keys are minted and rotated in a terminal, with <code>sshmgr reconcile</code>, <code>sshmgr key add</code> and <code>sshmgr rotate</code>.</p>
 {{end}}

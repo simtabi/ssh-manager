@@ -25,4 +25,45 @@
   {{else}}<div class="card-body text-secondary">No hosts in this profile.</div>{{end}}
 </div>
 {{else}}<p class="text-secondary">No profiles yet.</p>{{end}}
+{{if and (not .ReadOnly) .Data}}
+<div class="row row-cards mt-1">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a host</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="host-add">
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="h-profile">Profile</label><select class="form-select" id="h-profile" name="profile">{{range .Data}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></div>
+            <div class="col-sm-6"><label class="form-label" for="h-alias">Alias</label><input class="form-control" id="h-alias" name="alias" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-6"><label class="form-label" for="h-hostname">Hostname</label><input class="form-control" id="h-hostname" name="hostname" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="h-user">User</label><input class="form-control" id="h-user" name="user" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="h-port">Port</label><input class="form-control" id="h-port" name="port" inputmode="numeric" value="22"></div>
+            <div class="col-12"><label class="form-label" for="h-tags">Tags <span class="text-secondary">(comma-separated)</span></label><input class="form-control" id="h-tags" name="tags" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <p class="text-secondary small mt-2 mb-2">Its key is minted by <code>sshmgr reconcile</code> in a terminal.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a VM host</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="vm-add">
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="v-profile">Profile</label><select class="form-select" id="v-profile" name="profile">{{range .Data}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></div>
+            <div class="col-sm-6"><label class="form-label" for="v-alias">Alias</label><input class="form-control" id="v-alias" name="alias" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-6"><label class="form-label" for="v-hv">Hypervisor</label><select class="form-select" id="v-hv" name="hypervisor">{{range hypervisors}}<option value="{{.}}">{{.}}</option>{{end}}</select></div>
+            <div class="col-sm-6"><label class="form-label" for="v-vm">VM name</label><input class="form-control" id="v-vm" name="vm" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-6"><label class="form-label" for="v-user">Guest user</label><input class="form-control" id="v-user" name="user" required autocomplete="off" spellcheck="false"></div>
+          </div>
+          <p class="text-secondary small mt-2 mb-2">Its address comes from the hypervisor each time ssh connects.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
 {{end}}

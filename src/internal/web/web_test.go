@@ -212,9 +212,9 @@ func TestHostCheckRefusesARebindingHost(t *testing.T) {
 	}
 }
 
-// Nothing changes state in this phase: a POST without the session's CSRF
-// token is refused, and one with it finds no route that would act.
-func TestNoRouteChangesAnything(t *testing.T) {
+// Only the two change routes take a POST: one without the session's CSRF
+// token is refused, and a valid one anywhere else finds no route that acts.
+func TestOnlyTheChangeRoutesTakeAPost(t *testing.T) {
 	s, _, _ := newTestServer(t)
 	c := signIn(t, s)
 	if rec := c.post("/hosts", "x=1"); rec.Code != http.StatusForbidden {

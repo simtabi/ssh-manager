@@ -43,11 +43,14 @@ func newServeCmd() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "serve",
 		Aliases: []string{"ui"},
-		Short:   "Open the web UI on this machine (read-only)",
+		Short:   "Open the web UI on this machine",
 		Long: "Open the web UI on this machine: an overview, the profiles, hosts and keys, the\n" +
 			"snapshots, the operation history, and the doctor and audit reports.\n\n" +
-			"It only reads. It takes no lock, so a running server never holds up an sshmgr\n" +
-			"command; make changes with the CLI or the menu, then reload the page.\n\n" +
+			"Changes - adding, editing and deleting profiles, hosts and keys, and re-rendering\n" +
+			"the config - are previewed first: the page shows exactly what each would write,\n" +
+			"and confirming makes it only if nothing moved since. The lock is held only while\n" +
+			"a change is checked and made, so a running server does not hold up a command.\n" +
+			"--read-only serves no change at all.\n\n" +
 			"Listens on 127.0.0.1, port " + strconv.Itoa(web.DefaultPort) + " by default. If that port is taken it takes the\n" +
 			"next free one and prints the address it bound; --port pins a port and fails if it\n" +
 			"is taken. The printed address carries a one-time token that signs the browser in;\n" +
@@ -84,7 +87,7 @@ func newServeCmd() *cobra.Command {
 
 			token := web.NewToken()
 			srv, err := web.New(web.Options{
-				Engine:       web.AppEngine{P: p},
+				Engine:       web.AppEngine{P: p, Retain: snapshotRetain()},
 				Token:        token,
 				AllowedHosts: web.AllowedHosts(host, bound, allowHosts),
 				AllowRemote:  allowRemote,
@@ -103,7 +106,11 @@ func newServeCmd() *cobra.Command {
 				_, _ = fmt.Fprintf(out, "port %d is in use; listening on %d instead\n", pinnedPort, bound)
 			}
 			_, _ = fmt.Fprintf(out, "sshmgr web UI: %s\n", url)
-			_, _ = fmt.Fprintf(out, "reading %s (read-only)\n", p.ConfigDir)
+			mode := "changes are previewed before they are made"
+			if readOnly {
+				mode = "read-only"
+			}
+			_, _ = fmt.Fprintf(out, "home %s (%s)\n", p.ConfigDir, mode)
 			if allowRemote {
 				_, _ = fmt.Fprintln(c.ErrOrStderr(), "warning: --allow-remote serves plain HTTP; put a TLS proxy in front, or use an SSH tunnel")
 			}
@@ -131,7 +138,7 @@ func newServeCmd() *cobra.Command {
 	f.IntVar(&port, "port", web.DefaultPort, "port to listen on; when not given and the default is taken, the next free port is used")
 	f.BoolVar(&allowRemote, "allow-remote", false, "allow a non-loopback --addr (plain HTTP; prefer an SSH tunnel)")
 	f.StringArrayVar(&allowHosts, "allow-host", nil, "extra Host header to accept with --allow-remote, e.g. a proxy's name (repeatable)")
-	f.BoolVar(&readOnly, "read-only", false, "serve no route that changes anything (every route is read-only in this release)")
+	f.BoolVar(&readOnly, "read-only", false, "serve no route that changes anything, and show no form")
 	f.BoolVar(&noOpen, "no-open", false, "do not open a browser")
 	f.StringVar(&tokenFile, "token-file", "", "also write the sign-in address to this file, mode 0600, for scripts")
 	return cmd

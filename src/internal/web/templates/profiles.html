@@ -5,7 +5,7 @@
   <div class="table-responsive">
     <table class="table table-vcenter card-table">
       <caption class="visually-hidden">Every profile in the manifest</caption>
-      <thead><tr><th scope="col">Profile</th><th scope="col">Category</th><th scope="col">Key scope</th><th scope="col">Key store</th><th scope="col">Hosts</th><th scope="col">Keys</th><th scope="col">History</th></tr></thead>
+      <thead><tr><th scope="col">Profile</th><th scope="col">Category</th><th scope="col">Key scope</th><th scope="col">Key store</th><th scope="col">Hosts</th><th scope="col">Keys</th><th scope="col">History</th>{{if not $.ReadOnly}}<th scope="col"><span class="visually-hidden">Actions</span></th>{{end}}</tr></thead>
       <tbody>
         {{range .Data}}
         <tr>
@@ -16,11 +16,48 @@
           <td>{{.Hosts}}</td>
           <td>{{.Keys}}</td>
           <td><a href="/history?profile={{.Name}}">Changes</a></td>
+          {{if not $.ReadOnly}}<td class="text-end">
+            {{template "change_open" $}}<input type="hidden" name="action" value="profile-delete"><input type="hidden" name="name" value="{{.Name}}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete profile {{.Name}}</button></form>
+          </td>{{end}}
         </tr>
         {{end}}
       </tbody>
     </table>
   </div>
-  {{else}}<div class="card-body text-secondary">No profiles yet. Add one with <code>sshmgr profile add &lt;name&gt;</code>.</div>{{end}}
+  {{else}}<div class="card-body text-secondary">No profiles yet. Add one below, or with <code>sshmgr profile add &lt;name&gt;</code>.</div>{{end}}
 </div>
+<p class="text-secondary mt-2">Deleting a profile removes its hosts, their config blocks and their pins. Its key files stay on disk; <code>sshmgr profile delete --purge</code> in a terminal removes them too.</p>
+
+{{if not .ReadOnly}}
+<div class="row row-cards mt-1">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a profile</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="profile-add">
+          <div class="mb-2"><label class="form-label" for="p-name">Name</label><input class="form-control" id="p-name" name="name" required pattern="[A-Za-z0-9][A-Za-z0-9._\-]*" autocomplete="off" spellcheck="false"></div>
+          <div class="mb-2"><label class="form-label" for="p-scope">Key scope</label><select class="form-select" id="p-scope" name="key_scope"><option value="per_service">per service: one key for each host</option><option value="shared">shared: one key for every host</option></select></div>
+          <div class="mb-3"><label class="form-label" for="p-keyname">Shared key name <span class="text-secondary">(shared scope only)</span></label><input class="form-control" id="p-keyname" name="key_name" autocomplete="off" spellcheck="false"></div>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {{if .Data}}
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Change a profile's key scope</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="profile-edit">
+          <div class="mb-2"><label class="form-label" for="e-name">Profile</label><select class="form-select" id="e-name" name="name">{{range .Data}}<option value="{{.Name}}">{{.Name}} ({{.KeyScope}})</option>{{end}}</select></div>
+          <div class="mb-2"><label class="form-label" for="e-scope">Key scope</label><select class="form-select" id="e-scope" name="key_scope"><option value="per_service">per service</option><option value="shared">shared</option></select></div>
+          <div class="mb-3"><label class="form-label" for="e-keyname">Shared key name <span class="text-secondary">(shared scope only)</span></label><input class="form-control" id="e-keyname" name="key_name" autocomplete="off" spellcheck="false"></div>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  {{end}}
+</div>
+{{end}}
 {{end}}

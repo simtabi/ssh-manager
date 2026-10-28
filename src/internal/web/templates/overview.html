@@ -27,7 +27,10 @@
           </tbody>
         </table>
       </div>
-      <div class="card-footer text-secondary">These are the rows the <code>sshmgr</code> menu prints at the top. Run a fix in a terminal; this page shows the result when you reload it.</div>
+      <div class="card-footer text-secondary d-flex flex-wrap gap-2 align-items-center">
+        <span class="me-auto">These are the rows the <code>sshmgr</code> menu prints at the top.</span>
+        {{if not $.ReadOnly}}{{template "change_open" $}}<input type="hidden" name="action" value="config-render"><button type="submit" class="btn btn-sm btn-outline-primary">Re-render ~/.ssh/config</button></form>{{end}}
+      </div>
     </div>
   </div>
   <div class="col-lg-5">

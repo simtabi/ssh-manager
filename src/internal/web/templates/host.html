@@ -48,6 +48,28 @@
       {{else}}<div class="card-body text-secondary">Not pinned. Run <code>sshmgr knownhosts pin {{.Detail.Alias}}</code> in a terminal.</div>{{end}}
     </div>
     <p class="mt-3"><a href="/history?host={{.Detail.Alias}}">{{icon "history"}}<span class="ms-1">Changes to this host</span></a></p>
+    {{if not $.ReadOnly}}{{with .Detail}}
+    <div class="card mt-3">
+      <div class="card-header"><h2 class="card-title">Edit</h2></div>
+      <div class="card-body">
+        {{template "change_open" $}}<input type="hidden" name="action" value="host-edit"><input type="hidden" name="profile" value="{{.Profile}}"><input type="hidden" name="alias" value="{{.Alias}}">
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="e-hostname">Hostname</label><input class="form-control" id="e-hostname" name="hostname" value="{{.Hostname}}" autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="e-user">User</label><input class="form-control" id="e-user" name="user" value="{{.User}}" autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="e-port">Port</label><input class="form-control" id="e-port" name="port" value="{{.Port}}" inputmode="numeric"></div>
+            <div class="col-12"><label class="form-label" for="e-tags">Tags <span class="text-secondary">(comma-separated; empty clears them)</span></label><input class="form-control" id="e-tags" name="tags" value="{{join .Tags ", "}}" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <button type="submit" class="btn btn-primary mt-3">Preview</button>
+        </form>
+      </div>
+      <div class="card-footer">
+        {{template "change_open" $}}<input type="hidden" name="action" value="host-delete"><input type="hidden" name="profile" value="{{.Profile}}"><input type="hidden" name="alias" value="{{.Alias}}">
+          <button type="submit" class="btn btn-outline-danger">Delete host {{.Alias}} and its pins</button>
+          <span class="text-secondary small ms-2">Its key files stay on disk.</span>
+        </form>
+      </div>
+    </div>
+    {{end}}{{end}}
   </div>
 </div>
 {{end}}{{end}}

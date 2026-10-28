@@ -154,4 +154,3 @@ func TestEveryWebChangeMatchesItsCommand(t *testing.T) {
 		})
 	}
 }
-

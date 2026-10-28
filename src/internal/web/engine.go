@@ -14,6 +14,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/change"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/doctor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/keysvc"
@@ -47,6 +48,11 @@ type Engine interface {
 	Op(id string) (OpView, error)
 	Doctor() (doctor.Report, error)
 	Audit(now time.Time) (AuditView, error)
+
+	// Preview runs a change on a private copy of the home; Apply makes it
+	// if a fresh preview under the lock still has the confirmed hash.
+	Preview(ch change.Change) (change.Plan, error)
+	Apply(ch change.Change, hash string) (change.Plan, change.Result, error)
 }
 
 // Overview is the first page: the banner's rows, and the counts behind them.
@@ -129,6 +135,21 @@ type AuditKey struct {
 // at any moment, and a page must show what is there now.
 type AppEngine struct {
 	P paths.Paths
+	// Retain is how many snapshots a change keeps, as the CLI's
+	// $SSH_MANAGER_SNAPSHOT_RETAIN; zero means 10.
+	Retain int
+}
+
+// Preview shows what ch would do, without doing it.
+func (e AppEngine) Preview(ch change.Change) (change.Plan, error) { return change.Preview(e.P, ch) }
+
+// Apply makes ch if it would still do what was confirmed.
+func (e AppEngine) Apply(ch change.Change, hash string) (change.Plan, change.Result, error) {
+	retain := e.Retain
+	if retain < 1 {
+		retain = 10
+	}
+	return change.Apply(e.P, ch, hash, retain, history.SourceWeb)
 }
 
 // Home is the paths this engine reads.

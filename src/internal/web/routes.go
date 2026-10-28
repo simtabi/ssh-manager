@@ -10,9 +10,10 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 )
 
-// routes registers every page. Each takes names from the path or the query,
-// never a filesystem path, and the engine resolves each name against what
-// exists. Every route is a GET: nothing here changes anything.
+// routes registers every page. Each takes names from the path, the query or
+// the form, never a filesystem path, and the engine resolves each name against
+// what exists. The two POST routes are the only ones that change anything, and
+// --read-only does not register them.
 func (s *Server) routes() http.Handler {
 	h := pages{s}
 	mux := http.NewServeMux()
@@ -30,10 +31,14 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /doctor", h.handleDoctor)
 	mux.HandleFunc("GET /audit", h.handleAudit)
 	mux.HandleFunc("GET /about/licenses", h.handleLicences)
+	if !s.opts.ReadOnly {
+		mux.HandleFunc("POST /changes/preview", h.handlePreview)
+		mux.HandleFunc("POST /changes/apply", h.handleApply)
+	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
-			s.renderError(w, r, http.StatusMethodNotAllowed, "Read-only",
-				"This version of the web UI only shows what is there. Make changes with the sshmgr command.")
+			s.renderError(w, r, http.StatusMethodNotAllowed, "Not a change",
+				"Changes are made from the forms on these pages, or with the sshmgr command.")
 			return
 		}
 		s.renderError(w, r, http.StatusNotFound, "Not found", "There is no page at this address.")

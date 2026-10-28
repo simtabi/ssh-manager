@@ -54,7 +54,7 @@
         <ul class="list-inline list-inline-dots mb-0 text-secondary">
           <li class="list-inline-item">sshmgr {{.Version}}</li>
           {{if .Authed}}<li class="list-inline-item">home <code>{{.Home}}</code></li>{{end}}
-          <li class="list-inline-item">{{icon "lock"}} read-only</li>
+          {{if .ReadOnly}}<li class="list-inline-item">{{icon "lock"}} read-only</li>{{end}}
           <li class="list-inline-item"><a class="link-secondary" href="/about/licenses">Third-party licences</a></li>
         </ul>
       </div>

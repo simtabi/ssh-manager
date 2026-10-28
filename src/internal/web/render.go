@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/expiry"
+	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 )
 
@@ -110,10 +111,11 @@ func funcs(a *assetSet) template.FuncMap {
 			}
 			return *s
 		},
-		"join":  strings.Join,
-		"list":  func(xs ...string) []string { return xs },
-		"short": func(s string) string { return shorten(s, 8) },
-		"size":  humanSize,
+		"join":        strings.Join,
+		"list":        func(xs ...string) []string { return xs },
+		"hypervisors": func() []string { return manifest.Hypervisors },
+		"short":       func(s string) string { return shorten(s, 8) },
+		"size":        humanSize,
 		"resultClass": func(r string) string {
 			switch r {
 			case history.ResultOK:

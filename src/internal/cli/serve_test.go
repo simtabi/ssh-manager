@@ -129,7 +129,7 @@ func TestServeTakesTheNextFreePortAndSaysSo(t *testing.T) {
 	if m == nil || m[1] != "7823" {
 		t.Fatalf("printed address is not the bound one:\n%s", out)
 	}
-	if !strings.Contains(out, "port 7822 is in use; listening on 7823 instead") || !strings.Contains(out, "read-only") {
+	if !strings.Contains(out, "port 7822 is in use; listening on 7823 instead") || !strings.Contains(out, "previewed") {
 		t.Errorf("the fallback or the read-only note was not announced:\n%s", out)
 	}
 	if strings.Join(*tried, " ") != "127.0.0.1:7822 127.0.0.1:7823" {

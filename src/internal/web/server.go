@@ -6,8 +6,9 @@
 // imports internal/cli, which holds the TUI and process-wide state a
 // long-lived server cannot share (imports_test.go holds it to that).
 //
-// This phase is read-only: every route is a GET, and nothing the server does
-// takes the advisory lock, so a running server never blocks a CLI command.
+// Reading takes no lock. A change takes it only while it is checked and made
+// (see services/change), never while a person reads its preview, so a running
+// server does not hold up a CLI command.
 package web
 
 import (
@@ -33,8 +34,7 @@ type Options struct {
 	// reverse proxy's X-Forwarded-Proto mark the session cookie Secure.
 	AllowRemote bool
 
-	// ReadOnly registers no route that changes anything. Every route is
-	// read-only until the write phase, so for now it only labels the footer.
+	// ReadOnly registers no route that changes anything, and hides the forms.
 	ReadOnly bool
 
 	// Version and BindAddr are shown in the footer.
