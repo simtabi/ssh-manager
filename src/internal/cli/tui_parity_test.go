@@ -94,17 +94,26 @@ func TestTuiRotateRefusesWithoutAKeyBackup(t *testing.T) {
 	noSnapshots(t, tt, "rotate without a backup")
 }
 
-// A mutating command takes the lock before it reads the manifest or inventory,
-// or it can save a stale copy over whatever the command it waited for wrote.
-// The TUI's Reconcile read both first.
+// A mutating command must not save a stale copy over whatever another command
+// wrote. The TUI's Reconcile used to read before it locked (W10); then it
+// locked before it read, and held the lock while it asked. Now it asks
+// without the lock and re-reads under it before writing (see tuilock_test.go
+// for the stop when something moved), so declining takes no lock at all, and
+// applying writes only under it.
 func TestTuiReconcileLocksBeforeItReads(t *testing.T) {
 	releaseHeldLock(t)
 	mutation.Release()
 	t.Setenv("SSH_MANAGER_AUTO_PIN", "0")
 	tt, _ := tuiWith(t, "reconcile", "q")
 	declining(tt).run()
-	if !mutation.Held() {
-		t.Error("reconcile read the manifest without taking the lock")
+	if tuiRecorded(t, tt, "reconcile") {
+		t.Error("a declined reconcile took the lock")
 	}
 	noSnapshots(t, tt, "reconcile")
+
+	tt.pr.(*scriptPrompter).answers, tt.pr.(*scriptPrompter).i = []string{"reconcile", "q"}, 0
+	accepting(tt).run()
+	if !tuiRecorded(t, tt, "reconcile") {
+		t.Error("reconcile wrote without taking the lock")
+	}
 }

@@ -5,6 +5,7 @@ import (
 	"path/filepath"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
 )
@@ -63,7 +64,24 @@ func TestTuiSnapshotRestoreTakesTheLock(t *testing.T) {
 	}
 	tt.pr.(*scriptPrompter).answers = []string{"snapshots", filepath.Base(snap), "q"}
 	accepting(tt).run()
-	if !mutation.Held() {
+	// The lock is released when the action ends, so look for the operation
+	// it opens: the history records one only once the lock is taken.
+	if !tuiRecorded(t, tt, "snapshots") {
 		t.Error("the TUI restored a snapshot without taking the lock")
 	}
+}
+
+// tuiRecorded reports whether the TUI session recorded an operation for verb,
+// which it does only when the action took the lock.
+func tuiRecorded(t *testing.T, tt *tui, verb string) bool {
+	t.Helper()
+	if _, err := os.Stat(tt.p.HistoryDB()); err != nil {
+		return false
+	}
+	for _, o := range liveOps(t, tt.p) {
+		if o.Command == verb && o.Source == history.SourceTUI {
+			return true
+		}
+	}
+	return false
 }

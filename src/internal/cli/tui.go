@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -276,6 +277,10 @@ func (t *tui) run() {
 		t.dispatch(item.handler)
 		if item.mutates {
 			mutation.End(mutation.Outcome{})
+			// The lock is scoped to the action, as the web's is. A CLI command
+			// holds it until it exits; a menu that did the same would block
+			// every other sshmgr command for as long as it stayed open.
+			mutation.Release()
 		}
 		t.print("")
 		// A mutating action changes what the banner reports - drift, pin
@@ -411,26 +416,37 @@ func (t *tui) audit() {
 	t.print(report)
 }
 
-// reconcile follows reconcileApply, the CLI's applying half: lock before
-// reading, preview as the confirmation, snapshot, apply, pin unless
-// SSH_MANAGER_AUTO_PIN turns it off, then warn about keys nothing uses.
+// reconcile follows reconcileApply, the CLI's applying half: preview as the
+// confirmation, asked without the lock; then lock, preview again and stop if
+// anything moved, snapshot, apply, pin unless SSH_MANAGER_AUTO_PIN turns it
+// off, then warn about keys nothing uses.
 func (t *tui) reconcile() {
-	lockForMutation(t.p) // before the reads, so a save cannot overwrite a newer copy
-	m := t.manifest()
-	if m == nil {
-		t.print("no manifest")
-		return
-	}
-	inv, _ := inventory.Load(t.p.Inventory())
+	var m *manifest.Manifest
 	emit := platform.EmitUseKeychain()
-	dry, err := reconciler.New(t.p, m, inv, emit).Reconcile(true, "")
+	preview := func() (string, error) {
+		if m = t.manifest(); m == nil {
+			return "", errors.New("no manifest")
+		}
+		inv, _ := inventory.Load(t.p.Inventory())
+		dry, err := reconciler.New(t.p, m, inv, emit).Reconcile(true, "")
+		if err != nil {
+			return "", err
+		}
+		return dry.Format(), nil
+	}
+	shown, err := preview()
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
 	}
-	t.print(dry.Format())
+	t.print(shown)
 	if !t.pr.Confirm("Apply these changes to ~/.ssh?") {
 		t.print("cancelled")
+		return
+	}
+	// Under the lock now, and m is re-read: a save cannot overwrite a newer copy.
+	if err := recheck(t.p, shown, preview); err != nil {
+		t.print("error: " + err.Error())
 		return
 	}
 	snap := snapshotBeforeMutation(t.p)
