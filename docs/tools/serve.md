@@ -51,6 +51,12 @@ These changes can be made from the pages:
 | Delete a host and its pins | the host's page | `sshmgr host delete --yes` |
 | Delete a declared key that no host uses | Keys | `sshmgr key delete --yes` |
 | Re-render `~/.ssh/config` | Overview | `sshmgr config render --yes` |
+| Reconcile: mint missing keys, record keys on disk, render | Overview | `sshmgr reconcile --yes --no-pin` |
+| Mint a profile's or host's missing keys | Keys | `sshmgr keygen <target> --no-pin --yes` |
+| Add a key, optionally wired to a host | Keys | `sshmgr key add` |
+| Prune old snapshots | Snapshots | `sshmgr snapshots prune --keep` |
+| Fix file modes | Doctor | `sshmgr doctor --fix` |
+| Write an editable `providers.json` | Doctor | `sshmgr providers --export` |
 
 Each change takes two steps:
 
@@ -66,12 +72,27 @@ Each change takes two steps:
 
 The lock is held only while a change is checked and made, never while you read a preview.
 
-Some changes are terminal-only, because a preview could not show them truthfully:
+**Where the copy has no file, a placeholder stands in.** A private key's place in the copy holds an
+empty placeholder file. It tells a command the key exists, so the key is never minted again, but it
+holds nothing of the key. Copied files keep their modification times.
 
-- minting or rotating a key: `reconcile`, `keygen`, `key add`, `rotate`. A new key is different
-  every time it is made.
-- `--purge`: it deletes private keys, which a preview never copies.
-- moving a profile to a category: it moves key directories.
+**Changes that mint a key.** A preview of `reconcile`, `keygen` or `key add` mints throwaway keys in
+the copy, and the page says so. Confirming mints new keys, so their fingerprints differ from the
+preview's; everything else comes out as shown. These changes never overwrite a key that exists,
+never take a passphrase, and never pin hosts, which needs the network. They're refused for a profile
+kept in 1Password: a preview mints for real, and in a vault that would leave an item behind.
+
+**Changes with effects outside the copy.** Prune and fix list what they would do outside the copied
+files: the snapshots they would remove, the paths whose modes they would fix. The confirmation is
+bound to those lists too. Prune takes no snapshot of its own first, because one more snapshot would
+push another out.
+
+Some changes are terminal-only:
+
+- rotating, overwriting a key (`keygen --force`), and passphrases;
+- `--purge`: it deletes private keys, which a preview never copies;
+- moving a profile to a category: it moves key directories;
+- pinning host keys, `host apply`, `key regen-pub`, `clean`, the exports, `bundle` and `vm docker-context`.
 
 `--read-only` serves none of these changes, and the pages show no forms.
 

@@ -15,6 +15,11 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   the change only if nothing moved since; otherwise it shows the new preview. The lock is held only for
   that. Each change is in the history with source `web`, and the CLI and the web leave the home
   byte-identical (a test holds every change to its command). `--read-only` serves no change.
+- **The web UI mints keys, prunes snapshots and fixes modes.** Reconcile, keygen (missing keys only)
+  and key add preview with throwaway keys and say so; confirming mints the keys that stay. They never
+  overwrite, take a passphrase or pin, and are refused for 1Password profiles. Snapshot pruning,
+  `doctor --fix` and `providers --export` are there too, with what they do outside the files listed in
+  the preview and bound to the confirmation.
 - **`sshmgr serve` (alias `ui`) - a web UI on this machine.** An overview built from the same rows the
   menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
   snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's
