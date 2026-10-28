@@ -172,7 +172,7 @@ func rotateMany(c *cobra.Command, sel keysvc.Selection, allowUnverified, passphr
 	}
 	snapshotBeforeMutation(p)
 	rot := withManualPaste(c, rotator.New(p, m, inv))
-	failed, err := rot.RotateEach(names, allowUnverified, pw, out, func() error { return inv.Save(p.Inventory()) })
+	failed, err := rot.RotateEach(names, allowUnverified, pw, out, func() error { return inv.Save(p.Inventory()) }, nil)
 	if err != nil {
 		return err
 	}

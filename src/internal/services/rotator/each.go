@@ -9,11 +9,18 @@ import (
 // RotateEach rotates the keys named, one after another, as `sshmgr rotate`
 // does for a selection: a key that fails is reported and left as it was, and
 // the rest go on. save runs after every committed key, so an interrupted batch
-// keeps what it finished. It returns the keys not rotated.
+// keeps what it finished. next, when set, runs before each key, and an error
+// from it stops the batch there: a web job's cancel. It returns the keys not
+// rotated.
 func (r *Rotator) RotateEach(names []string, allowUnverified bool, pw string, out io.Writer,
-	save func() error) ([]string, error) {
+	save, next func() error) ([]string, error) {
 	var failed []string
 	for _, n := range names {
+		if next != nil {
+			if err := next(); err != nil {
+				return failed, err
+			}
+		}
 		report, err := r.Rotate(n, allowUnverified, pw)
 		switch {
 		case err != nil:

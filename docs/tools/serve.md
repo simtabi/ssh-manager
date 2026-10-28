@@ -129,6 +129,8 @@ A key's page offers each as a **job**:
 | Deploy a key to every host that uses it | the key's page | `sshmgr deploy <profile/key> --yes` |
 | Rotate a key | the key's page | `sshmgr rotate <profile/key> --yes` |
 | Roll a key back to its predecessor | the key's page | `sshmgr rollback <profile/key> --yes` |
+| Rotate a profile's keys, or every key | Profiles | `sshmgr rotate <profile> --yes`, `sshmgr rotate --all --yes` |
+| Restore an encrypted bundle from `dist/` | Snapshots | `sshmgr restore <bundle> --yes` |
 
 - **One job at a time.** Starting a second while one runs takes you to the one running. No change
   is previewed or made while a job runs.
@@ -139,13 +141,18 @@ A key's page offers each as a **job**:
   the job with the new public key shown for copying. Confirm once it is pasted; sshmgr then logs in
   with it to prove it. Rotate writes an encrypted backup first, so it needs
   `SSH_MANAGER_AGE_RECIPIENT`.
+- **Rotating many keys** reviews the keys it will rotate, then rotates each a host uses in turn. A
+  key that fails is left as it was, and the rest go on. Cancel stops before the next key.
+- **Restoring a bundle** decrypts with the identity file in `SSH_MANAGER_AGE_IDENTITY_FILE`, as set
+  where `sshmgr serve` runs; the web takes no identity and no passphrase. Only a bundle in the config
+  home's `dist/`, named as `sshmgr bundle` names them, can be restored here.
 - **Cancel** stops a job at its next step, never inside one. A rotate waiting on you is answered no.
 
 Some changes are terminal-only:
 
 - rotating, overwriting a key (`keygen --force`), and passphrases;
-- rotating many keys at once, revoking a key from its targets (`--revoke`), and restoring a
-  bundle, which needs the encrypted backup's identity;
+- revoking a key from its targets (`--revoke`), and restoring a bundle from anywhere but `dist/`, or
+  with an identity that has a passphrase;
 - pinning host keys (`knownhosts init`, `knownhosts pin`): a scan reaches every host, and trusting
   a key is a decision made per key;
 - `key regen-pub`: it needs the private keys, which a preview never copies, and may ask for a

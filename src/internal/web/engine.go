@@ -14,6 +14,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/renderer"
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/bundler"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/change"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/doctor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
@@ -43,6 +44,7 @@ type Engine interface {
 	Keys() ([]keysvc.Row, error)
 	Key(ref string) (KeyView, error)
 	Snapshots() ([]SnapshotView, error)
+	Bundles() ([]BundleView, error)
 	SnapshotDiff(id, against string) (SnapshotDiff, error)
 	History(f history.Filter) ([]history.Op, error)
 	Op(id string) (OpView, error)
@@ -327,6 +329,27 @@ func (e AppEngine) Snapshots() ([]SnapshotView, error) {
 		v := SnapshotView{ID: filepath.Base(s), KeyBearing: snapshots.HoldsKeyMaterial(s)}
 		if fi, err := os.Stat(s); err == nil {
 			v.Size, v.Taken = fi.Size(), fi.ModTime()
+		}
+		out = append(out, v)
+	}
+	return out, nil
+}
+
+// BundleView is one encrypted bundle in the config home's dist/.
+type BundleView struct {
+	Name    string
+	Written time.Time
+	Size    int64
+}
+
+// Bundles lists the bundles in dist/, newest first.
+func (e AppEngine) Bundles() ([]BundleView, error) {
+	list := bundler.Sorted(e.P.DistDir())
+	out := make([]BundleView, 0, len(list))
+	for i := len(list) - 1; i >= 0; i-- {
+		v := BundleView{Name: filepath.Base(list[i])}
+		if fi, err := os.Stat(list[i]); err == nil {
+			v.Size, v.Written = fi.Size(), fi.ModTime()
 		}
 		out = append(out, v)
 	}

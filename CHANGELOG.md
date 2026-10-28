@@ -30,7 +30,8 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Deploy, rotate and roll back from the web UI, as jobs.** A key's page reviews each one, then runs it with
   its output streamed as it comes. One job runs at a time, holds the lock until it ends, and is recorded in the
   history. Rotate pauses on a target that takes the key by hand, with the new public key to copy, and waits
-  for you. Cancel stops a job between steps.
+  for you. Cancel stops a job between steps. A profile's keys, or every key, rotate as one job, and an encrypted
+  bundle in `dist/` restores as one, with the identity from `SSH_MANAGER_AGE_IDENTITY_FILE`.
 - **Snapshots restore from the web UI.** A snapshot's page previews the restore as a diff against `~/.ssh` now,
   and confirming snapshots `~/.ssh` first, as `sshmgr snapshots restore` does. A snapshot that still holds
   private keys is refused.

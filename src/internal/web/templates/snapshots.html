@@ -2,13 +2,13 @@
 {{template "page_header" "Snapshots"}}
 <p class="text-secondary">Every command that changes <code>~/.ssh</code> archives its config, <code>known_hosts</code> and public keys first. Private keys are never in a snapshot.</p>
 <div class="card">
-  {{if .Data}}
+  {{if .Data.Snapshots}}
   <div class="table-responsive">
     <table class="table table-vcenter card-table">
       <caption class="visually-hidden">Snapshots, newest first</caption>
       <thead><tr><th scope="col">Snapshot</th><th scope="col">Taken</th><th scope="col">Size</th><th scope="col">Compare</th></tr></thead>
       <tbody>
-        {{range .Data}}
+        {{range .Data.Snapshots}}
         <tr>
           <th scope="row"><code>{{.ID}}</code>{{if .KeyBearing}} <span class="badge badge-bad">holds private keys</span>{{end}}</th>
           <td class="text-nowrap">{{when .Taken}}</td>
@@ -21,7 +21,7 @@
   </div>
   {{else}}<div class="card-body text-secondary">No snapshots yet.</div>{{end}}
 </div>
-{{if and (not .ReadOnly) .Data}}
+{{if and (not .ReadOnly) .Data.Snapshots}}
 <div class="card mt-3">
   <div class="card-body">
     {{template "change_open" .}}<input type="hidden" name="action" value="snapshots-prune">
@@ -31,6 +31,28 @@
       </div>
     </form>
   </div>
+</div>
+{{end}}
+{{if .Data.Bundles}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">Bundles in <code>dist/</code></h2></div>
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Encrypted bundles, newest first</caption>
+      <thead><tr><th scope="col">Bundle</th><th scope="col">Written</th><th scope="col">Size</th>{{if not $.ReadOnly}}<th scope="col"><span class="visually-hidden">Actions</span></th>{{end}}</tr></thead>
+      <tbody>
+        {{range .Data.Bundles}}
+        <tr>
+          <th scope="row"><code>{{.Name}}</code></th>
+          <td class="text-nowrap">{{when .Written}}</td>
+          <td>{{size .Size}}</td>
+          {{if not $.ReadOnly}}<td class="text-end">{{template "job_open" $}}<input type="hidden" name="action" value="bundle-restore"><input type="hidden" name="bundle" value="{{.Name}}"><button type="submit" class="btn btn-sm btn-outline-danger">Restore {{.Name}}</button></form></td>{{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  <div class="card-body text-secondary">Restoring decrypts with <code>SSH_MANAGER_AGE_IDENTITY_FILE</code>, as set where <code>sshmgr serve</code> runs, and lays the keys back.</div>
 </div>
 {{end}}
 {{if not .ReadOnly}}
