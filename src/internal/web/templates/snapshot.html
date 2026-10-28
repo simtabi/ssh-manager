@@ -1,0 +1,27 @@
+{{define "content"}}{{with .Data}}
+<div class="page-header d-print-none mb-3">
+  <div class="text-secondary"><a href="/snapshots">Snapshots</a></div>
+  <h1 class="page-title"><code>{{.ID}}</code></h1>
+</div>
+{{if .Refused}}
+<div class="alert alert-danger" role="alert">{{icon "lock"}}<span class="ms-1">{{.Refused}}</span></div>
+{{else}}
+<form method="get" action="/snapshots/{{.ID}}" class="row g-2 align-items-end mb-3">
+  <div class="col-sm-6">
+    <label class="form-label" for="against">Compare with</label>
+    <select class="form-select" id="against" name="against">
+      <option value=""{{if not .Against}} selected{{end}}>~/.ssh as it is now</option>
+      {{range .Others}}{{if and (ne .ID $.Data.ID) (not .KeyBearing)}}<option value="{{.ID}}"{{if eq .ID $.Data.Against}} selected{{end}}>{{.ID}}</option>{{end}}{{end}}
+    </select>
+  </div>
+  <div class="col-sm-2"><button type="submit" class="btn btn-primary w-100">Compare</button></div>
+</form>
+<p class="text-secondary">Lines marked <code>-</code> are in <code>{{.ID}}</code>; lines marked <code>+</code> are in {{if .Against}}<code>{{.Against}}</code>{{else}}<code>~/.ssh</code> now{{end}}.</p>
+{{range .Files}}
+<div class="card mb-3">
+  <div class="card-header"><h2 class="card-title"><code>{{.Path}}</code></h2><span class="ms-2 badge {{if eq .State "changed"}}badge-info{{else if eq .State "added"}}badge-ok{{else}}badge-bad{{end}}">{{.State}}</span></div>
+  <div class="card-body p-0">{{template "diff" .Lines}}</div>
+</div>
+{{else}}<p>{{icon "circle-check"}}<span class="ms-1">No difference.</span></p>{{end}}
+{{end}}
+{{end}}{{end}}

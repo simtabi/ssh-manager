@@ -1,0 +1,26 @@
+{{define "content"}}
+{{template "page_header" "Profiles"}}
+<div class="card">
+  {{if .Data}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Every profile in the manifest</caption>
+      <thead><tr><th scope="col">Profile</th><th scope="col">Category</th><th scope="col">Key scope</th><th scope="col">Key store</th><th scope="col">Hosts</th><th scope="col">Keys</th><th scope="col">History</th></tr></thead>
+      <tbody>
+        {{range .Data}}
+        <tr>
+          <th scope="row"><code>{{.Name}}</code></th>
+          <td>{{orDash .Category}}</td>
+          <td>{{.KeyScope}}</td>
+          <td>{{.KeyStore}}</td>
+          <td>{{.Hosts}}</td>
+          <td>{{.Keys}}</td>
+          <td><a href="/history?profile={{.Name}}">Changes</a></td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No profiles yet. Add one with <code>sshmgr profile add &lt;name&gt;</code>.</div>{{end}}
+</div>
+{{end}}

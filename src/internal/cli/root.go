@@ -86,6 +86,7 @@ func newRootCmd() *cobra.Command {
 	root.AddCommand(newVMCmd())         // native Go
 	root.AddCommand(newTermiusCmd())    // native Go
 	root.AddCommand(newHistoryCmd())    // native Go
+	root.AddCommand(newServeCmd())      // native Go
 	recordCommands(root)
 	return root
 }

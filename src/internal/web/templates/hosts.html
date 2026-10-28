@@ -1,0 +1,28 @@
+{{define "content"}}
+{{template "page_header" "Hosts"}}
+{{range .Data}}
+<div class="card mb-3">
+  <div class="card-header"><h2 class="card-title">Profile <code>{{.Name}}</code></h2></div>
+  {{if .Rows}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Hosts in profile {{.Name}}</caption>
+      <thead><tr><th scope="col">Alias</th><th scope="col">Hostname</th><th scope="col">Provider</th><th scope="col">Key</th><th scope="col">Status</th><th scope="col">Tags</th></tr></thead>
+      <tbody>
+        {{range .Rows}}
+        <tr>
+          <th scope="row"><a href="/hosts/{{.Alias}}"><code>{{.Alias}}</code></a></th>
+          <td>{{.Hostname}}</td>
+          <td>{{.ProviderLabel}}</td>
+          <td><code>{{.KeyName}}</code></td>
+          <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
+          <td class="text-secondary">{{orDash (join .Tags ", ")}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No hosts in this profile.</div>{{end}}
+</div>
+{{else}}<p class="text-secondary">No profiles yet.</p>{{end}}
+{{end}}

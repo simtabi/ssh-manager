@@ -1,0 +1,66 @@
+/* Overrides only; everything else is Tabler. Copied from icon-sets-sync, with
+   the sshmgr additions at the end. */
+.skip-link:focus { position: absolute; z-index: 1080; top: .5rem; left: .5rem; padding: .5rem 1rem; background: var(--tblr-bg-surface); }
+.licence-text { white-space: pre-wrap; font-size: .8125rem; max-height: 24rem; overflow: auto; }
+main:focus { outline: none; }
+.log-pane { font-family: var(--tblr-font-monospace); font-size: .8125rem; max-height: 32rem; overflow: auto; padding: .75rem 1rem; }
+.log-line { white-space: pre-wrap; word-break: break-word; }
+.log-level { display: inline-block; min-width: 3.5em; font-weight: 600; }
+.log-warn .log-level { color: var(--tblr-warning); }
+.log-error .log-level { color: var(--tblr-danger); }
+.log-attr { color: var(--tblr-secondary); }
+.log-pane[data-level="info"] .log-debug,
+.log-pane[data-level="warn"] .log-debug, .log-pane[data-level="warn"] .log-info,
+.log-pane[data-level="error"] .log-debug, .log-pane[data-level="error"] .log-info, .log-pane[data-level="error"] .log-warn { display: none; }
+.editor { display: flex; max-height: 70vh; overflow: auto; font-family: var(--tblr-font-monospace); font-size: .8125rem; line-height: 1.5; }
+.editor-gutter { margin: 0; padding: .75rem .5rem .75rem 3rem; color: var(--tblr-secondary); text-align: right; user-select: none; border-right: 1px solid var(--tblr-border-color); }
+.editor-gutter li { height: 1.5em; }
+.editor-text { flex: 1; min-height: 24rem; border: 0; padding: .75rem; resize: vertical; background: transparent; color: inherit; font: inherit; line-height: inherit; white-space: pre; overflow: hidden; }
+.editor-text:focus { outline: 2px solid var(--tblr-primary); outline-offset: -2px; }
+.finding { white-space: pre-wrap; margin-bottom: .25rem; }
+.finding-error { color: var(--tblr-danger); }
+.finding-warn { color: var(--tblr-warning); }
+
+/* Accessible status colours. Tabler's -lt badges put the base colour on a
+   tint of itself, which measures 2.4-4.4:1 -- below WCAG's 4.5:1 for text this
+   size (the ui-a11y job's first run found every one). These keep the same hues
+   at >= 5.7:1 in both themes. */
+.badge-ok    { color: #1a6b2b; background: #e3f3e6; }
+.badge-warn  { color: #6e4700; background: #fbefd5; }
+.badge-bad   { color: #a3191b; background: #fbe4e4; }
+.badge-info  { color: #0a4d92; background: #e2edf9; }
+.badge-muted { color: #474747; background: #ececec; }
+:root[data-bs-theme=dark] .badge-ok    { color: #8fd8a0; background: #1d3324; }
+:root[data-bs-theme=dark] .badge-warn  { color: #f2c46e; background: #3a2f16; }
+:root[data-bs-theme=dark] .badge-bad   { color: #ffa3a3; background: #3d2020; }
+:root[data-bs-theme=dark] .badge-info  { color: #a6cbf6; background: #1c2a3b; }
+:root[data-bs-theme=dark] .badge-muted { color: #d0d0d0; background: #2e2e2e; }
+
+/* Alerts: body-coloured text on the tinted background, rather than the
+   variant colour on a tint of itself. */
+.alert { --tblr-alert-color: var(--tblr-body-color); }
+
+/* Outline buttons in the dark theme: the light theme's primary is 3-3.6:1 on
+   a dark surface. */
+:root[data-bs-theme=dark] .btn-outline-primary { --tblr-btn-variant: #79aae7; --tblr-btn-variant-fg: #0b1a2b; }
+:root[data-bs-theme=dark] .btn-outline-danger { --tblr-btn-variant: #ff8f8f; --tblr-btn-variant-fg: #2b0b0b; }
+
+/* A link inside running text is told apart by more than its colour. */
+.page-body p a, .page-body dd a, .page-body .text-secondary a, .alert a { text-decoration: underline; }
+
+.licence-text:focus-visible, .log-pane:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+
+/* sshmgr */
+.dev-banner { background: #fbefd5; color: #6e4700; padding: .5rem 0; font-size: .875rem; }
+:root[data-bs-theme=dark] .dev-banner { background: #3a2f16; color: #f2c46e; }
+.row-attention th, .row-attention td { background: color-mix(in srgb, var(--tblr-warning) 8%, transparent); }
+.code-block { white-space: pre; overflow: auto; max-height: 32rem; font-size: .8125rem; margin: 0; }
+.code-block:focus-visible, .diff:focus-visible { outline: 2px solid var(--tblr-primary); outline-offset: 2px; }
+.diff { margin: 0; padding: .5rem 0; font-size: .8125rem; overflow: auto; max-height: 40rem; }
+.diff-line { display: block; padding: 0 1rem; white-space: pre; }
+.diff-mark { display: inline-block; width: 1.25em; user-select: none; color: var(--tblr-secondary); }
+.diff-add { color: #1a6b2b; background: #e3f3e6; }
+.diff-del { color: #a3191b; background: #fbe4e4; }
+.diff-hunk { color: var(--tblr-secondary); }
+:root[data-bs-theme=dark] .diff-add { color: #8fd8a0; background: #1d3324; }
+:root[data-bs-theme=dark] .diff-del { color: #ffa3a3; background: #3d2020; }

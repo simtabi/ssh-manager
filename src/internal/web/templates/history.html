@@ -1,0 +1,24 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "History"}}
+<form method="get" action="/history" class="card card-body mb-3">
+  <div class="row g-2 align-items-end">
+    <div class="col-6 col-md-2"><label class="form-label" for="f-host">Host</label><input class="form-control" id="f-host" name="host" value="{{.Filter.Host}}" autocomplete="off" spellcheck="false"></div>
+    <div class="col-6 col-md-2"><label class="form-label" for="f-profile">Profile</label><input class="form-control" id="f-profile" name="profile" value="{{.Filter.Profile}}" autocomplete="off" spellcheck="false"></div>
+    <div class="col-6 col-md-2"><label class="form-label" for="f-key">Key</label><input class="form-control" id="f-key" name="key" value="{{.Filter.Key}}" autocomplete="off" spellcheck="false"></div>
+    <div class="col-6 col-md-2"><label class="form-label" for="f-command">Command</label><input class="form-control" id="f-command" name="command" value="{{.Filter.Command}}" placeholder="host" autocomplete="off" spellcheck="false"></div>
+    <div class="col-6 col-md-2"><label class="form-label" for="f-source">Source</label>
+      <select class="form-select" id="f-source" name="source">
+        <option value="">any</option>
+        {{range $s := (list "cli" "tui" "web" "backfill")}}<option value="{{$s}}"{{if eq $s $.Data.Filter.Source}} selected{{end}}>{{$s}}</option>{{end}}
+      </select>
+    </div>
+    <div class="col-6 col-md-1"><label class="form-label" for="f-since">Since</label><input class="form-control" id="f-since" name="since" value="{{.Filter.Since}}" placeholder="2026-10-01" autocomplete="off"></div>
+    <div class="col-12 col-md-1"><button type="submit" class="btn btn-primary w-100">Filter</button></div>
+  </div>
+</form>
+<div class="card">
+  {{template "op_table" .Ops}}
+  {{if .More}}<div class="card-footer"><a href="{{.More}}">Show more</a></div>{{end}}
+</div>
+<p class="text-secondary mt-3">The same list as <code>sshmgr history</code>. Operations from before the history existed were imported from <code>audit.log</code>, the inventory and the snapshots, and show as source <code>backfill</code>.</p>
+{{end}}{{end}}

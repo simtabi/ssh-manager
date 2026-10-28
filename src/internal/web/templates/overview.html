@@ -1,0 +1,48 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "Overview"}}
+<div class="row row-cards mb-3">
+  <div class="col-6 col-lg-3"><div class="card card-sm"><div class="card-body"><div class="text-secondary">Profiles</div><div class="h2 mb-0"><a href="/profiles">{{.Profiles}}</a></div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card card-sm"><div class="card-body"><div class="text-secondary">Hosts</div><div class="h2 mb-0"><a href="/hosts">{{.Hosts}}</a></div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card card-sm"><div class="card-body"><div class="text-secondary">Keys</div><div class="h2 mb-0"><a href="/keys">{{.Keys}}</a></div></div></div></div>
+  <div class="col-6 col-lg-3"><div class="card card-sm"><div class="card-body"><div class="text-secondary">Needs attention</div><div class="h2 mb-0">{{.Problems}}</div></div></div></div>
+</div>
+
+<div class="row row-cards">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">State</h2></div>
+      {{if eq .Problems 0}}<div class="card-body pb-0"><p class="text-success mb-0">{{icon "circle-check"}}<span class="ms-1">Nothing needs attention.</span></p></div>{{end}}
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <caption class="visually-hidden">The state of this sshmgr home; a row with a command needs attention</caption>
+          <thead><tr><th scope="col">What</th><th scope="col">State</th><th scope="col">Fix</th></tr></thead>
+          <tbody>
+            {{range .Rows}}
+            <tr{{if .Fix}} class="row-attention"{{end}}>
+              <th scope="row">{{if .Fix}}{{icon "alert-triangle"}}<span class="visually-hidden">Needs attention: </span>{{end}}{{.Label}}</th>
+              <td class="text-break">{{.Value}}</td>
+              <td>{{if .Fix}}<code>{{.Fix}}</code>{{else}}<span class="text-secondary">–</span>{{end}}</td>
+            </tr>
+            {{end}}
+          </tbody>
+        </table>
+      </div>
+      <div class="card-footer text-secondary">These are the rows the <code>sshmgr</code> menu prints at the top. Run a fix in a terminal; this page shows the result when you reload it.</div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card mb-3">
+      <div class="card-header"><h2 class="card-title">Rotation due</h2></div>
+      {{if .Expiry}}
+      <ul class="list-group list-group-flush">
+        {{range .Expiry}}<li class="list-group-item d-flex justify-content-between gap-2"><a href="/keys/{{.Profile}}/{{.KeyName}}"><code>{{.Ref}}</code></a><span><span class="badge {{statusClass .State}}">{{.State}}</span> <span class="text-secondary">{{expiryDays .}}</span></span></li>{{end}}
+      </ul>
+      {{else}}<div class="card-body text-secondary">No key is due for rotation.</div>{{end}}
+    </div>
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Recent changes</h2><div class="card-actions"><a href="/history">All history</a></div></div>
+      {{template "op_table" .Recent}}
+    </div>
+  </div>
+</div>
+{{end}}{{end}}

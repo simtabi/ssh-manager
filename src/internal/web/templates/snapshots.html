@@ -1,0 +1,24 @@
+{{define "content"}}
+{{template "page_header" "Snapshots"}}
+<p class="text-secondary">Every command that changes <code>~/.ssh</code> archives its config, <code>known_hosts</code> and public keys first. Private keys are never in a snapshot.</p>
+<div class="card">
+  {{if .Data}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Snapshots, newest first</caption>
+      <thead><tr><th scope="col">Snapshot</th><th scope="col">Taken</th><th scope="col">Size</th><th scope="col">Compare</th></tr></thead>
+      <tbody>
+        {{range .Data}}
+        <tr>
+          <th scope="row"><code>{{.ID}}</code>{{if .KeyBearing}} <span class="badge badge-bad">holds private keys</span>{{end}}</th>
+          <td class="text-nowrap">{{when .Taken}}</td>
+          <td>{{size .Size}}</td>
+          <td>{{if .KeyBearing}}<span class="text-secondary">not opened</span>{{else}}<a href="/snapshots/{{.ID}}">{{icon "git-compare"}}<span class="ms-1">with now</span></a>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No snapshots yet.</div>{{end}}
+</div>
+{{end}}

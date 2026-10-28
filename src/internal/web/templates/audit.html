@@ -1,0 +1,39 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "Audit"}}
+<div class="card mb-3">
+  <div class="card-header"><h2 class="card-title">Deployments</h2></div>
+  {{if .Keys}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Each recorded key and where it is deployed</caption>
+      <thead><tr><th scope="col">Key file</th><th scope="col">Status</th><th scope="col">Deployed to</th></tr></thead>
+      <tbody>
+        {{range .Keys}}
+        <tr>
+          <th scope="row"><code>{{.Path}}</code><div class="text-secondary small fw-normal text-break">{{.Fingerprint}}</div></th>
+          <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
+          <td>{{range .Deployments}}<div>{{.Target}} <span class="text-secondary">via {{.Method}}{{with deref .Date}}, {{.}}{{end}}</span> {{if .Verified}}<span class="badge badge-ok">verified</span>{{else}}<span class="badge badge-warn">unverified</span>{{end}}</div>{{else}}<span class="text-secondary">nowhere yet</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">The inventory is empty. Run <code>sshmgr reconcile</code>, then <code>sshmgr deploy</code>.</div>{{end}}
+</div>
+<div class="row row-cards">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Expiry</h2></div>
+      {{if .Expiry}}
+      <ul class="list-group list-group-flush">{{range .Expiry}}<li class="list-group-item d-flex justify-content-between gap-2"><a href="/keys/{{.Profile}}/{{.KeyName}}"><code>{{.Ref}}</code></a><span><span class="badge {{statusClass .State}}">{{.State}}</span> <span class="text-secondary">{{orDash (deref .ExpiresOn)}}, {{expiryDays .}}</span></span></li>{{end}}</ul>
+      {{else}}<div class="card-body text-secondary">Nothing tracked.</div>{{end}}
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Recent activity</h2><div class="card-actions"><a href="/history">All history</a></div></div>
+      {{template "op_table" .Recent}}
+    </div>
+  </div>
+</div>
+{{end}}{{end}}

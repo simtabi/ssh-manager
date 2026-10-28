@@ -158,6 +158,14 @@ var goOnly = map[string]string{
 	"history --limit":              "history - cap the number listed",
 	"history --json":               "history - one JSON object per operation",
 	"history show":                 "history - one operation, its events and its manifest diff",
+	"serve":                        "web UI - the read-only pages in internal/web",
+	"serve --addr":                 "web UI - listen address, host or host:port",
+	"serve --port":                 "web UI - listen port; pinned when given",
+	"serve --allow-remote":         "web UI - permit a non-loopback bind",
+	"serve --allow-host":           "web UI - extra Host header for a proxy",
+	"serve --read-only":            "web UI - serve no route that changes anything",
+	"serve --no-open":              "web UI - do not open a browser",
+	"serve --token-file":           "web UI - write the sign-in address to a 0600 file",
 	"termius keys --clear-after":   "exports - auto-clear the clipboard after a delay",
 
 	// Cloudflare Access (3.4.0): a host reached through cloudflared, rendered by sshmgr since

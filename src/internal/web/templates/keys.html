@@ -1,0 +1,25 @@
+{{define "content"}}
+{{template "page_header" "Keys"}}
+<div class="card">
+  {{if .Data}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Every key the manifest declares or a host uses</caption>
+      <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Expires</th><th scope="col">Hosts</th><th scope="col">On disk</th></tr></thead>
+      <tbody>
+        {{range .Data}}
+        <tr>
+          <th scope="row"><a href="/keys/{{.Ref.Profile}}/{{.Ref.KeyName}}"><code>{{.Ref}}</code></a></th>
+          <td>{{.Type}}</td>
+          <td class="text-break"><code>{{orDash .Fingerprint}}</code></td>
+          <td>{{orDash .ExpiresOn}}</td>
+          <td>{{orDash (join .Hosts ", ")}}</td>
+          <td>{{if .Vault}}1Password <span class="text-secondary">({{.Vault}})</span>{{else if .PrivateOnDisk}}<span class="badge badge-ok">yes</span>{{else}}<span class="badge badge-warn">not minted</span>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No keys in the manifest yet.</div>{{end}}
+</div>
+{{end}}

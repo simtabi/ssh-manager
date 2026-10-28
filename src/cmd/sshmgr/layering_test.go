@@ -264,8 +264,9 @@ func TestTheToolRunsOnlyTheBinariesItDeclares(t *testing.T) {
 		"osascript", "terminal-notifier", "notify-send", "powershell",
 		// Windows ACLs.
 		"icacls",
-		// macOS: opens a provider's key page when a deploy must be done by hand.
-		"open",
+		// macOS: opens a provider's key page when a deploy must be done by hand,
+		// and `sshmgr serve`'s address; xdg-open and rundll32 open it on Linux and Windows.
+		"open", "xdg-open", "rundll32",
 		// git: `sshmgr git` reads and rewrites origin, after proving the new URL with ls-remote.
 		"git",
 		// docker: `sshmgr vm docker-context` creates or updates an ssh:// context.
