@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"testing"
 
@@ -342,6 +343,10 @@ func TestEffectsAreShownAndBound(t *testing.T) {
 		t.Errorf("%d snapshots left, want 1 (prune must not snapshot first)", n)
 	}
 
+	// Windows has no POSIX modes to get wrong, so there is nothing to fix there.
+	if runtime.GOOS == "windows" {
+		return
+	}
 	if err := os.Chmod(p.Manifest(), 0o644); err != nil {
 		t.Fatal(err)
 	}
