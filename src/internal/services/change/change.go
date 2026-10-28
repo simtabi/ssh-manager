@@ -63,6 +63,13 @@ type Change struct {
 	// - snapshots it removes, modes it fixes - as lines for the preview to
 	// show. They are part of the hash, so they cannot change unseen either.
 	Effects func(p paths.Paths) ([]string, error)
+
+	// OnApply is the part of a change that a copy cannot hold - a Docker
+	// context, a desktop notification, an encrypted backup of private keys.
+	// It runs on apply only, under the lock, after the snapshot and before
+	// Run. A preview never runs it, so a change with OnApply must say what it
+	// does in Effects; Preview refuses one that does not.
+	OnApply func(p paths.Paths, out io.Writer) error
 }
 
 // FileDiff is one file the change touches. Path is relative to the home it
@@ -80,10 +87,13 @@ type Plan struct {
 	Args    []string
 	Files   []FileDiff
 	Effects []string
+	Hidden  []string // files the copy holds no content for that the change removes or creates
 	Output  string
 	Err     string // the change would fail, with this message
 	Mints   bool   // the keys it shows are throwaway; apply mints new ones
-	Hash    string
+	// NoSnapshot is set when apply takes no snapshot of ~/.ssh first.
+	NoSnapshot bool
+	Hash       string
 }
 
 // Result is a change that was made.
@@ -119,12 +129,16 @@ func preview(p paths.Paths, ch Change) (Plan, error) {
 	defer cleanup()
 
 	var out bytes.Buffer
-	plan := Plan{Command: ch.Command, Args: ch.Args, Mints: ch.Mints}
+	plan := Plan{Command: ch.Command, Args: ch.Args, Mints: ch.Mints, NoSnapshot: ch.NoSnapshot}
 	if ch.Effects != nil {
 		if plan.Effects, err = ch.Effects(p); err != nil {
 			plan.Err = err.Error()
 		}
 	}
+	if ch.OnApply != nil && ch.Effects == nil {
+		return Plan{}, fmt.Errorf("%s acts outside the copy and does not say how: it needs Effects", ch.Command)
+	}
+	unseenBefore := unseen(shadow)
 	// An effect that cannot be worked out is not something to run blind.
 	if plan.Err == "" {
 		if err := ch.Run(shadow, &out); err != nil {
@@ -138,6 +152,7 @@ func preview(p paths.Paths, ch Change) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.Files = diffTrees(before, after)
+	plan.Hidden = hiddenChanges(unseenBefore, unseen(shadow))
 	plan.Hash = hashPlan(ch, before, after, plan)
 	return plan, nil
 }
@@ -175,6 +190,12 @@ func Apply(p paths.Paths, ch Change, hash string, retain int, source string) (Pl
 			res.Snapshot = filepath.Base(snap)
 		}
 		var out bytes.Buffer
+		if ch.OnApply != nil {
+			if err := ch.OnApply(p, &out); err != nil {
+				res.Output = out.String()
+				return err
+			}
+		}
 		err = ch.Run(p, &out)
 		res.Output = out.String()
 		return err
@@ -272,6 +293,42 @@ func copyHome(p paths.Paths) (paths.Paths, func(), error) {
 	return shadow, cleanup, nil
 }
 
+// unseen lists the files under the copy's ~/.ssh that it holds no content
+// for: placeholders, and anything a change made that a snapshot would not
+// take, such as a minted private key.
+func unseen(shadow paths.Paths) map[string]bool {
+	out := map[string]bool{}
+	_ = filepath.Walk(shadow.SSHDir, func(path string, fi os.FileInfo, err error) error {
+		if err != nil || !fi.Mode().IsRegular() || snapshots.Archivable(fi.Name()) {
+			return nil
+		}
+		if rel, err := filepath.Rel(shadow.SSHDir, path); err == nil {
+			out[filepath.ToSlash(rel)] = true
+		}
+		return nil
+	})
+	return out
+}
+
+// hiddenChanges says which of those files the change removed or created, so a
+// preview shows a private key being deleted or moved even though it cannot
+// show the key.
+func hiddenChanges(before, after map[string]bool) []string {
+	var out []string
+	for rel := range before {
+		if !after[rel] {
+			out = append(out, "removes ~/.ssh/"+rel)
+		}
+	}
+	for rel := range after {
+		if !before[rel] {
+			out = append(out, "creates ~/.ssh/"+rel)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
 // DiffTrees compares two captured trees, file by file, in path order.
 func DiffTrees(before, after map[string]string) []FileDiff { return diffTrees(before, after) }
 
@@ -312,6 +369,9 @@ func hashPlan(ch Change, before, after map[string]string, plan Plan) string {
 	_, _ = fmt.Fprintf(h, "%s\x00%s\x00%s\x00", ch.Command, strings.Join(ch.Args, "\x00"), plan.Err)
 	for _, e := range plan.Effects {
 		_, _ = fmt.Fprintf(h, "effect\x00%s\x00", e)
+	}
+	for _, e := range plan.Hidden {
+		_, _ = fmt.Fprintf(h, "hidden\x00%s\x00", e)
 	}
 	keys := make([]string, 0, len(before))
 	for k := range before {

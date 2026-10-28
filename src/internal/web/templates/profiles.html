@@ -17,7 +17,9 @@
           <td>{{.Keys}}</td>
           <td><a href="/history?profile={{.Name}}">Changes</a></td>
           {{if not $.ReadOnly}}<td class="text-end">
-            {{template "change_open" $}}<input type="hidden" name="action" value="profile-delete"><input type="hidden" name="name" value="{{.Name}}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete profile {{.Name}}</button></form>
+            {{template "change_open" $}}<input type="hidden" name="action" value="profile-delete"><input type="hidden" name="name" value="{{.Name}}">
+              <label class="form-check form-check-inline small mb-0"><input class="form-check-input" type="checkbox" name="purge" value="1"><span class="form-check-label">and its key files</span></label>
+              <button class="btn btn-sm btn-outline-danger" type="submit">Delete profile {{.Name}}</button></form>
           </td>{{end}}
         </tr>
         {{end}}
@@ -26,7 +28,7 @@
   </div>
   {{else}}<div class="card-body text-secondary">No profiles yet. Add one below, or with <code>sshmgr profile add &lt;name&gt;</code>.</div>{{end}}
 </div>
-<p class="text-secondary mt-2">Deleting a profile removes its hosts, their config blocks and their pins. Its key files stay on disk; <code>sshmgr profile delete --purge</code> in a terminal removes them too.</p>
+<p class="text-secondary mt-2">Deleting a profile removes its hosts, their config blocks and their pins. Its key files stay on disk unless you tick <strong>and its key files</strong>: then they are deleted too, after sshmgr writes an encrypted backup of <code>~/.ssh</code>, which needs <code>SSH_MANAGER_AGE_RECIPIENT</code>.</p>
 
 {{if not .ReadOnly}}
 <div class="row row-cards mt-1">
@@ -52,6 +54,19 @@
           <div class="mb-2"><label class="form-label" for="e-name">Profile</label><select class="form-select" id="e-name" name="name">{{range .Data}}<option value="{{.Name}}">{{.Name}} ({{.KeyScope}})</option>{{end}}</select></div>
           <div class="mb-2"><label class="form-label" for="e-scope">Key scope</label><select class="form-select" id="e-scope" name="key_scope"><option value="per_service">per service</option><option value="shared">shared</option></select></div>
           <div class="mb-3"><label class="form-label" for="e-keyname">Shared key name <span class="text-secondary">(shared scope only)</span></label><input class="form-control" id="e-keyname" name="key_name" autocomplete="off" spellcheck="false"></div>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Move a profile to a category</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="profile-category">
+          <div class="mb-2"><label class="form-label" for="c-name">Profile</label><select class="form-select" id="c-name" name="name">{{range .Data}}<option value="{{.Name}}">{{.Name}}{{with .Category}} ({{.}}){{end}}</option>{{end}}</select></div>
+          <div class="mb-2"><label class="form-label" for="c-category">Category <span class="text-secondary">(empty returns it to the flat layout)</span></label><input class="form-control" id="c-category" name="category" autocomplete="off" spellcheck="false"></div>
+          <p class="text-secondary small mb-3">Its key directory moves to <code>~/.ssh/profiles/&lt;category&gt;/</code>, private keys and all, and its inventory records follow.</p>
           <button type="submit" class="btn btn-primary">Preview</button>
         </form>
       </div>

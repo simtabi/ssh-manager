@@ -21,10 +21,9 @@ import (
 // steps of its CLI command after the guard, in the same order, and the parity
 // test in internal/cli holds them to that.
 //
-// Left out, and why: anything that mints a key (key add, keygen, reconcile -
-// a fresh key differs on every run, so no preview could match its apply), a
-// --purge (it deletes private keys, which a preview never copies), and
-// profile category (it moves key directories).
+// The changes that mint keys are in minting.go, and the ones that act
+// outside the copy - a purge, a category move, clean, bundles, Docker
+// contexts, notifications - are in outside.go.
 
 // ProfileAdd is `sshmgr profile add <name> [--key-scope] [--key-name] [--key-comment]`.
 func ProfileAdd(name, keyScope, keyName, keyComment string) Change {

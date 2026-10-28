@@ -36,4 +36,10 @@
     </div>
   </div>
 </div>
+{{if not $.ReadOnly}}
+<div class="d-flex flex-wrap gap-2 mt-3">
+  {{template "change_open" $}}<input type="hidden" name="action" value="audit-notify"><button type="submit" class="btn btn-outline-secondary">Send the desktop alert, if one is due</button></form>
+  {{template "change_open" $}}<input type="hidden" name="action" value="notify-test"><button type="submit" class="btn btn-outline-secondary">Send a test notification</button></form>
+</div>
+{{end}}
 {{end}}{{end}}

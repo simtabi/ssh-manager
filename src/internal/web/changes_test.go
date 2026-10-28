@@ -1,16 +1,21 @@
 package web
 
 import (
+	"crypto/sha256"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
 
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/change"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 func (c *client) change(path string, f url.Values) *httptest.ResponseRecorder {
@@ -121,6 +126,13 @@ func TestChangesNeedTheFormTokenAndValidNames(t *testing.T) {
 		{"action": {"host-add"}, "profile": {"work"}, "alias": {"x"}, "hostname": {"x"}, "user": {"u"}, "port": {"99999"}},
 		{"action": {"rm-rf"}},
 		{"action": {"vm-add"}, "profile": {"work"}, "alias": {"x"}, "hypervisor": {"nope"}, "vm": {"v"}, "user": {"u"}},
+		{"action": {"host-apply"}, "profile": {"work"}, "specs": {"../x db.example ops"}},
+		{"action": {"host-apply"}, "profile": {"work"}, "specs": {"db db.example\x01 ops"}},
+		{"action": {"host-apply"}, "profile": {"work"}, "specs": {"db db.example ops\nProxyCommand evil"}},
+		{"action": {"host-apply"}, "profile": {"work"}, "specs": {"# only a comment"}},
+		{"action": {"profile-category"}, "name": {"work"}, "category": {"../up"}},
+		{"action": {"bundle"}, "keep": {"-1"}},
+		{"action": {"vm-docker-context"}, "alias": {"../x"}},
 	} {
 		if rec := c.change("/changes/preview", bad); rec.Code != http.StatusBadRequest {
 			t.Errorf("%v: %d, want 400", bad, rec.Code)
@@ -156,21 +168,80 @@ func TestReadOnlyServesNoChangeAndShowsNoForm(t *testing.T) {
 			t.Errorf("read-only %s: %d, want 405", path, rec.Code)
 		}
 	}
-	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys", "/snapshots", "/doctor"} {
+	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys", "/snapshots", "/doctor", "/audit"} {
 		if strings.Contains(c.get(page).Body.String(), "/changes/preview") {
 			t.Errorf("read-only %s shows a change form", page)
 		}
 	}
+	// A download writes nothing, so it stays.
+	if rec := c.get("/exports/ssh_config"); rec.Code != http.StatusOK {
+		t.Errorf("read-only export: %d", rec.Code)
+	}
+}
+
+// The exports download as files and write nothing to the home; any other
+// name is not found.
+func TestExportsDownload(t *testing.T) {
+	s, p, _ := newTestServer(t)
+	c := signIn(t, s)
+	before := snapshotTree(t, p)
+	for name, want := range map[string]string{"ssh_config": "Host gh", "termius-hosts.csv": ""} {
+		rec := c.get("/exports/" + name)
+		if rec.Code != http.StatusOK {
+			t.Fatalf("%s: %d", name, rec.Code)
+		}
+		if cd := rec.Header().Get("Content-Disposition"); cd != `attachment; filename="`+name+`"` {
+			t.Errorf("%s: Content-Disposition %q", name, cd)
+		}
+		if !strings.Contains(rec.Body.String(), want) {
+			t.Errorf("%s does not hold %q:\n%s", name, want, rec.Body.String())
+		}
+	}
+	for _, bad := range []string{"/exports/manifest.json", "/exports/..%2Fmanifest.json", "/exports/"} {
+		if rec := c.get(bad); rec.Code != http.StatusNotFound {
+			t.Errorf("%s: %d, want 404", bad, rec.Code)
+		}
+	}
+	if after := snapshotTree(t, p); after != before {
+		t.Error("a download wrote to the home")
+	}
+}
+
+func snapshotTree(t *testing.T, p paths.Paths) string {
+	t.Helper()
+	var b strings.Builder
+	for _, root := range []string{p.ConfigDir, p.SSHDir} {
+		_ = filepath.Walk(root, func(path string, fi os.FileInfo, err error) error {
+			if err == nil && !fi.IsDir() {
+				body, _ := os.ReadFile(path)
+				fmt.Fprintf(&b, "%s %d %x\n", path, fi.Size(), sha256.Sum256(body))
+			}
+			return nil
+		})
+	}
+	return b.String()
 }
 
 // Every form on every page names an action the server knows, so no button
 // leads to "unknown action".
 func TestEveryFormNamesAKnownAction(t *testing.T) {
-	s, _, _ := newTestServer(t)
+	s, p, _ := newTestServer(t)
+	t.Cleanup(mutation.Release)
+	// A VM host, for the page that offers it a Docker context, and a key no
+	// host uses, for the one that offers to delete it.
+	for _, ch := range []change.Change{change.VMAdd("work", "devbox", "lima", "default", "dev"), change.KeyAdd("work", "spare", "", "")} {
+		plan, err := change.Preview(p, ch)
+		if err != nil || plan.Err != "" {
+			t.Fatalf("%s: %v %s", ch.Command, err, plan.Err)
+		}
+		if _, _, err := change.Apply(p, ch, plan.Hash, 10, history.SourceWeb); err != nil {
+			t.Fatal(err)
+		}
+	}
 	c := signIn(t, s)
 	action := regexp.MustCompile(`name="action" value="([a-z-]+)"`)
 	seen := map[string]bool{}
-	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys", "/snapshots", "/doctor"} {
+	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/hosts/devbox", "/keys", "/snapshots", "/doctor", "/audit"} {
 		for _, m := range action.FindAllStringSubmatch(c.get(page).Body.String(), -1) {
 			seen[m[1]] = true
 			if _, ok := actionFields[m[1]]; !ok {
@@ -178,8 +249,10 @@ func TestEveryFormNamesAKnownAction(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"profile-add", "profile-edit", "profile-delete", "host-add", "host-edit", "host-delete",
-		"vm-add", "config-render", "reconcile", "keygen", "key-add", "snapshots-prune", "doctor-fix", "providers-export"} {
+	if len(actionFields) < 22 {
+		t.Fatalf("%d actions; the list is not being read", len(actionFields))
+	}
+	for want := range actionFields {
 		if !seen[want] {
 			t.Errorf("no page offers %s", want)
 		}

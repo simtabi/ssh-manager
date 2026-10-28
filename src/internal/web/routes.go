@@ -30,6 +30,7 @@ func (s *Server) routes() http.Handler {
 	mux.HandleFunc("GET /history/{op}", h.handleOp)
 	mux.HandleFunc("GET /doctor", h.handleDoctor)
 	mux.HandleFunc("GET /audit", h.handleAudit)
+	mux.HandleFunc("GET /exports/{name}", h.handleExport)
 	mux.HandleFunc("GET /about/licenses", h.handleLicences)
 	if !s.opts.ReadOnly {
 		mux.HandleFunc("POST /changes/preview", h.handlePreview)
@@ -215,6 +216,29 @@ func (h pages) handleAudit(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	h.s.render(w, http.StatusOK, "audit", h.s.newView(r, "audit", "Audit", a))
+}
+
+// handleExport downloads an export. It writes nothing, so --read-only keeps
+// it: it is a page in another format.
+func (h pages) handleExport(w http.ResponseWriter, r *http.Request) {
+	name := r.PathValue("name")
+	if name != ExportFlat && name != ExportTermius {
+		h.fail(w, r, ErrNotFound)
+		return
+	}
+	body, err := h.s.opts.Engine.Export(name, r.URL.Query().Get("include_git") == "1")
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	ctype := "text/plain; charset=utf-8"
+	if name == ExportTermius {
+		ctype = "text/csv; charset=utf-8"
+	}
+	w.Header().Set("Content-Type", ctype)
+	w.Header().Set("Content-Disposition", `attachment; filename="`+name+`"`)
+	w.Header().Set("Cache-Control", "no-store")
+	_, _ = w.Write([]byte(body))
 }
 
 type licence struct {

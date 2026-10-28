@@ -67,6 +67,9 @@
           <button type="submit" class="btn btn-outline-danger">Delete host {{.Alias}} and its pins</button>
           <span class="text-secondary small ms-2">Its key files stay on disk.</span>
         </form>
+        {{if $.Data.VM}}{{template "change_open" $}}<input type="hidden" name="action" value="vm-docker-context"><input type="hidden" name="alias" value="{{.Alias}}">
+          <button type="submit" class="btn btn-outline-secondary mt-2">Create a Docker context for {{.Alias}}</button>
+        </form>{{end}}
       </div>
     </div>
     {{end}}{{end}}

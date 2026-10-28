@@ -49,18 +49,10 @@ func BackupBeforeDestroying(p paths.Paths, out io.Writer, skip bool) error {
 // sidecars with them so no orphaned .sha256 is left to verify a missing file.
 // Returns the base names removed.
 func Prune(dir string, keep int) []string {
-	matches, _ := filepath.Glob(filepath.Join(dir, "ssh-manager-*.age"))
+	matches := Sorted(dir)
 	if len(matches) <= keep {
 		return nil
 	}
-	sort.Slice(matches, func(i, j int) bool {
-		fi, errI := os.Stat(matches[i])
-		fj, errJ := os.Stat(matches[j])
-		if errI != nil || errJ != nil || fi.ModTime().Equal(fj.ModTime()) {
-			return matches[i] < matches[j]
-		}
-		return fi.ModTime().Before(fj.ModTime())
-	})
 	var removed []string
 	for _, m := range matches[:len(matches)-keep] {
 		if os.Remove(m) != nil {
@@ -71,4 +63,18 @@ func Prune(dir string, keep int) []string {
 		removed = append(removed, filepath.Base(m))
 	}
 	return removed
+}
+
+// Sorted lists the bundles in dir, oldest first: the order Prune removes them in.
+func Sorted(dir string) []string {
+	matches, _ := filepath.Glob(filepath.Join(dir, "ssh-manager-*.age"))
+	sort.Slice(matches, func(i, j int) bool {
+		fi, errI := os.Stat(matches[i])
+		fj, errJ := os.Stat(matches[j])
+		if errI != nil || errJ != nil || fi.ModTime().Equal(fj.ModTime()) {
+			return matches[i] < matches[j]
+		}
+		return fi.ModTime().Before(fj.ModTime())
+	})
+	return matches
 }

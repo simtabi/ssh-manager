@@ -48,6 +48,7 @@ type Engine interface {
 	Op(id string) (OpView, error)
 	Doctor() (doctor.Report, error)
 	Audit(now time.Time) (AuditView, error)
+	Export(name string, includeGit bool) (string, error)
 
 	// Preview runs a change on a private copy of the home; Apply makes it
 	// if a fresh preview under the lock still has the confirmed hash.
@@ -79,6 +80,7 @@ type HostView struct {
 	Block  string
 	Pins   []knownhosts.Entry
 	Token  string
+	VM     bool // a VM host, which can have a Docker context
 }
 
 // KeyView is one key: its row, its detail, and its expiry.
@@ -257,7 +259,7 @@ func (e AppEngine) Host(alias string) (HostView, error) {
 				// A profile and a host share the name; Detail prefers the profile.
 				hd = &query.HostDetail{Profile: pname, Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port}
 			}
-			v := HostView{Detail: hd, Token: knownHostsToken(h)}
+			v := HostView{Detail: hd, Token: knownHostsToken(h), VM: h.VM != nil}
 			if block, err := renderer.RenderHostBlockFor(m, pname, h); err == nil {
 				v.Block = block
 			}
@@ -504,4 +506,31 @@ func (e AppEngine) Audit(now time.Time) (AuditView, error) {
 func splitRef(s string) (string, bool) {
 	prof, key, ok := strings.Cut(s, "/")
 	return s, ok && prof != "" && key != "" && !strings.Contains(key, "/")
+}
+
+// Exports a page can download. Each is rendered the way `sshmgr config export
+// --flat` and `sshmgr termius export` render it, and none is written anywhere.
+const (
+	ExportFlat    = "ssh_config"
+	ExportTermius = "termius-hosts.csv"
+)
+
+// Export renders one of the exports for download.
+func (e AppEngine) Export(name string, includeGit bool) (string, error) {
+	m, err := e.manifest()
+	if err != nil {
+		return "", err
+	}
+	ep := renderer.ExportPathsFor(e.P.SSHDir)
+	switch name {
+	case ExportFlat:
+		return renderer.RenderFlatConfig(m, ep, platform.EmitUseKeychain())
+	case ExportTermius:
+		exp, err := renderer.RenderTermiusCSV(m, ep, renderer.TermiusOptions{IncludeGit: includeGit})
+		if err != nil {
+			return "", err
+		}
+		return exp.CSV, nil
+	}
+	return "", ErrNotFound
 }

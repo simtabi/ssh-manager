@@ -33,4 +33,18 @@
   </div>
 </div>
 {{end}}
+{{if not .ReadOnly}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">Encrypted bundle</h2></div>
+  <div class="card-body">
+    <p class="text-secondary">Snapshots leave private keys out. A bundle holds everything, keys included, encrypted with age to <code>SSH_MANAGER_AGE_RECIPIENT</code>, in the config home's <code>dist/</code>.</p>
+    {{template "change_open" .}}<input type="hidden" name="action" value="bundle">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-3"><label class="form-label" for="b-keep">Then keep the newest <span class="text-secondary">(empty keeps all)</span></label><input class="form-control" id="b-keep" name="keep" inputmode="numeric"></div>
+        <div class="col-sm-3"><button type="submit" class="btn btn-outline-secondary w-100">Preview a bundle</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
 {{end}}

@@ -1364,18 +1364,3 @@ func (m *Manifest) Save(path string) error {
 	}
 	return fs.WriteTextAtomic(path, string(b)+"\n", 0o600)
 }
-
-// VMHost finds the host alias, which must have a vm spec.
-func (m *Manifest) VMHost(alias string) (Host, error) {
-	for _, name := range m.ProfileNames() {
-		for _, h := range m.Profiles[name].Hosts {
-			if h.Alias == alias {
-				if h.VM == nil {
-					return h, fmt.Errorf("%s is not a VM host", alias)
-				}
-				return h, nil
-			}
-		}
-	}
-	return Host{}, fmt.Errorf("no host %q", alias)
-}

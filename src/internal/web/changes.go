@@ -11,6 +11,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/change"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
 )
 
 // A change is two requests. POST /changes/preview runs it against a private
@@ -26,21 +27,28 @@ import (
 // actionFields are the form fields each action reads, in the order the
 // confirmation carries them.
 var actionFields = map[string][]string{
-	"profile-add":      {"name", "key_scope", "key_name", "key_comment"},
-	"profile-edit":     {"name", "key_scope", "key_name"},
-	"profile-delete":   {"name"},
-	"host-add":         {"profile", "alias", "hostname", "user", "port", "tags"},
-	"host-edit":        {"profile", "alias", "hostname", "user", "port", "tags"},
-	"host-delete":      {"profile", "alias"},
-	"key-delete":       {"profile", "key"},
-	"vm-add":           {"profile", "alias", "hypervisor", "vm", "user"},
-	"config-render":    {},
-	"reconcile":        {},
-	"keygen":           {"target"},
-	"key-add":          {"profile", "key", "key_type", "host"},
-	"providers-export": {},
-	"snapshots-prune":  {"keep"},
-	"doctor-fix":       {},
+	"profile-add":       {"name", "key_scope", "key_name", "key_comment"},
+	"profile-edit":      {"name", "key_scope", "key_name"},
+	"profile-delete":    {"name", "purge"},
+	"profile-category":  {"name", "category"},
+	"host-add":          {"profile", "alias", "hostname", "user", "port", "tags"},
+	"host-edit":         {"profile", "alias", "hostname", "user", "port", "tags"},
+	"host-delete":       {"profile", "alias"},
+	"key-delete":        {"profile", "key"},
+	"vm-add":            {"profile", "alias", "hypervisor", "vm", "user"},
+	"config-render":     {},
+	"reconcile":         {},
+	"keygen":            {"target"},
+	"key-add":           {"profile", "key", "key_type", "host"},
+	"providers-export":  {},
+	"snapshots-prune":   {"keep"},
+	"doctor-fix":        {},
+	"host-apply":        {"profile", "specs", "create", "category"},
+	"clean":             {"adopt"},
+	"bundle":            {"keep"},
+	"vm-docker-context": {"alias"},
+	"notify-test":       {},
+	"audit-notify":      {},
 }
 
 // nameRe is what a profile, alias or key name may be on the web: the
@@ -82,6 +90,57 @@ func optional(f url.Values, field string) (*string, error) {
 		return nil, err
 	}
 	return &v, nil
+}
+
+// lines is a multi-line value - host specs - which may hold line breaks and
+// tabs, and no other control character.
+func lines(f url.Values, field string) (string, error) {
+	v := f.Get(field)
+	if strings.ContainsFunc(v, func(r rune) bool { return (r < 0x20 && r != '\n' && r != '\r' && r != '\t') || r == 0x7f }) {
+		return "", badForm("%s holds a control character", field)
+	}
+	if len(v) > 16384 {
+		return "", badForm("%s is too long", field)
+	}
+	return v, nil
+}
+
+// checked is a checkbox: "1" when ticked, absent when not.
+func checked(f url.Values, field string) bool { return f.Get(field) == "1" }
+
+// optionalName is a name field that may be left empty.
+func optionalName(f url.Values, field string) (string, error) {
+	if strings.TrimSpace(f.Get(field)) == "" {
+		return "", nil
+	}
+	return name(f, field)
+}
+
+// hostSpecs parses the host apply box, one spec per line, and holds every
+// alias to the same rule as a name and every hostname and user to plain.
+func hostSpecs(f url.Values) ([]editor.HostSpec, error) {
+	text, err := lines(f, "specs")
+	if err != nil {
+		return nil, err
+	}
+	specs, err := editor.ParseHostSpecs(strings.NewReader(text))
+	if err != nil {
+		return nil, badForm("%s", err.Error())
+	}
+	if len(specs) == 0 {
+		return nil, badForm("no host specs: one per line, `<alias> <host>[:port] <user> [role]`")
+	}
+	for _, s := range specs {
+		if !nameRe.MatchString(s.Alias) {
+			return nil, badForm("alias %q is not a name sshmgr accepts: letters, digits, '.', '_' and '-'", s.Alias)
+		}
+		for _, v := range append([]string{s.Hostname, s.User, s.Role}, s.Tags...) {
+			if strings.ContainsFunc(v, func(r rune) bool { return r < 0x20 || r == 0x7f }) {
+				return nil, badForm("spec for %s holds a control character", s.Alias)
+			}
+		}
+	}
+	return specs, nil
 }
 
 func tagsOf(f url.Values) (*[]string, error) {
@@ -179,7 +238,15 @@ func buildChange(f url.Values) (change.Change, error) {
 		}
 		ch = change.ProfileEdit(n("name"), scope, keyName)
 	case "profile-delete":
-		ch = change.ProfileDelete(n("name"))
+		if checked(f, "purge") {
+			ch = change.ProfilePurge(n("name"))
+		} else {
+			ch = change.ProfileDelete(n("name"))
+		}
+	case "profile-category":
+		category, err := optionalName(f, "category")
+		errs = append(errs, err)
+		ch = change.ProfileCategory(n("name"), category)
 	case "host-add":
 		ch = change.HostAdd(n("profile"), n("alias"), host(false))
 	case "host-edit":
@@ -230,6 +297,29 @@ func buildChange(f url.Values) (change.Change, error) {
 		ch = change.SnapshotsPrune(keep)
 	case "doctor-fix":
 		ch = change.DoctorFix()
+	case "host-apply":
+		specs, err := hostSpecs(f)
+		errs = append(errs, err)
+		category, err := optionalName(f, "category")
+		errs = append(errs, err)
+		ch = change.HostApply(n("profile"), specs, checked(f, "create"), category)
+	case "clean":
+		ch = change.Clean(checked(f, "adopt"))
+	case "bundle":
+		keep := 0
+		if v := strings.TrimSpace(f.Get("keep")); v != "" {
+			var err error
+			if keep, err = strconv.Atoi(v); err != nil || keep < 0 || keep > 1000 {
+				errs = append(errs, badForm("keep must be a number from 0 to 1000"))
+			}
+		}
+		ch = change.Bundle(keep)
+	case "vm-docker-context":
+		ch = change.VMDockerContext(n("alias"))
+	case "notify-test":
+		ch = change.NotifyTest()
+	case "audit-notify":
+		ch = change.AuditNotify()
 	}
 	return ch, errors.Join(errs...)
 }
@@ -254,6 +344,7 @@ type changePage struct {
 	Stale   bool
 	Command string
 	Destroy bool // the action removes something; the button says so
+	Purge   bool // it deletes private keys too, which the page spells out
 }
 
 type donePage struct {
@@ -313,5 +404,6 @@ func (h pages) renderChange(w http.ResponseWriter, r *http.Request, status int, 
 	h.s.render(w, status, "change", h.s.newView(r, "", "Review the change", changePage{
 		Plan: plan, Fields: carried(r.PostForm), Stale: stale, Command: commandLine(plan),
 		Destroy: strings.HasSuffix(action, "-delete"),
+		Purge:   action == "profile-delete" && checked(r.PostForm, "purge"),
 	}))
 }

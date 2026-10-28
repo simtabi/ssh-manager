@@ -122,7 +122,9 @@ func newVMAddCmd() *cobra.Command {
 }
 
 // vmHost finds the manifest host alias with a vm spec.
-func vmHost(m *manifest.Manifest, alias string) (manifest.Host, error) { return m.VMHost(alias) }
+func vmHost(m *manifest.Manifest, alias string) (manifest.Host, error) {
+	return manifest.VMHost(m, alias)
+}
 
 // startWait bounds how long `vm proxy` waits for a VM it had to start.
 var startWait = 3 * time.Minute
