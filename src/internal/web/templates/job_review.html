@@ -1,0 +1,18 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "Review the job"}}
+{{if .Busy}}<div class="alert alert-warning" role="alert">{{icon "alert-triangle"}}<span class="ms-1"><code>sshmgr {{.Busy.Command}}</code> is still running, and one change runs at a time. <a href="/jobs/{{.Busy.ID}}">Watch it</a>, and start this one when it ends.</span></div>{{end}}
+<div class="card mb-3">
+  <div class="card-body">
+    <p class="mb-1 text-secondary">The same as running</p>
+    <pre class="code-block mb-0" tabindex="0">{{.Command}}</pre>
+  </div>
+</div>
+<div class="card mb-3"><div class="card-header"><h2 class="card-title">What it will do</h2></div><ul class="list-group list-group-flush">{{range .What}}<li class="list-group-item">{{.}}</li>{{end}}</ul></div>
+<p class="text-secondary">This reaches other machines, so it cannot be previewed. Its output shows as it runs. It holds the lock until it ends, and it can be cancelled between steps.</p>
+<form method="post" action="/jobs" class="d-flex gap-2">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  {{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
+  <button type="submit" class="btn btn-primary"{{if .Busy}} disabled{{end}}>Run {{.Command}}</button>
+  <a href="/" class="btn btn-link">Cancel</a>
+</form>
+{{end}}{{end}}

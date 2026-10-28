@@ -2,6 +2,7 @@ package providers
 
 import (
 	"encoding/json"
+	"io"
 	"path/filepath"
 )
 
@@ -20,6 +21,12 @@ type Target struct {
 	// key (a key kept in 1Password); "" == the key is a file.
 	IdentityAgent string
 	KnownHosts    string // per-profile known_hosts; "" == none
+	// Unattended is set when nobody can answer a prompt - a deploy started
+	// from the web UI. ssh and ssh-copy-id then run with stdin closed and
+	// BatchMode=yes, so a password prompt fails at once instead of reaching
+	// the terminal sshmgr serve was started from, and their output goes
+	// here. nil keeps the terminal, where a password can be typed (W12).
+	Unattended io.Writer
 }
 
 // identityOpts are the ssh options that make a verify login use exactly the

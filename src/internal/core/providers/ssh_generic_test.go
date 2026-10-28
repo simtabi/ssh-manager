@@ -261,3 +261,46 @@ func TestDeployOverSSHKeepsTheKeyOutOfTheCommandLine(t *testing.T) {
 		t.Errorf("the public key reached the remote command line:\n%s", argv)
 	}
 }
+
+// W12: a deploy nobody can answer runs with BatchMode=yes and stdin closed, so
+// a password prompt fails at once instead of reaching the terminal sshmgr serve
+// was started from; its output goes to the writer, and the failure says where
+// a password can be typed. Without Unattended, the terminal is kept.
+func TestUnattendedDeployCannotPrompt(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("the stand-in is a shell script")
+	}
+	bin := t.TempDir()
+	log := filepath.Join(bin, "calls.log")
+	script := "#!/bin/sh\nprintf 'args: %s\\n' \"$*\" >> '" + log + "'\n" +
+		"if read -r line; then printf 'stdin: %s\\n' \"$line\" >> '" + log + "'; fi\n" +
+		"echo 'Permission denied (publickey,password).' >&2\nexit 1\n"
+	if err := os.WriteFile(filepath.Join(bin, "ssh-copy-id"), []byte(script), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("PATH", bin+string(os.PathListSeparator)+os.Getenv("PATH"))
+
+	var out strings.Builder
+	tgt := Target{Alias: "db", Hostname: "db.example", User: "ops", Port: 22, PubkeyPath: "/k.pub", Unattended: &out}
+	res := (GenericSSH{}).Deploy(tgt)
+	calls, _ := os.ReadFile(log)
+	if !strings.Contains(string(calls), "BatchMode=yes") {
+		t.Errorf("an unattended ssh-copy-id can still prompt:\n%s", calls)
+	}
+	if strings.Contains(string(calls), "stdin:") {
+		t.Errorf("an unattended ssh-copy-id was given a stdin:\n%s", calls)
+	}
+	if !strings.Contains(out.String(), "Permission denied") {
+		t.Errorf("its output did not reach the writer: %q", out.String())
+	}
+	if !res.Error || !strings.Contains(res.Detail, "run `sshmgr deploy` in a terminal") {
+		t.Errorf("the failure does not say where to type a password: %+v", res)
+	}
+
+	_ = os.Remove(log)
+	tgt.Unattended = nil
+	_ = (GenericSSH{}).Deploy(tgt)
+	if calls, _ := os.ReadFile(log); strings.Contains(string(calls), "BatchMode=yes") {
+		t.Errorf("an attended deploy lost its password prompt:\n%s", calls)
+	}
+}

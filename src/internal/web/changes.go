@@ -12,6 +12,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/change"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
+	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
 // A change is two requests. POST /changes/preview runs it against a private
@@ -47,6 +48,7 @@ var actionFields = map[string][]string{
 	"clean":             {"adopt"},
 	"bundle":            {"keep"},
 	"vm-docker-context": {"alias"},
+	"snapshots-restore": {"id"},
 	"notify-test":       {},
 	"audit-notify":      {},
 }
@@ -172,8 +174,15 @@ func portOf(f url.Values) (*int, error) {
 	return &n, nil
 }
 
+// home is what a change needs to know about the home beyond the form: the
+// snapshot restore reads its snapshot from the real home's snapshots.
+type home struct {
+	p      paths.Paths
+	retain int
+}
+
 // buildChange turns a form into the change it asks for.
-func buildChange(f url.Values) (change.Change, error) {
+func buildChange(f url.Values, h home) (change.Change, error) {
 	action := f.Get("action")
 	if _, ok := actionFields[action]; !ok {
 		return change.Change{}, badForm("unknown action %q", action)
@@ -316,6 +325,12 @@ func buildChange(f url.Values) (change.Change, error) {
 		ch = change.Bundle(keep)
 	case "vm-docker-context":
 		ch = change.VMDockerContext(n("alias"))
+	case "snapshots-restore":
+		retain := h.retain
+		if retain < 1 {
+			retain = 10
+		}
+		ch = change.SnapshotRestore(h.p.SnapshotsDir(), n("id"), retain)
 	case "notify-test":
 		ch = change.NotifyTest()
 	case "audit-notify":
@@ -361,7 +376,7 @@ func (h pages) parseChange(w http.ResponseWriter, r *http.Request) (change.Chang
 		h.s.renderError(w, r, http.StatusBadRequest, "Unreadable form", err.Error())
 		return change.Change{}, false
 	}
-	ch, err := buildChange(r.PostForm)
+	ch, err := buildChange(r.PostForm, home{p: h.s.opts.Engine.Home(), retain: h.s.opts.Retain})
 	if err != nil {
 		h.s.renderError(w, r, http.StatusBadRequest, "That change cannot be made", err.Error())
 		return change.Change{}, false

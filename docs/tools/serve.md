@@ -59,6 +59,7 @@ These changes can be made from the pages:
 | Mint a profile's or host's missing keys | Keys | `sshmgr keygen <target> --no-pin --yes` |
 | Add a key, optionally wired to a host | Keys | `sshmgr key add` |
 | Prune old snapshots | Snapshots | `sshmgr snapshots prune --keep` |
+| Restore a snapshot | the snapshot's page | `sshmgr snapshots restore <id> --yes` |
 | Fix file modes | Doctor | `sshmgr doctor --fix` |
 | Write an editable `providers.json` | Doctor | `sshmgr providers --export` |
 | Remove stale pins and records, optionally adopting pins first | Doctor | `sshmgr clean --yes [--adopt]` |
@@ -105,15 +106,46 @@ it lists what confirming will do, and only confirming does it. The confirmation 
 lists too. Prune, bundle, the Docker context and the notifications take no snapshot first, as their
 commands take none.
 
+**Restoring a snapshot** previews exactly what it puts back: the copy is restored from the
+snapshot, and the page shows the diff against `~/.ssh` now. The confirmation names the snapshot
+file. Confirming snapshots `~/.ssh` first, then restores. A snapshot that still holds private keys
+is refused here, as its page refuses to open it.
+
 **Exports download.** The hosts page offers the flat `ssh_config` (`sshmgr config export --flat`)
 and the Termius CSV (`sshmgr termius export`, with or without git hosts) as downloads. Nothing is
 written to the home, so `--read-only` keeps them.
 
+## Jobs
+
+Deploying, rotating and rolling back reach the hosts that use a key, so no copy can preview them.
+A key's page offers each as a **job**:
+
+1. **Review.** The page says what the job will do, and the command it is the same as.
+2. **Run.** The job starts, and its page shows the output as it comes. It holds the lock until it
+   ends, and it is recorded in the history like any other change.
+
+| Job | Where | The same as |
+|---|---|---|
+| Deploy a key to every host that uses it | the key's page | `sshmgr deploy <profile/key> --yes` |
+| Rotate a key | the key's page | `sshmgr rotate <profile/key> --yes` |
+| Roll a key back to its predecessor | the key's page | `sshmgr rollback <profile/key> --yes` |
+
+- **One job at a time.** Starting a second while one runs takes you to the one running. No change
+  is previewed or made while a job runs.
+- **Nothing a job runs can prompt.** `ssh` and `ssh-copy-id` run with stdin closed and
+  `BatchMode=yes`, so a target that needs a password fails at once, with a note to deploy it from a
+  terminal. A terminal is where the CLI still asks.
+- **Rotate asks you to paste a key.** A target that takes the key by hand, such as a panel, pauses
+  the job with the new public key shown for copying. Confirm once it is pasted; sshmgr then logs in
+  with it to prove it. Rotate writes an encrypted backup first, so it needs
+  `SSH_MANAGER_AGE_RECIPIENT`.
+- **Cancel** stops a job at its next step, never inside one. A rotate waiting on you is answered no.
+
 Some changes are terminal-only:
 
 - rotating, overwriting a key (`keygen --force`), and passphrases;
-- deploying, revoking a key from its targets (`--revoke`), restoring a snapshot or a bundle: these
-  reach other machines or replace `~/.ssh`, and their output is worth watching as it comes;
+- rotating many keys at once, revoking a key from its targets (`--revoke`), and restoring a
+  bundle, which needs the encrypted backup's identity;
 - pinning host keys (`knownhosts init`, `knownhosts pin`): a scan reaches every host, and trusting
   a key is a decision made per key;
 - `key regen-pub`: it needs the private keys, which a preview never copies, and may ask for a

@@ -499,22 +499,9 @@ func restoreByID(sshDir, snapshotsDir, devRoot string, retain int, id string) (R
 	if err := checkTarget(sshDir, devRoot); err != nil {
 		return Result{}, err
 	}
-	snaps := List(snapshotsDir)
-	if len(snaps) == 0 {
-		return Result{}, fmt.Errorf("no snapshots to restore from")
-	}
-	chosen := snaps[len(snaps)-1]
-	if id != "" {
-		var match string
-		for _, s := range snaps {
-			if strings.Contains(filepath.Base(s), id) {
-				match = s
-			}
-		}
-		if match == "" {
-			return Result{}, fmt.Errorf("no snapshot matching %q", id)
-		}
-		chosen = match
+	chosen, err := choose(snapshotsDir, id)
+	if err != nil {
+		return Result{}, err
 	}
 	// Snapshotting the current tree can prune the oldest - possibly `chosen`.
 	// Restore from a temp copy that pruning cannot reach.
@@ -531,6 +518,53 @@ func restoreByID(sshDir, snapshotsDir, devRoot string, retain int, id string) (R
 		return Result{}, err
 	}
 	skipped, err := restore(safe, sshDir, devRoot)
+	if err != nil {
+		return Result{}, err
+	}
+	for _, mp := range perms.IterManagedPaths(sshDir) {
+		_ = perms.SetPerms(mp.Path, mp.Mode)
+	}
+	return Result{Snapshot: chosen, Skipped: skipped}, nil
+}
+
+// choose is the snapshot id names in snapshotsDir: the newest whose name
+// holds id, or the newest of all when id is "".
+func choose(snapshotsDir, id string) (string, error) {
+	snaps := List(snapshotsDir)
+	if len(snaps) == 0 {
+		return "", fmt.Errorf("no snapshots to restore from")
+	}
+	chosen := snaps[len(snaps)-1]
+	if id != "" {
+		var match string
+		for _, s := range snaps {
+			if strings.Contains(filepath.Base(s), id) {
+				match = s
+			}
+		}
+		if match == "" {
+			return "", fmt.Errorf("no snapshot matching %q", id)
+		}
+		chosen = match
+	}
+	return chosen, nil
+}
+
+// Find is the snapshot a restore of id would use, as a path.
+func Find(snapshotsDir, id string) (string, error) { return choose(snapshotsDir, id) }
+
+// RestoreInto restores the snapshot id from snapshotsDir over sshDir, as
+// RestoreByIDIn does but without its pre-restore snapshot. A preview runs it
+// against a copy of ~/.ssh, where there is nothing to snapshot into.
+func RestoreInto(sshDir, snapshotsDir, devRoot, id string) (Result, error) {
+	if err := checkTarget(sshDir, devRoot); err != nil {
+		return Result{}, err
+	}
+	chosen, err := choose(snapshotsDir, id)
+	if err != nil {
+		return Result{}, err
+	}
+	skipped, err := restore(chosen, sshDir, devRoot)
 	if err != nil {
 		return Result{}, err
 	}

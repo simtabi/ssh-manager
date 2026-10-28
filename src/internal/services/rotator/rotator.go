@@ -8,6 +8,7 @@ package rotator
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -110,6 +111,16 @@ type Rotator struct {
 	// manual waits for a pasted key on panel targets (nil: never asks); sshVerify proves it.
 	manual    ManualStep
 	sshVerify func(providers.Target) bool
+	// unattended, when set, is where deploys write their ssh output, and
+	// means no prompt can be answered (see providers.Target.Unattended).
+	unattended io.Writer
+}
+
+// Unattended makes the rotation's deploys run with nobody to answer a prompt,
+// writing their ssh output to w. The web UI rotates this way.
+func (r *Rotator) Unattended(w io.Writer) *Rotator {
+	r.unattended = w
+	return r
 }
 
 // New builds a Rotator.
@@ -149,7 +160,7 @@ func (r *Rotator) target(h manifest.Host, profile, pubPath, pubText, identPath s
 		Alias: h.Alias, Hostname: h.Hostname, User: h.User, Port: h.Port,
 		PubkeyPath: pubPath, PubkeyText: pubText, TokenEnv: deref(h.TokenEnv),
 		IdentityPath: identPath, KnownHosts: filepath.Join(r.p.SSHDir, "known_hosts"),
-		IdentityAgent: r.agentFor(profile, identPath),
+		IdentityAgent: r.agentFor(profile, identPath), Unattended: r.unattended,
 	}
 }
 

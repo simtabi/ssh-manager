@@ -27,6 +27,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or a category move carries - and what a change does outside the home is listed and bound to the confirmation.
   The flat `ssh_config` and the Termius CSV download from the hosts page and write nothing, so `--read-only`
   keeps them.
+- **Deploy, rotate and roll back from the web UI, as jobs.** A key's page reviews each one, then runs it with
+  its output streamed as it comes. One job runs at a time, holds the lock until it ends, and is recorded in the
+  history. Rotate pauses on a target that takes the key by hand, with the new public key to copy, and waits
+  for you. Cancel stops a job between steps.
+- **Snapshots restore from the web UI.** A snapshot's page previews the restore as a diff against `~/.ssh` now,
+  and confirming snapshots `~/.ssh` first, as `sshmgr snapshots restore` does. A snapshot that still holds
+  private keys is refused.
 - **`sshmgr serve` (alias `ui`) - a web UI on this machine.** An overview built from the same rows the
   menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
   snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's
@@ -65,6 +72,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`host apply` asks before changing an existing profile.** It applied a batch to an existing profile without
   asking, unlike every other manifest edit; it now shows the batch and asks, on a terminal. `--yes` and scripts are
   unaffected.
+- **A deploy with nobody to answer cannot prompt (W12).** Under `sshmgr serve`, `ssh-copy-id` and the ssh
+  fallback run with stdin closed and `BatchMode=yes`, and their output goes to the job's page. A target that
+  needs a password fails at once instead of prompting in the terminal `serve` was started from, or hanging for
+  two minutes. The CLI's deploy keeps its prompt.
 - **The menu no longer holds the lock for the rest of the session.** A `sshmgr` menu took the lock with its first
   change and kept it until it quit, so an open menu held up every other sshmgr command. Each change now releases it
   when it ends. Reconcile from the menu also asks before it takes the lock, and stops with "something changed

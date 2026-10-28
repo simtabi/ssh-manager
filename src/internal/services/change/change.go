@@ -28,7 +28,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
-	"sync"
+	"time"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
@@ -111,8 +111,11 @@ var configFiles = []string{"manifest.json", "inventory.json", "providers.json"}
 // Preview runs ch against a private copy of p and reports what it would do.
 // It writes nothing outside the copy and records nothing in the history.
 func Preview(p paths.Paths, ch Change) (Plan, error) {
-	applyMu.Lock()
-	defer applyMu.Unlock()
+	release, err := mutation.Exclusive(busyWait)
+	if err != nil {
+		return Plan{}, err
+	}
+	defer release()
 	return preview(p, ch)
 }
 
@@ -157,22 +160,23 @@ func preview(p paths.Paths, ch Change) (Plan, error) {
 	return plan, nil
 }
 
-// applyMu allows one preview or change at a time in this process. The
-// advisory lock serializes processes; within a server, two requests would
-// otherwise share one lock and interleave, and a preview's suspension of the
-// history would swallow a real change's events.
-var applyMu sync.Mutex
+// busyWait is how long a preview or a change waits for another one, or a job,
+// to finish before it reports mutation.ErrBusy (see mutation.Exclusive).
+const busyWait = 10 * time.Second
 
 // Apply makes ch on p if a fresh preview under the lock still hashes to hash.
 // On ErrStale it returns that fresh preview, for the person to confirm again.
 func Apply(p paths.Paths, ch Change, hash string, retain int, source string) (Plan, Result, error) {
-	applyMu.Lock()
-	defer applyMu.Unlock()
+	release, err := mutation.Exclusive(busyWait)
+	if err != nil {
+		return Plan{}, Result{}, err
+	}
+	defer release()
 	scope := mutation.Scope{Command: ch.Command, Args: ch.Args, Source: source,
 		Subjects: ch.Subjects, OpID: history.NewOpID()}
 	var plan Plan
 	var res Result
-	err := mutation.Scoped(p, scope, func() error {
+	err = mutation.Scoped(p, scope, func() error {
 		fresh, err := preview(p, ch)
 		if err != nil {
 			return err
@@ -235,7 +239,9 @@ func copyHome(p paths.Paths) (paths.Paths, func(), error) {
 		return paths.Paths{}, nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	shadow := paths.Paths{SSHDir: filepath.Join(dir, "ssh"), ConfigDir: filepath.Join(dir, "config")}
+	// The copy's SSH directory is named .ssh, as a real one is: a restore
+	// refuses to write over anything else.
+	shadow := paths.Paths{SSHDir: filepath.Join(dir, ".ssh"), ConfigDir: filepath.Join(dir, "config")}
 	files, err := capture(p)
 	if err != nil {
 		cleanup()

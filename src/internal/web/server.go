@@ -17,6 +17,8 @@ import (
 	"net"
 	"net/http"
 	"time"
+
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/jobs"
 )
 
 // Options configures a Server.
@@ -41,6 +43,10 @@ type Options struct {
 	Version  string
 	BindAddr string
 
+	// Retain is how many snapshots a snapshot restore keeps when it snapshots
+	// first, as SSH_MANAGER_SNAPSHOT_RETAIN sets for the CLI. 0 means 10.
+	Retain int
+
 	// Now is the clock. Nil means time.Now.
 	Now func() time.Time
 }
@@ -51,6 +57,7 @@ type Server struct {
 	pages    *pageSet
 	assets   *assetSet
 	sessions sessions
+	jobs     *jobs.Registry
 	handler  http.Handler
 }
 
@@ -74,7 +81,7 @@ func New(opts Options) (*Server, error) {
 	if err != nil {
 		return nil, err
 	}
-	s := &Server{opts: opts, pages: pages, assets: assets}
+	s := &Server{opts: opts, pages: pages, assets: assets, jobs: jobs.NewRegistry()}
 	s.handler = securityHeaders(s.hostCheck(s.auth(s.sameOrigin(s.routes()))))
 	return s, nil
 }

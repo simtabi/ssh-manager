@@ -1,6 +1,8 @@
 package change
 
 import (
+	"archive/tar"
+	"compress/gzip"
 	"fmt"
 	"io"
 	"os"
@@ -10,6 +12,7 @@ import (
 	"testing"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
@@ -142,4 +145,73 @@ func TestBundleListsTheBundlesItPrunes(t *testing.T) {
 		slices.Contains(plan.Effects, "removes bundle ssh-manager-20260102-000000.age") {
 		t.Errorf("effects = %v", plan.Effects)
 	}
+}
+
+// A restore previews the snapshot it names into the copy, binds the
+// confirmation to that file, and refuses a snapshot that holds private keys.
+func TestSnapshotRestorePreviewsAndRefusesKeyBearingSnapshots(t *testing.T) {
+	p := home(t)
+	cfg := filepath.Join(p.SSHDir, "config")
+	if err := os.WriteFile(cfg, []byte("Host old\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	snap, err := snapshots.Snapshot(p.SSHDir, p.SnapshotsDir(), 10, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(cfg, []byte("Host new\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	id := filepath.Base(snap)
+	plan, err := Preview(p, SnapshotRestore(p.SnapshotsDir(), id, 10))
+	if err != nil || plan.Err != "" {
+		t.Fatalf("%v %s", err, plan.Err)
+	}
+	if !slices.Contains(plan.Effects, "restores "+id) {
+		t.Errorf("effects = %v", plan.Effects)
+	}
+	if len(plan.Files) != 1 || plan.Files[0].Path != "~/.ssh/config" {
+		t.Fatalf("files = %+v", plan.Files)
+	}
+	if b, _ := os.ReadFile(cfg); string(b) != "Host new\n" {
+		t.Error("the preview restored the real config")
+	}
+	_, _, err = Apply(p, SnapshotRestore(p.SnapshotsDir(), id, 10), plan.Hash, 10, history.SourceWeb)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if b, _ := os.ReadFile(cfg); string(b) != "Host old\n" {
+		t.Errorf("config after restore = %q", b)
+	}
+
+	// A legacy snapshot with a private key in it is not restored from here.
+	legacy := filepath.Join(p.SnapshotsDir(), "ssh-20200101-000000.tar.gz")
+	writeKeyBearingSnapshot(t, legacy)
+	plan, err = Preview(p, SnapshotRestore(p.SnapshotsDir(), filepath.Base(legacy), 10))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(plan.Err, "holds private keys") {
+		t.Errorf("a key-bearing snapshot was not refused: %q", plan.Err)
+	}
+}
+
+// writeKeyBearingSnapshot writes a snapshot in the old shape, with a file in
+// it that is not one a snapshot may hold.
+func writeKeyBearingSnapshot(t *testing.T, path string) {
+	t.Helper()
+	f, err := os.Create(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	gz := gzip.NewWriter(f)
+	tw := tar.NewWriter(gz)
+	body := []byte("stands in for a private key\n")
+	if err := tw.WriteHeader(&tar.Header{Name: ".ssh/id_ed25519", Mode: 0o600, Size: int64(len(body)), Typeflag: tar.TypeReg}); err != nil {
+		t.Fatal(err)
+	}
+	_, _ = tw.Write(body)
+	_ = tw.Close()
+	_ = gz.Close()
+	_ = f.Close()
 }

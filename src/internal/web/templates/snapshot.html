@@ -23,5 +23,15 @@
   <div class="card-body p-0">{{template "diff" .Lines}}</div>
 </div>
 {{else}}<p>{{icon "circle-check"}}<span class="ms-1">No difference.</span></p>{{end}}
+{{if not $.ReadOnly}}
+<div class="card mt-3">
+  <div class="card-body">
+    <p class="text-secondary">Restoring puts back the config, <code>known_hosts</code> and public keys this snapshot holds, and leaves private keys as they are. <code>~/.ssh</code> is snapshotted first, so the restore can be undone.</p>
+    {{template "change_open" $}}<input type="hidden" name="action" value="snapshots-restore"><input type="hidden" name="id" value="{{.ID}}">
+      <button type="submit" class="btn btn-outline-danger">Preview restoring {{.ID}}</button>
+    </form>
+  </div>
+</div>
+{{end}}
 {{end}}
 {{end}}{{end}}

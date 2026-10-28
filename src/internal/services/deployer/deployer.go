@@ -7,6 +7,7 @@ package deployer
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -69,11 +70,21 @@ type Deployer struct {
 	m   *manifest.Manifest
 	inv *inventory.Inventory
 	ks  *keystore.KeyStore
+	// unattended, when set, is where the deploy's ssh output goes, and means
+	// no prompt can be answered (see providers.Target.Unattended).
+	unattended io.Writer
 }
 
 // New builds a Deployer.
 func New(p paths.Paths, m *manifest.Manifest, inv *inventory.Inventory) *Deployer {
 	return &Deployer{p: p, m: m, inv: inv, ks: keystore.New()}
+}
+
+// Unattended makes the deploy run with nobody to answer a prompt, writing the
+// output of ssh and ssh-copy-id to w. The web UI deploys this way.
+func (d *Deployer) Unattended(w io.Writer) *Deployer {
+	d.unattended = w
+	return d
 }
 
 // Deploy installs key keyName on its target(s) (all hosts using it, or just
@@ -120,7 +131,7 @@ func (d *Deployer) Deploy(selector, targetAlias string) (DeployReport, error) {
 		tgt := providers.Target{
 			Alias: host.Alias, Hostname: host.Hostname, User: host.User, Port: host.Port,
 			PubkeyPath: pub, PubkeyText: pubText, TokenEnv: deref(host.TokenEnv),
-			KnownHosts: knownHosts,
+			KnownHosts: knownHosts, Unattended: d.unattended,
 		}
 		outcome := provider.Deploy(tgt)
 		recordDeployment(&rec, host.Alias, outcome.Method, outcome.Verified)
