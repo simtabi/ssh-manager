@@ -72,6 +72,9 @@ func (g GenericSSH) Deploy(t Target) DeployOutcome {
 		return g.deployOverSSH(t)
 	}
 	args := append([]string{"-o", "ConnectTimeout=10"}, g.knownHostsOpts(t)...)
+	if t.Unattended != nil {
+		args = append(args, "-o", "BatchMode=yes")
+	}
 	args = append(args, "-i", t.PubkeyPath)
 	if t.Port != 22 {
 		args = append(args, "-p", strconv.Itoa(t.Port))
@@ -81,8 +84,11 @@ func (g GenericSSH) Deploy(t Target) DeployOutcome {
 	defer cancel()
 	cmd := exec.CommandContext(ctx, "ssh-copy-id", args...)
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
+	if t.Unattended != nil {
+		cmd.Stdin, cmd.Stdout, cmd.Stderr = nil, t.Unattended, t.Unattended
+	}
 	if err := cmd.Run(); err != nil {
-		return DeployOutcome{Method: "ssh-copy-id", Detail: "ssh-copy-id failed: " + err.Error(), Error: true}
+		return DeployOutcome{Method: "ssh-copy-id", Detail: "ssh-copy-id failed: " + err.Error() + unattendedHint(t), Error: true}
 	}
 	return DeployOutcome{Method: "ssh-copy-id", Verified: true, Detail: "authorized_keys updated"}
 }
@@ -108,17 +114,34 @@ func (g GenericSSH) deployOverSSH(t Target) DeployOutcome {
 	if t.PubkeyText == "" {
 		return DeployOutcome{Method: "ssh", Detail: "no public key text to install", Error: true}
 	}
-	args := append(g.sshBase(t), t.SSHDest(), appendKeyScript)
+	args := g.sshBase(t)
+	if t.Unattended != nil {
+		args = append(args, "-o", "BatchMode=yes")
+	}
+	args = append(args, t.SSHDest(), appendKeyScript)
 	ctx, cancel := context.WithTimeout(context.Background(), 120*time.Second)
 	defer cancel()
 	cmd := exec.CommandContext(ctx, args[0], args[1:]...)
 	cmd.Stdin = strings.NewReader(strings.TrimSpace(t.PubkeyText) + "\n")
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
+	if t.Unattended != nil {
+		cmd.Stdout, cmd.Stderr = t.Unattended, t.Unattended
+	}
 	if err := cmd.Run(); err != nil {
 		return DeployOutcome{Method: "ssh", Error: true,
-			Detail: "ssh-copy-id is not installed and the ssh fallback failed: " + err.Error()}
+			Detail: "ssh-copy-id is not installed and the ssh fallback failed: " + err.Error() + unattendedHint(t)}
 	}
 	return DeployOutcome{Method: "ssh", Verified: true, Detail: "authorized_keys updated (via ssh)"}
+}
+
+// unattendedHint is what an unattended deploy adds to its failure: the likely
+// reason, and where it can be done instead.
+func unattendedHint(t Target) string {
+	if t.Unattended == nil {
+		return ""
+	}
+	return " (nothing can answer a password prompt here; if " + t.Alias +
+		" needs a password, run `sshmgr deploy` in a terminal)"
 }
 
 func (g GenericSSH) Verify(t Target) bool {
