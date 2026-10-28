@@ -1,0 +1,61 @@
+{{define "content"}}
+{{template "page_header" "Keys"}}
+<div class="card">
+  {{if .Data}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Every key the manifest declares or a host uses</caption>
+      <thead><tr><th scope="col">Key</th><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Expires</th><th scope="col">Hosts</th><th scope="col">On disk</th>{{if not $.ReadOnly}}<th scope="col"><span class="visually-hidden">Actions</span></th>{{end}}</tr></thead>
+      <tbody>
+        {{range .Data}}
+        <tr>
+          <th scope="row"><a href="/keys/{{.Ref.Profile}}/{{.Ref.KeyName}}"><code>{{.Ref}}</code></a></th>
+          <td>{{.Type}}</td>
+          <td class="text-break"><code>{{orDash .Fingerprint}}</code></td>
+          <td>{{orDash .ExpiresOn}}</td>
+          <td>{{orDash (join .Hosts ", ")}}</td>
+          <td>{{if .Vault}}1Password <span class="text-secondary">({{.Vault}})</span>{{else if .PrivateOnDisk}}<span class="badge badge-ok">yes</span>{{else}}<span class="badge badge-warn">not minted</span>{{end}}</td>
+          {{if not $.ReadOnly}}<td class="text-end">{{if and .Declared (not .Hosts)}}{{template "change_open" $}}<input type="hidden" name="action" value="key-delete"><input type="hidden" name="profile" value="{{.Ref.Profile}}"><input type="hidden" name="key" value="{{.Ref.KeyName}}"><button class="btn btn-sm btn-outline-danger" type="submit">Delete key {{.Ref.KeyName}}</button></form>{{end}}</td>{{end}}
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No keys in the manifest yet.</div>{{end}}
+</div>
+<p class="text-secondary mt-2">A declared key no host uses can be deleted here: the declaration and its record go, the files stay. Rotation, overwriting a key, passphrases and keys kept in 1Password stay in the terminal: <code>sshmgr rotate</code>, <code>sshmgr keygen --force</code>, <code>--passphrase</code>.</p>
+{{if not .ReadOnly}}
+<div class="row row-cards mt-1">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a key</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="key-add">
+          <div class="row g-2">
+            <div class="col-sm-4"><label class="form-label" for="k-profile">Profile</label><input class="form-control" id="k-profile" name="profile" required autocomplete="off" spellcheck="false" list="k-profiles"></div>
+            <div class="col-sm-4"><label class="form-label" for="k-name">Key name</label><input class="form-control" id="k-name" name="key" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-4"><label class="form-label" for="k-type">Type</label><select class="form-select" id="k-type" name="key_type"><option value="">the manifest's default</option><option>ed25519</option><option>ecdsa</option><option>rsa</option></select></div>
+            <div class="col-12"><label class="form-label" for="k-host">Wire it to host <span class="text-secondary">(optional alias in that profile)</span></label><input class="form-control" id="k-host" name="host" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <datalist id="k-profiles">{{range .Data}}<option value="{{.Ref.Profile}}">{{end}}</datalist>
+          <p class="text-secondary small mt-2 mb-2">Declares the key and mints it, with no passphrase.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Mint missing keys</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="keygen">
+          <div class="mb-2"><label class="form-label" for="g-target">For a profile or host alias</label><input class="form-control" id="g-target" name="target" required autocomplete="off" spellcheck="false" list="k-profiles"></div>
+          <p class="text-secondary small mb-2">Keys that exist are left alone.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
+{{end}}

@@ -1,0 +1,10 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "Done"}}
+<div class="alert alert-success" role="status">{{icon "circle-check"}}<span class="ms-1">Made the change: <code>{{.Command}}</code></span></div>
+{{if .Result.Output}}<div class="card mb-3"><div class="card-body"><pre class="code-block" tabindex="0">{{.Result.Output}}</pre></div></div>{{end}}
+<ul class="list-inline">
+  {{if .Result.OpID}}<li class="list-inline-item"><a href="/history/{{.Result.OpID}}">{{icon "history"}}<span class="ms-1">See it in the history</span></a></li>{{end}}
+  {{if .Result.Snapshot}}<li class="list-inline-item"><a href="/snapshots/{{.Result.Snapshot}}">{{icon "archive"}}<span class="ms-1">The snapshot taken first</span></a></li>{{end}}
+  <li class="list-inline-item"><a href="/">{{icon "arrow-left"}}<span class="ms-1">Back to the overview</span></a></li>
+</ul>
+{{end}}{{end}}

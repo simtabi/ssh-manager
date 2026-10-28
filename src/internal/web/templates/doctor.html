@@ -1,0 +1,15 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "Doctor"}}
+{{if .OK}}<div class="alert alert-success" role="status">{{icon "circle-check"}}<span class="ms-1">Every check passed.</span></div>
+{{else}}<div class="alert alert-warning" role="status">{{icon "alert-triangle"}}<span class="ms-1">Some checks need attention. <code>sshmgr doctor --fix</code> repairs file modes; the report says what to run for the rest.</span></div>{{end}}
+<div class="card"><div class="card-body"><pre class="code-block" tabindex="0">{{.Report}}</pre></div></div>
+<p class="text-secondary mt-3">The same report as <code>sshmgr doctor</code>.</p>
+{{if not $.ReadOnly}}
+<div class="d-flex flex-wrap gap-2">
+  {{template "change_open" $}}<input type="hidden" name="action" value="doctor-fix"><button type="submit" class="btn btn-primary">Preview fixing file modes</button></form>
+  {{template "change_open" $}}<input type="hidden" name="action" value="providers-export"><button type="submit" class="btn btn-outline-secondary">Write an editable providers.json</button></form>
+  {{template "change_open" $}}<input type="hidden" name="action" value="clean"><button type="submit" class="btn btn-outline-secondary">Preview clean</button>
+    <label class="form-check form-check-inline ms-2 mb-0"><input class="form-check-input" type="checkbox" name="adopt" value="1"><span class="form-check-label">adopt untagged pins that match a host first</span></label></form>
+</div>
+{{end}}
+{{end}}{{end}}

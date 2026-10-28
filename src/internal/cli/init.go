@@ -22,6 +22,7 @@ func newInitCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			lockForMutation(p)
 			stamp := ""
 			if force && backup {
 				stamp = time.Now().Format("20060102-150405")

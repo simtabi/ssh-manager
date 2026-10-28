@@ -30,28 +30,21 @@ func newReconcileCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
-			m, err := manifest.Load(p.Manifest())
-			if err != nil {
-				return err
-			}
-			inv, err := inventory.Load(p.Inventory())
-			if err != nil {
-				return err
-			}
-			r := reconciler.New(p, m, inv, platform.EmitUseKeychain())
-			out := c.OutOrStdout()
-
 			if dryRun {
+				lockForMutation(p)
+				r, _, err := loadReconciler(p)
+				if err != nil {
+					return err
+				}
 				res, err := r.Reconcile(true, "")
 				if err != nil {
 					return err
 				}
-				_, _ = fmt.Fprintln(out, res.Format())
+				_, _ = fmt.Fprintln(c.OutOrStdout(), res.Format())
 				return nil
 			}
 
-			return reconcileApply(c, p, m, r, yes, passphrase, noPin)
+			return reconcileApply(c, p, yes, passphrase, noPin)
 		},
 	}
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "preview without writing")
@@ -61,13 +54,34 @@ func newReconcileCmd() *cobra.Command {
 	return cmd
 }
 
+// loadReconciler reads the manifest and inventory a reconcile works from.
+func loadReconciler(p paths.Paths) (*reconciler.Reconciler, *manifest.Manifest, error) {
+	m, err := manifest.Load(p.Manifest())
+	if err != nil {
+		return nil, nil, err
+	}
+	inv, err := inventory.Load(p.Inventory())
+	if err != nil {
+		return nil, nil, err
+	}
+	return reconciler.New(p, m, inv, platform.EmitUseKeychain()), m, nil
+}
+
 // reconcileApply is reconcile's applying half - preview as confirmation, then
-// snapshot, mint, pin and warn - shared with `host apply --reconcile`.
-func reconcileApply(c *cobra.Command, p paths.Paths, m *manifest.Manifest, r *reconciler.Reconciler,
-	yes, passphrase, noPin bool) error {
+// snapshot, mint, pin and warn - shared with `host apply --reconcile`. It asks
+// before it takes the lock and checks the preview again under it (see
+// recheck); asking nobody, it locks first. host apply --reconcile calls it with
+// the lock already held, which makes the lock a no-op and the check a formality.
+func reconcileApply(c *cobra.Command, p paths.Paths, yes, passphrase, noPin bool) error {
 	out := c.OutOrStdout()
-	// Show the dry run as the confirmation. The user sees exactly what is
-	// about to happen rather than being asked to agree to a verb name.
+	willAsk := asks(yes)
+	if !willAsk {
+		lockForMutation(p)
+	}
+	r, m, err := loadReconciler(p)
+	if err != nil {
+		return err
+	}
 	preview, err := r.Reconcile(true, "")
 	if err != nil {
 		return err
@@ -84,6 +98,21 @@ func reconcileApply(c *cobra.Command, p paths.Paths, m *manifest.Manifest, r *re
 		}
 		pw = secret
 	}
+	if willAsk {
+		shown := preview.Format()
+		if err := recheck(p, shown, func() (string, error) {
+			if r, m, err = loadReconciler(p); err != nil {
+				return "", err
+			}
+			again, err := r.Reconcile(true, "")
+			if err != nil {
+				return "", err
+			}
+			return again.Format(), nil
+		}); err != nil {
+			return err
+		}
+	}
 	snap := snapshotBeforeMutation(p)
 	res, err := r.Reconcile(false, pw)
 	if err != nil {
@@ -96,21 +125,10 @@ func reconcileApply(c *cobra.Command, p paths.Paths, m *manifest.Manifest, r *re
 		res.Pinned = knownhosts.New(p.SSHDir).AutoPin(m, nil, os.Getenv)
 	}
 	_, _ = fmt.Fprintln(out, res.Format())
-	// Reconcile is the command that leaves the tree in its intended state,
-	// so it is where a key that will never be used should be noticed -
-	// rather than at the next doctor run, days later.
 	warnDangling(out, p, m)
 	return nil
 }
 
-// readPassphrase collects the passphrase to protect newly minted keys. On a
-// terminal it is read without echo and confirmed, so it never reaches the screen
-// or the scrollback; when stdin is piped a single line is read so scripted use
-// still works.
-//
-// The piped branch reads the command's own input rather than os.Stdin, so a
-// caller that redirects input is honoured - without which this path could only
-// ever be exercised by a real pipe.
 func readPassphrase(in io.Reader) (string, error) {
 	if !platform.StdinIsTerminal() {
 		return platform.ReadLine(in)

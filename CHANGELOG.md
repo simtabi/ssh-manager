@@ -8,6 +8,42 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **The web UI makes changes, each previewed first.** Profiles, hosts and VM hosts can be added, edited
+  and deleted from the pages; a declared key no host uses can be deleted; and `~/.ssh/config` can be
+  re-rendered. A preview runs the change for real on a throwaway copy of the home that holds no
+  private key, and shows every file it would write. Confirming takes the lock, previews again, and makes
+  the change only if nothing moved since; otherwise it shows the new preview. The lock is held only for
+  that. Each change is in the history with source `web`, and the CLI and the web leave the home
+  byte-identical (a test holds every change to its command). `--read-only` serves no change.
+- **The web UI mints keys, prunes snapshots and fixes modes.** Reconcile, keygen (missing keys only)
+  and key add preview with throwaway keys and say so; confirming mints the keys that stay. They never
+  overwrite, take a passphrase or pin, and are refused for 1Password profiles. Snapshot pruning,
+  `doctor --fix` and `providers --export` are there too, with what they do outside the files listed in
+  the preview and bound to the confirmation.
+- **The rest of the everyday changes are in the web UI.** `host apply` (a box of specs), moving a profile to a
+  category, deleting a profile with its key files (always after an encrypted backup, so it needs
+  `SSH_MANAGER_AGE_RECIPIENT`), `clean`, an encrypted `bundle`, a VM host's Docker context, a test notification
+  and the audit's desktop alert. A preview now names the files it cannot show - the private keys a purge deletes
+  or a category move carries - and what a change does outside the home is listed and bound to the confirmation.
+  The flat `ssh_config` and the Termius CSV download from the hosts page and write nothing, so `--read-only`
+  keeps them.
+- **`sshmgr serve` (alias `ui`) - a web UI on this machine.** An overview built from the same rows the
+  menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
+  snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's
+  manifest diff, and the doctor and audit reports. It listens on `127.0.0.1:7822`, signs a browser in with a
+  one-time token in the printed address, answers only its own Host names, and sends a strict CSP. A snapshot
+  that still holds private keys is listed but never opened. It takes no lock, so it never holds up a command.
+  Tabler 1.7.1 is embedded; `THIRD_PARTY_NOTICES.md` ships in every archive.
+
+- **`sshmgr history` - every change sshmgr has made.** A SQLite store at `log/history.db` records one operation
+  per command that takes the lock: the command and its arguments (names only; other values read `<set>`), how it
+  ended, the snapshot it took, the audit events it raised, and the manifest before and after. `--host`,
+  `--profile`, `--key`, `--since`, `--until`, `--command`, `--source`, `--limit` and `--json` filter it, and
+  `history show <op_id>` diffs the manifest across one operation. The first run imports `audit.log`, the
+  inventory's dates and the snapshots already on disk. `audit.log` is written as before; `SSH_MANAGER_HISTORY=0`
+  turns the store off. The binary now links `modernc.org/sqlite`, a pure-Go driver, so every release target still
+  builds with `CGO_ENABLED=0`.
+
 - **`key_comment` - choose the comment new keys carry.** A template on `defaults` or on a profile, with
   `{profile}`, `{alias}`, `{key}`, `{date}` and `{device}`; unset keeps `{profile}/{alias} {date}`, the comment
   every earlier release wrote. `profile add|edit --key-comment` sets it (`""` clears it on edit), and the manifest
@@ -18,6 +54,27 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   when they disagree.
 
 ### Changed
+
+- **Commands no longer hold the lock while they wait for your answer.** `reconcile`, `keygen`, `key delete`,
+  `key regen-pub`, `host apply`, `clean` and `import` used to take the lock first and keep it while the question sat
+  on screen, so every other sshmgr command waited for as long as you took. They now ask first, then take the lock
+  and work out again what they showed you; if it moved meanwhile - another command changed the manifest - they stop
+  with "something changed while you were deciding" and change nothing. With `--yes` or no terminal, nothing asks,
+  and they lock first exactly as before. `keygen --force` now writes its key backup under the lock, after the
+  questions rather than between them.
+- **`host apply` asks before changing an existing profile.** It applied a batch to an existing profile without
+  asking, unlike every other manifest edit; it now shows the batch and asks, on a terminal. `--yes` and scripts are
+  unaffected.
+- **The menu no longer holds the lock for the rest of the session.** A `sshmgr` menu took the lock with its first
+  change and kept it until it quit, so an open menu held up every other sshmgr command. Each change now releases it
+  when it ends. Reconcile from the menu also asks before it takes the lock, and stops with "something changed
+  while you were deciding" if the manifest moved meanwhile.
+
+- **`config render`, `doctor --fix`, `providers --export`, `bundle`, `git use`, `vm docker-context`, `init`,
+  `migrate` and `notify install` take the advisory lock.** Each changes state and none was serialized with the
+  other commands; `config render` now also re-reads the manifest after its confirmation, under the lock.
+- **A snapshot that fails is on the record.** The guard used to drop the error; the operation now carries a
+  `snapshot.failed` event with the reason. The command still runs.
 
 - **`termius keys ALIAS` finds a git host without `--include-git`.** Naming the host is the choice; the flag now
   only widens the list. `--skip` still leaves a named host out.
@@ -37,6 +94,15 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **A rotated key's inventory comment matches the key.** The record said `profile/<key name> date` while the
   new `.pub` said `profile/<alias> date`; both now come from the same template. A 1Password key's rotation record
   uses the same comment its first record had, rather than `profile/<key name> date`.
+- **The TUI's Change entries apply the same guards as their CLI commands.** Rotate skipped the encrypted key
+  backup `sshmgr rotate` requires, so a TUI rotation could discard the previous key with nothing to restore it
+  from; it now writes the backup first and stops without `SSH_MANAGER_AGE_RECIPIENT`. Pin wrote without asking,
+  under a heading promising every entry asks first; it now asks, and is listed as `knownhosts init --all`, the
+  command it runs (`knownhosts pin` still selects it). Deploy neither asked nor snapshotted, and ran in dev mode;
+  it now does all three as `deploy` does. Reconcile read the manifest before taking the lock, pinned only when it
+  minted a key, and skipped the unused-key warning; it now matches `reconcile`.
+- **`snapshots restore` and `snapshots prune` take the advisory lock**, in the CLI and the TUI, so neither can run
+  under another sshmgr command writing the same tree.
 
 ## [3.5.0] - 2026-10-26
 

@@ -1,0 +1,19 @@
+{{define "op_table"}}{{if .}}
+<div class="table-responsive">
+  <table class="table table-vcenter card-table">
+    <caption class="visually-hidden">Operations, newest first</caption>
+    <thead><tr><th scope="col">Started</th><th scope="col">Command</th><th scope="col">Result</th><th scope="col">Source</th><th scope="col">About</th></tr></thead>
+    <tbody>
+      {{range .}}
+      <tr>
+        <td class="text-nowrap"><time datetime="{{.StartedAt}}">{{stamp .StartedAt}}</time></td>
+        <th scope="row"><a href="/history/{{.OpID}}">{{.Command}}</a></th>
+        <td><span class="badge {{resultClass .Result}}">{{if .Result}}{{.Result}}{{else}}unfinished{{end}}</span></td>
+        <td>{{.Source}}</td>
+        <td class="text-secondary">{{orDash (subjects .Subjects)}}</td>
+      </tr>
+      {{end}}
+    </tbody>
+  </table>
+</div>
+{{else}}<div class="card-body text-secondary">No operations recorded yet.</div>{{end}}{{end}}

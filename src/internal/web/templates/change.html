@@ -1,0 +1,34 @@
+{{define "content"}}{{with .Data}}
+{{template "page_header" "Review the change"}}
+{{if .Stale}}<div class="alert alert-warning" role="alert">{{icon "alert-triangle"}}<span class="ms-1"><strong>Something changed since you looked</strong>, so nothing was written. This is what the change would do now. Confirm again if it is still what you want.</span></div>{{end}}
+<div class="card mb-3">
+  <div class="card-body">
+    <p class="mb-1 text-secondary">The same as running</p>
+    <pre class="code-block mb-0" tabindex="0">{{.Command}}</pre>
+  </div>
+</div>
+{{if .Plan.Err}}
+<div class="alert alert-danger" role="alert">{{icon "circle-x"}}<span class="ms-1">This change would fail, so it cannot be made: {{.Plan.Err}}</span></div>
+{{else}}
+{{if .Plan.Output}}<div class="card mb-3"><div class="card-header"><h2 class="card-title">What sshmgr would say</h2></div><div class="card-body"><pre class="code-block" tabindex="0">{{.Plan.Output}}</pre></div></div>{{end}}
+{{if .Plan.Effects}}<div class="card mb-3"><div class="card-header"><h2 class="card-title">What it would do</h2></div><ul class="list-group list-group-flush">{{range .Plan.Effects}}<li class="list-group-item">{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .Purge}}<div class="alert alert-danger" role="alert">{{icon "alert-triangle"}}<span class="ms-1"><strong>This deletes private keys.</strong> sshmgr writes an encrypted backup first; restoring from it needs the age identity. Anything they unlock stops working once they are gone.</span></div>{{end}}
+{{if .Plan.Hidden}}<div class="card mb-3"><div class="card-header"><h2 class="card-title">Files it cannot show</h2></div><div class="card-body pb-0"><p class="text-secondary">Private keys, and other files a preview never copies. Their contents are not shown, only that the change removes or creates them.</p></div><ul class="list-group list-group-flush">{{range .Plan.Hidden}}<li class="list-group-item"><code>{{.}}</code></li>{{end}}</ul></div>{{end}}
+{{if .Plan.Mints}}<div class="alert alert-info" role="note">{{icon "key"}}<span class="ms-1">The keys below were minted for this preview and thrown away. Confirming mints new ones, so their fingerprints will differ; everything else will be as shown.</span></div>{{end}}
+<h2 class="h3">What it would write</h2>
+{{range .Plan.Files}}
+<div class="card mb-3">
+  <div class="card-header"><h3 class="card-title"><code>{{.Path}}</code></h3><span class="ms-2 badge {{if eq .State "changed"}}badge-info{{else if eq .State "added"}}badge-ok{{else}}badge-bad{{end}}">{{.State}}</span></div>
+  <div class="card-body p-0">{{template "diff" .Lines}}</div>
+</div>
+{{else}}<p>{{icon "circle-check"}}<span class="ms-1">Nothing: every file would stay as it is.</span></p>{{end}}
+<p class="text-secondary">{{if not .Plan.NoSnapshot}}sshmgr snapshots <code>~/.ssh</code> before it writes, and records{{else}}sshmgr records{{end}} the change in the history.</p>
+<form method="post" action="/changes/apply" class="d-flex gap-2">
+  <input type="hidden" name="csrf" value="{{$.CSRF}}">
+  <input type="hidden" name="hash" value="{{.Plan.Hash}}">
+  {{range .Fields}}<input type="hidden" name="{{.Name}}" value="{{.Value}}">{{end}}
+  <button type="submit" class="btn {{if .Destroy}}btn-danger{{else}}btn-primary{{end}}">{{if .Destroy}}Yes, {{.Command}}{{else}}Make this change{{end}}</button>
+  <a href="/" class="btn btn-link">Cancel</a>
+</form>
+{{end}}
+{{end}}{{end}}

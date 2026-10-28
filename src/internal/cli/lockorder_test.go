@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/lock"
 )
 
@@ -20,10 +21,7 @@ func TestAMutatingCommandReadsStateOnlyAfterTakingTheLock(t *testing.T) {
 	run(t, "host", "add", "w", "a", "-H", "a.example", "-u", "u")
 	run(t, "reconcile", "--yes", "--no-pin")
 	run(t, "host", "add", "w", "b", "-H", "b.example", "-u", "u")
-	if heldLock != nil { // the setup commands took it; release it for the test to hold
-		heldLock()
-		heldLock = nil
-	}
+	mutation.Release() // the setup commands took it; release it for the test to hold
 
 	release, err := lock.Acquire(p.LockFile())
 	if err != nil {

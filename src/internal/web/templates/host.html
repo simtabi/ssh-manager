@@ -1,0 +1,78 @@
+{{define "content"}}{{with .Data}}{{with .Detail}}
+<div class="page-header d-print-none mb-3">
+  <div class="text-secondary"><a href="/hosts">Hosts</a> / profile <code>{{.Profile}}</code></div>
+  <h1 class="page-title"><code>{{.Alias}}</code></h1>
+</div>
+<div class="row row-cards">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Manifest</h2></div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5">Hostname</dt><dd class="col-7">{{.Hostname}}</dd>
+          <dt class="col-5">User</dt><dd class="col-7">{{orDash .User}}</dd>
+          <dt class="col-5">Port</dt><dd class="col-7">{{.Port}}</dd>
+          <dt class="col-5">Provider</dt><dd class="col-7">{{.ProviderLabel}}</dd>
+          <dt class="col-5">Key</dt><dd class="col-7"><a href="/keys/{{.Profile}}/{{.KeyName}}"><code>{{.KeyName}}</code></a></dd>
+          <dt class="col-5">Status</dt><dd class="col-7"><span class="badge {{statusClass .Status}}">{{.Status}}</span></dd>
+          <dt class="col-5">Fingerprint</dt><dd class="col-7 text-break"><code>{{orDash (deref .Fingerprint)}}</code></dd>
+          <dt class="col-5">Expires</dt><dd class="col-7">{{orDash (deref .ExpiresOn)}}</dd>
+          <dt class="col-5">Tags</dt><dd class="col-7">{{orDash (join .Tags ", ")}}</dd>
+          {{if .RequiresVPN}}<dt class="col-5">VPN</dt><dd class="col-7">required{{with deref .VPNName}}: {{.}}{{end}}</dd>{{end}}
+        </dl>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h2 class="card-title">Deployments</h2></div>
+      {{if .Deployments}}
+      <ul class="list-group list-group-flush">{{range .Deployments}}<li class="list-group-item d-flex justify-content-between"><span>{{.Target}} <span class="text-secondary">via {{.Method}}</span></span>{{if .Verified}}<span class="badge badge-ok">verified</span>{{else}}<span class="badge badge-warn">unverified</span>{{end}}</li>{{end}}</ul>
+      {{else}}<div class="card-body text-secondary">Not deployed anywhere yet.</div>{{end}}
+    </div>
+  </div>
+{{end}}
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Rendered block</h2></div>
+      <div class="card-body">{{if .Block}}<pre class="code-block" tabindex="0">{{.Block}}</pre>{{else}}<p class="text-secondary mb-0">This host renders no block of its own.</p>{{end}}</div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h2 class="card-title">Pinned host keys</h2></div>
+      {{if .Pins}}
+      <div class="table-responsive">
+        <table class="table table-vcenter card-table">
+          <caption class="visually-hidden">known_hosts lines for {{.Token}}</caption>
+          <thead><tr><th scope="col">Type</th><th scope="col">Fingerprint</th><th scope="col">Form</th><th scope="col">Owner</th></tr></thead>
+          <tbody>{{range .Pins}}<tr><td>{{if .Marker}}{{.Marker}} {{end}}{{.Keytype}}</td><td class="text-break"><code>{{.Fingerprint}}</code></td><td>{{if .Hashed}}hashed{{else}}plaintext{{end}}</td><td>{{if .Tagged}}sshmgr{{else}}user-owned{{end}}</td></tr>{{end}}</tbody>
+        </table>
+      </div>
+      {{else}}<div class="card-body text-secondary">Not pinned. Run <code>sshmgr knownhosts pin {{.Detail.Alias}}</code> in a terminal.</div>{{end}}
+    </div>
+    <p class="mt-3"><a href="/history?host={{.Detail.Alias}}">{{icon "history"}}<span class="ms-1">Changes to this host</span></a></p>
+    {{if not $.ReadOnly}}{{with .Detail}}
+    <div class="card mt-3">
+      <div class="card-header"><h2 class="card-title">Edit</h2></div>
+      <div class="card-body">
+        {{template "change_open" $}}<input type="hidden" name="action" value="host-edit"><input type="hidden" name="profile" value="{{.Profile}}"><input type="hidden" name="alias" value="{{.Alias}}">
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="e-hostname">Hostname</label><input class="form-control" id="e-hostname" name="hostname" value="{{.Hostname}}" autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="e-user">User</label><input class="form-control" id="e-user" name="user" value="{{.User}}" autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="e-port">Port</label><input class="form-control" id="e-port" name="port" value="{{.Port}}" inputmode="numeric"></div>
+            <div class="col-12"><label class="form-label" for="e-tags">Tags <span class="text-secondary">(comma-separated; empty clears them)</span></label><input class="form-control" id="e-tags" name="tags" value="{{join .Tags ", "}}" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <button type="submit" class="btn btn-primary mt-3">Preview</button>
+        </form>
+      </div>
+      <div class="card-footer">
+        {{template "change_open" $}}<input type="hidden" name="action" value="host-delete"><input type="hidden" name="profile" value="{{.Profile}}"><input type="hidden" name="alias" value="{{.Alias}}">
+          <button type="submit" class="btn btn-outline-danger">Delete host {{.Alias}} and its pins</button>
+          <span class="text-secondary small ms-2">Its key files stay on disk.</span>
+        </form>
+        {{if $.Data.VM}}{{template "change_open" $}}<input type="hidden" name="action" value="vm-docker-context"><input type="hidden" name="alias" value="{{.Alias}}">
+          <button type="submit" class="btn btn-outline-secondary mt-2">Create a Docker context for {{.Alias}}</button>
+        </form>{{end}}
+      </div>
+    </div>
+    {{end}}{{end}}
+  </div>
+</div>
+{{end}}{{end}}

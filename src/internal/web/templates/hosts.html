@@ -1,0 +1,99 @@
+{{define "content"}}
+{{template "page_header" "Hosts"}}
+{{range .Data}}
+<div class="card mb-3">
+  <div class="card-header"><h2 class="card-title">Profile <code>{{.Name}}</code></h2></div>
+  {{if .Rows}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Hosts in profile {{.Name}}</caption>
+      <thead><tr><th scope="col">Alias</th><th scope="col">Hostname</th><th scope="col">Provider</th><th scope="col">Key</th><th scope="col">Status</th><th scope="col">Tags</th></tr></thead>
+      <tbody>
+        {{range .Rows}}
+        <tr>
+          <th scope="row"><a href="/hosts/{{.Alias}}"><code>{{.Alias}}</code></a></th>
+          <td>{{.Hostname}}</td>
+          <td>{{.ProviderLabel}}</td>
+          <td><code>{{.KeyName}}</code></td>
+          <td><span class="badge {{statusClass .Status}}">{{.Status}}</span></td>
+          <td class="text-secondary">{{orDash (join .Tags ", ")}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No hosts in this profile.</div>{{end}}
+</div>
+{{else}}<p class="text-secondary">No profiles yet.</p>{{end}}
+{{if and (not .ReadOnly) .Data}}
+<div class="row row-cards mt-1">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a host</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="host-add">
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="h-profile">Profile</label><select class="form-select" id="h-profile" name="profile">{{range .Data}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></div>
+            <div class="col-sm-6"><label class="form-label" for="h-alias">Alias</label><input class="form-control" id="h-alias" name="alias" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-6"><label class="form-label" for="h-hostname">Hostname</label><input class="form-control" id="h-hostname" name="hostname" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="h-user">User</label><input class="form-control" id="h-user" name="user" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-3"><label class="form-label" for="h-port">Port</label><input class="form-control" id="h-port" name="port" inputmode="numeric" value="22"></div>
+            <div class="col-12"><label class="form-label" for="h-tags">Tags <span class="text-secondary">(comma-separated)</span></label><input class="form-control" id="h-tags" name="tags" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <p class="text-secondary small mt-2 mb-2">Its key is minted by <code>sshmgr reconcile</code> in a terminal.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a VM host</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="vm-add">
+          <div class="row g-2">
+            <div class="col-sm-6"><label class="form-label" for="v-profile">Profile</label><select class="form-select" id="v-profile" name="profile">{{range .Data}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></div>
+            <div class="col-sm-6"><label class="form-label" for="v-alias">Alias</label><input class="form-control" id="v-alias" name="alias" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-6"><label class="form-label" for="v-hv">Hypervisor</label><select class="form-select" id="v-hv" name="hypervisor">{{range hypervisors}}<option value="{{.}}">{{.}}</option>{{end}}</select></div>
+            <div class="col-sm-6"><label class="form-label" for="v-vm">VM name</label><input class="form-control" id="v-vm" name="vm" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-6"><label class="form-label" for="v-user">Guest user</label><input class="form-control" id="v-user" name="user" required autocomplete="off" spellcheck="false"></div>
+          </div>
+          <p class="text-secondary small mt-2 mb-2">Its address comes from the hypervisor each time ssh connects.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{if and (not .ReadOnly) .Data}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">Add or update hosts in bulk</h2></div>
+  <div class="card-body">
+    {{template "change_open" .}}<input type="hidden" name="action" value="host-apply">
+      <div class="row g-2">
+        <div class="col-sm-6"><label class="form-label" for="a-profile">Profile</label><input class="form-control" id="a-profile" name="profile" list="a-profiles" required autocomplete="off" spellcheck="false"><datalist id="a-profiles">{{range .Data}}<option value="{{.Name}}">{{end}}</datalist></div>
+        <div class="col-sm-6"><label class="form-label" for="a-category">Category <span class="text-secondary">(for a new profile)</span></label><input class="form-control" id="a-category" name="category" autocomplete="off" spellcheck="false"></div>
+        <div class="col-12"><label class="form-label" for="a-specs">Hosts <span class="text-secondary">(one per line: <code>&lt;alias&gt; &lt;host&gt;[:port] &lt;user&gt; [role]</code>; # starts a comment)</span></label><textarea class="form-control font-monospace" id="a-specs" name="specs" rows="5" required spellcheck="false"></textarea></div>
+        <div class="col-12"><label class="form-check"><input class="form-check-input" type="checkbox" name="create" value="1"><span class="form-check-label">Create the profile if it does not exist</span></label></div>
+      </div>
+      <p class="text-secondary small mt-2 mb-2">A host already in the profile has its hostname, user and port set; the role is added to its tags, and no tag is removed. New hosts' keys are minted by Reconcile.</p>
+      <button type="submit" class="btn btn-primary">Preview</button>
+    </form>
+  </div>
+</div>
+{{end}}
+{{if .Data}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">Exports</h2></div>
+  <div class="card-body">
+    <p class="text-secondary">Copies for tools that cannot read the split config. Downloading writes nothing to this home.</p>
+    <div class="d-flex flex-wrap gap-2">
+      <a class="btn btn-outline-secondary" href="/exports/ssh_config" download>ssh_config, every host inline</a>
+      <a class="btn btn-outline-secondary" href="/exports/termius-hosts.csv" download>Termius CSV</a>
+      <a class="btn btn-outline-secondary" href="/exports/termius-hosts.csv?include_git=1" download>Termius CSV, with git hosts</a>
+    </div>
+  </div>
+</div>
+{{end}}
+{{end}}
+{{end}}

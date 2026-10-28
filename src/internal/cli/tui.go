@@ -2,6 +2,7 @@ package cli
 
 import (
 	"bufio"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -18,7 +19,9 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/configsvc"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/deployer"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/knownhosts"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/notifier"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/query"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
@@ -115,20 +118,27 @@ type menuItem struct {
 	verb    string // the CLI that does the same thing - and an accepted answer
 	handler string
 	mutates bool
+	// formerly lists verbs the entry was once shown under, so an answer people
+	// learned from an older menu still selects it. Never drawn.
+	formerly []string
 }
 
 var tuiMenu = []menuItem{
-	{groupInspect, "Browse profiles & hosts", "list", "browse", false},
-	{groupInspect, "Show the rendered config", "config show", "show_config", false},
-	{groupInspect, "Expiry status", "expiry", "expiry", false},
-	{groupInspect, "Audit deployments & expiry", "audit", "audit", false},
+	{groupInspect, "Browse profiles & hosts", "list", "browse", false, nil},
+	{groupInspect, "Show the rendered config", "config show", "show_config", false, nil},
+	{groupInspect, "Expiry status", "expiry", "expiry", false, nil},
+	{groupInspect, "Audit deployments & expiry", "audit", "audit", false, nil},
 
-	{groupChange, "Reconcile - apply the manifest", "reconcile", "reconcile", true},
-	{groupChange, "Pin host keys into known_hosts", "knownhosts pin", "knownhosts", true},
-	{groupChange, "Deploy a key to its target", "deploy", "deploy", true},
-	{groupChange, "Rotate a key", "rotate", "rotate", true},
+	{groupChange, "Reconcile - apply the manifest", "reconcile", "reconcile", true, nil},
+	// The verb column teaches the CLI, so it names what the entry runs: a TOFU
+	// scan of every manifest host. It was shown as `knownhosts pin`, which asks
+	// per key and needs a host or --all; that answer still selects it.
+	{groupChange, "Pin host keys into known_hosts", "knownhosts init --all", "knownhosts", true,
+		[]string{"knownhosts pin"}},
+	{groupChange, "Deploy a key to its target", "deploy", "deploy", true, nil},
+	{groupChange, "Rotate a key", "rotate", "rotate", true, nil},
 
-	{groupRecover, "Snapshots - list and restore", "snapshots", "snapshots", true},
+	{groupRecover, "Snapshots - list and restore", "snapshots", "snapshots", true, nil},
 }
 
 // menuWidth is the label column, sized to the longest label so the verb column
@@ -190,6 +200,11 @@ func lookupMenu(answer string) (menuItem, bool) {
 	for _, m := range tuiMenu {
 		if a == m.verb || a == strings.ToLower(m.label) {
 			return m, true
+		}
+		for _, old := range m.formerly {
+			if a == old {
+				return m, true
+			}
 		}
 	}
 	return menuItem{}, false
@@ -254,7 +269,19 @@ func (t *tui) run() {
 			t.print("  not a choice: " + answer + "   (a number, a command name, or q)\n")
 			continue
 		}
+		// Each change chosen from the menu is its own operation in the
+		// history, not one long "tui" operation covering the whole session.
+		if item.mutates {
+			mutation.Begin(mutation.Scope{Command: item.verb, Source: history.SourceTUI})
+		}
 		t.dispatch(item.handler)
+		if item.mutates {
+			mutation.End(mutation.Outcome{})
+			// The lock is scoped to the action, as the web's is. A CLI command
+			// holds it until it exits; a menu that did the same would block
+			// every other sshmgr command for as long as it stayed open.
+			mutation.Release()
+		}
 		t.print("")
 		// A mutating action changes what the banner reports - drift, pin
 		// coverage, key counts - so redraw it. Seeing "drifted" become "in
@@ -389,40 +416,65 @@ func (t *tui) audit() {
 	t.print(report)
 }
 
+// reconcile follows reconcileApply, the CLI's applying half: preview as the
+// confirmation, asked without the lock; then lock, preview again and stop if
+// anything moved, snapshot, apply, pin unless SSH_MANAGER_AUTO_PIN turns it
+// off, then warn about keys nothing uses.
 func (t *tui) reconcile() {
-	m := t.manifest()
-	if m == nil {
-		t.print("no manifest")
-		return
-	}
-	inv, _ := inventory.Load(t.p.Inventory())
+	var m *manifest.Manifest
 	emit := platform.EmitUseKeychain()
-	dry, err := reconciler.New(t.p, m, inv, emit).Reconcile(true, "")
+	preview := func() (string, error) {
+		if m = t.manifest(); m == nil {
+			return "", errors.New("no manifest")
+		}
+		inv, _ := inventory.Load(t.p.Inventory())
+		dry, err := reconciler.New(t.p, m, inv, emit).Reconcile(true, "")
+		if err != nil {
+			return "", err
+		}
+		return dry.Format(), nil
+	}
+	shown, err := preview()
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
 	}
-	t.print(dry.Format())
+	t.print(shown)
 	if !t.pr.Confirm("Apply these changes to ~/.ssh?") {
+		t.print("cancelled")
 		return
 	}
-	snapshotBeforeMutation(t.p)
+	// Under the lock now, and m is re-read: a save cannot overwrite a newer copy.
+	if err := recheck(t.p, shown, preview); err != nil {
+		t.print("error: " + err.Error())
+		return
+	}
+	snap := snapshotBeforeMutation(t.p)
 	inv2, _ := inventory.Load(t.p.Inventory())
 	res, err := reconciler.New(t.p, m, inv2, emit).Reconcile(false, "")
 	if err != nil {
 		t.print("error: " + err.Error())
 		return
 	}
-	if len(res.Minted) > 0 {
-		res.Pinned = knownhosts.New(t.p.SSHDir).AutoPin(m, nil, os.Getenv)
+	if snap != "" {
+		res.Snapshot = &snap
 	}
+	res.Pinned = knownhosts.New(t.p.SSHDir).AutoPin(m, nil, os.Getenv)
 	t.print(res.Format())
+	warnDangling(t.out, t.p, m)
 }
 
 func (t *tui) knownhosts() {
 	m := t.manifest()
 	if m == nil {
 		t.print("no manifest")
+		return
+	}
+	// The same notice `knownhosts init` confirms with: this is trust on first
+	// use, and the menu promises every Change entry asks before it writes.
+	if !t.pr.Confirm("Scan every manifest host it can reach and pin its keys into " +
+		"~/.ssh/known_hosts (trust on first use)?") {
+		t.print("cancelled")
 		return
 	}
 	snapshotBeforeMutation(t.p)
@@ -449,7 +501,24 @@ func (t *tui) deploy() {
 	if !ok || k == tuiBack {
 		return
 	}
+	// The guards `deploy` applies, in its order: dev mode refuses, the user
+	// confirms, then lock, re-read and snapshot before anything is installed.
+	if err := refuseInDevMode(t.p, "deploy",
+		"it uploads a public key to a live account, which is still there "+
+			"after the sandbox is deleted"); err != nil {
+		t.print("error: " + err.Error())
+		return
+	}
+	if !t.pr.Confirm(fmt.Sprintf("Install the public half of %s on its target?", k)) {
+		t.print("cancelled")
+		return
+	}
 	lockForMutation(t.p) // deploy records to the inventory: read it under the lock
+	if m = t.manifest(); m == nil {
+		t.print("no manifest")
+		return
+	}
+	snapshotBeforeMutation(t.p)
 	inv, _ := inventory.Load(t.p.Inventory())
 	report, err := deployer.New(t.p, m, inv).Deploy(k, "")
 	if err != nil {
@@ -481,6 +550,18 @@ func (t *tui) rotate() {
 	}
 	if !t.pr.Confirm(fmt.Sprintf("Rotate %s? (destructive; ~/.ssh snapshotted first)", k)) {
 		t.print("cancelled")
+		return
+	}
+	// `rotate` stops without an encrypted backup, because rotating discards
+	// the key before the one it archives. The TUI has no --no-key-backup, so
+	// it always needs SSH_MANAGER_AGE_RECIPIENT; the error says so.
+	lockForMutation(t.p)
+	if err := backupKeysBeforeDestroying(t.p, t.out, false); err != nil {
+		t.print("error: " + err.Error())
+		return
+	}
+	if m = t.manifest(); m == nil {
+		t.print("no manifest")
 		return
 	}
 	snapshotBeforeMutation(t.p)
@@ -516,7 +597,9 @@ func (t *tui) snapshots() {
 		return
 	}
 	// RestoreByIDIn, as `snapshots restore` uses: it accepts the dev sandbox's
-	// ssh dir and reports the public keys it kept to avoid splitting a pair.
+	// ssh dir and reports the public keys it kept to avoid splitting a pair. It
+	// leaves the lock to its caller, as the CLI command now takes it.
+	lockForMutation(t.p)
 	res, err := snapshots.RestoreByIDIn(t.p, snapshotRetain(), choice)
 	if err != nil {
 		t.print("error: " + err.Error())

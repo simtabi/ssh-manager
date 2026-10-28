@@ -1,0 +1,10 @@
+{{define "content"}}
+{{template "page_header" "Third-party licences"}}
+<p class="text-secondary">The web UI embeds these, unchanged, in the sshmgr binary.</p>
+{{range .Data}}
+<div class="card mb-3">
+  <div class="card-header"><h2 class="card-title">{{.Name}}</h2></div>
+  <div class="card-body"><pre class="licence-text" tabindex="0">{{.Text}}</pre></div>
+</div>
+{{end}}
+{{end}}

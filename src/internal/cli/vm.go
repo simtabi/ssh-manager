@@ -6,7 +6,6 @@ import (
 	"io"
 	"net"
 	"os"
-	"os/exec"
 	"strings"
 	"sync"
 	"time"
@@ -15,6 +14,7 @@ import (
 
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/hypervisor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/dockerctx"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
 )
 
@@ -123,17 +123,7 @@ func newVMAddCmd() *cobra.Command {
 
 // vmHost finds the manifest host alias with a vm spec.
 func vmHost(m *manifest.Manifest, alias string) (manifest.Host, error) {
-	for _, name := range m.ProfileNames() {
-		for _, h := range m.Profiles[name].Hosts {
-			if h.Alias == alias {
-				if h.VM == nil {
-					return h, fmt.Errorf("%s is not a VM host", alias)
-				}
-				return h, nil
-			}
-		}
-	}
-	return manifest.Host{}, fmt.Errorf("no host %q", alias)
+	return manifest.VMHost(m, alias)
 }
 
 // startWait bounds how long `vm proxy` waits for a VM it had to start.
@@ -228,20 +218,17 @@ func newVMDockerContextCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			if _, err := exec.LookPath("docker"); err != nil {
-				return fmt.Errorf("docker CLI not found")
+			if err := dockerctx.Available(); err != nil {
+				return err
 			}
-			endpoint := "host=ssh://" + h.Alias
-			verb := "create"
-			if exec.Command("docker", "context", "inspect", h.Alias).Run() == nil {
-				verb = "update"
+			if p, err := resolvePaths(c); err == nil {
+				lockForMutation(p)
 			}
-			out, err := exec.Command("docker", "context", verb, h.Alias, "--docker", endpoint).CombinedOutput()
+			line, err := dockerctx.Apply(h.Alias)
 			if err != nil {
-				return fmt.Errorf("docker context %s: %v: %s", verb, err, strings.TrimSpace(string(out)))
+				return err
 			}
-			_, _ = fmt.Fprintf(c.OutOrStdout(), "docker context %s %s -> ssh://%s (use: docker --context %s ps)\n",
-				verb+"d", h.Alias, h.Alias, h.Alias)
+			_, _ = fmt.Fprintln(c.OutOrStdout(), line)
 			return nil
 		},
 	}

@@ -185,3 +185,18 @@ func checkVM(profile string, h Host) error {
 	// argv element, never a shell, and the rendered ProxyCommand names the alias, not the VM.
 	return rejectControl("vm.name", h.VM.Name)
 }
+
+// VMHost finds the host alias in m, which must have a vm spec.
+func VMHost(m *Manifest, alias string) (Host, error) {
+	for _, name := range m.ProfileNames() {
+		for _, h := range m.Profiles[name].Hosts {
+			if h.Alias == alias {
+				if h.VM == nil {
+					return h, fmt.Errorf("%s is not a VM host", alias)
+				}
+				return h, nil
+			}
+		}
+	}
+	return Host{}, fmt.Errorf("no host %q", alias)
+}

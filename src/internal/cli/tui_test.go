@@ -58,6 +58,10 @@ func (s *scriptPrompter) Confirm(string) bool { return s.confirm }
 func tuiWith(t *testing.T, answers ...string) (*tui, *bytes.Buffer) {
 	t.Helper()
 	base := t.TempDir()
+	// Cleanups run last-in first-out, so registering this after TempDir drops
+	// a lock the TUI took before the directory is removed. Windows cannot
+	// delete a lock file that is still open.
+	releaseHeldLock(t)
 	cfg := filepath.Join(base, "cfg")
 	if err := os.MkdirAll(cfg, 0o700); err != nil {
 		t.Fatal(err)

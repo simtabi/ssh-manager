@@ -1,0 +1,8 @@
+{{define "content"}}{{with .Data}}
+<div class="empty">
+  <p class="empty-title h1">{{.Status}}</p>
+  <h1 class="empty-subtitle h2">{{.Heading}}</h1>
+  <p class="empty-subtitle text-secondary">{{.Message}}</p>
+  {{if $.Authed}}<div class="empty-action"><a href="/" class="btn btn-primary">{{icon "arrow-left"}}<span class="ms-1">Back to the overview</span></a></div>{{end}}
+</div>
+{{end}}{{end}}

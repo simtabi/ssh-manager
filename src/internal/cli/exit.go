@@ -35,6 +35,19 @@ var errAborted = errors.New("aborted at the user's request")
 // printed in full; the exit code is the machine-readable half of it.
 var errNotClean = errors.New("checks reported problems")
 
+// errChanged is returned when what a command asked about moved while the
+// person was deciding. Nothing has been done; running the command again shows
+// what it would do now. It is recorded as aborted, like a "no".
+var errChanged = errors.New("something changed while you were deciding, so nothing was done; " +
+	"run the command again to see what it would do now")
+
+// stdinIsTerminal is platform.StdinIsTerminal, as a variable so a test can say
+// a person is there to answer.
+var stdinIsTerminal = platform.StdinIsTerminal
+
+// asks reports whether confirmChange will put its question to someone.
+func asks(yes bool) bool { return !yes && stdinIsTerminal() }
+
 // silent reports whether an error is one whose message has already reached the
 // user by another route.
 func silent(err error) bool {
@@ -77,7 +90,7 @@ func confirmOrAbort(c *cobra.Command, prompt string, skip bool) error {
 // summary is what the command is about to do, printed above the prompt. A
 // confirmation that does not say what it is confirming trains people to type y.
 func confirmChange(c *cobra.Command, summary string, yes bool) error {
-	if yes || !platform.StdinIsTerminal() {
+	if !asks(yes) {
 		return nil
 	}
 	if summary != "" {

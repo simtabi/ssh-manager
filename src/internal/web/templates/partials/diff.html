@@ -1,0 +1,2 @@
+{{define "diff"}}<pre class="diff" tabindex="0">{{range .}}<span class="diff-line {{diffClass .Op}}"><span class="diff-mark" aria-hidden="true">{{diffMark .Op}}</span>{{.Text}}</span>
+{{end}}</pre>{{end}}

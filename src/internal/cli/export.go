@@ -30,13 +30,7 @@ const (
 
 func exportDir(p paths.Paths) string { return filepath.Join(p.ConfigDir, "exports") }
 
-func exportPaths(p paths.Paths) renderer.ExportPaths {
-	home, err := os.UserHomeDir()
-	if err != nil || home == "" {
-		home = filepath.Dir(p.SSHDir)
-	}
-	return renderer.ExportPaths{SSHDir: p.SSHDir, Home: home}
-}
+func exportPaths(p paths.Paths) renderer.ExportPaths { return renderer.ExportPathsFor(p.SSHDir) }
 
 // exportTarget resolves --out and refuses any target inside the SSH
 // directory. An export is a copy for another tool; written into ~/.ssh it

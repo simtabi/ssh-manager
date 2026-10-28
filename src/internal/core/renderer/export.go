@@ -4,6 +4,8 @@ import (
 	"bytes"
 	"encoding/csv"
 	"fmt"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -18,6 +20,16 @@ import (
 type ExportPaths struct {
 	SSHDir string
 	Home   string
+}
+
+// ExportPathsFor is the ExportPaths for sshDir: the user's home, or the SSH
+// directory's parent when there is no home to read.
+func ExportPathsFor(sshDir string) ExportPaths {
+	home, err := os.UserHomeDir()
+	if err != nil || home == "" {
+		home = filepath.Dir(sshDir)
+	}
+	return ExportPaths{SSHDir: sshDir, Home: home}
 }
 
 // expand makes a ~ form path absolute. Anything else is returned unchanged.

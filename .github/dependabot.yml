@@ -12,6 +12,11 @@ updates:
     open-pull-requests-limit: 5
     labels: ["dependencies", "go"]
     groups:
+      # modernc.org/sqlite is built against one modernc.org/libc and breaks with
+      # another, so the two move in one PR, whatever the update type. Listed
+      # first: Dependabot puts an update in the first group it matches.
+      modernc:
+        patterns: ["modernc.org/*"]
       gomod-minor-patch:
         update-types: ["minor", "patch"]
 

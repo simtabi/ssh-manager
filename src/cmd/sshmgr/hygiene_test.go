@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"path/filepath"
 	"regexp"
+	"slices"
 	"strings"
 	"testing"
 )
@@ -24,14 +25,26 @@ import (
 // where before it only ran for people who had installed pre-commit.
 //
 // Not covered: YAML and TOML parse checks. There is no TOML left in the tree,
-// and validating YAML would mean adding a dependency to a binary whose single
-// direct dependency is asserted by TestTheBinaryHasExactlyOneDirectDependency.
+// and validating YAML would mean adding a dependency to a binary whose linked
+// modules are pinned by TestTheBinaryLinksOnlyItsTwoChosenDependencies.
 // The YAML that matters is checked anyway - GitHub rejects a malformed workflow,
 // and `goreleaser check` parses the release config.
 
 // maxTrackedFileSize matches pre-commit's check-added-large-files default. The
 // repository ships no binaries, so anything approaching this is a mistake.
 const maxTrackedFileSize = 500 * 1024
+
+// vendoredUpstream are third-party files committed byte for byte as their
+// release ships them, so neither the size cap nor the text rules apply: a
+// newline added to tabler.min.css would be an edit to someone else's file, and
+// TestVendoredFilesMatchTheManifest in internal/web would rightly fail on it.
+// Each entry is a ceiling, measured 2026-10-27 at @tabler/core 1.7.1: a file that
+// grows past it fails, so an upgrade is a decision, not a silent 2 MB commit.
+var vendoredUpstream = map[string]int{
+	"src/internal/web/assets/vendor/tabler/tabler.min.css":      700 * 1024, // 683,670 bytes
+	"src/internal/web/assets/vendor/tabler/tabler.min.js":       160 * 1024, // 148,876 bytes
+	"src/internal/web/assets/vendor/tabler/tabler-theme.min.js": 4 * 1024,   // 1,402 bytes
+}
 
 // trackedFiles lists what git tracks, so generated and ignored files are out of
 // scope by construction rather than by an exclusion list that drifts.
@@ -75,10 +88,22 @@ func isBinary(name string) bool {
 
 func TestTrackedFilesAreHygienic(t *testing.T) {
 	root, files := trackedFiles(t)
+	for name := range vendoredUpstream {
+		if !slices.Contains(files, name) {
+			t.Errorf("%s is exempted as vendored but not tracked; remove the stale entry", name)
+		}
+	}
 	for _, name := range files {
 		body, err := os.ReadFile(filepath.Join(root, name))
 		if err != nil {
 			t.Errorf("%s: %v", name, err)
+			continue
+		}
+		if ceiling, ok := vendoredUpstream[name]; ok {
+			if len(body) > ceiling {
+				t.Errorf("%s is %d bytes, over its recorded ceiling of %d; raise it on purpose, with the new measurement",
+					name, len(body), ceiling)
+			}
 			continue
 		}
 		if len(body) > maxTrackedFileSize {

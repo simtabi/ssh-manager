@@ -32,7 +32,7 @@ LDFLAGS := -s -w -X github.com/simtabi/ssh-manager/src/v3/internal/version.Versi
 GO      := go -C $(MODULE)
 
 .PHONY: help build build-all test vet fmt fmt-check lint lint-all ci check ci-linux e2e feature-check \
-        cross dist clean doctor reconcile render rotate bundle
+        cross dist clean doctor reconcile render rotate bundle tabler-check tabler-update tabler-vendor
 
 help:  ## list targets
 	@grep -E '^[a-zA-Z_-]+:.*?##' $(MAKEFILE_LIST) | sed -E 's/:.*## /\t/' | sort
@@ -136,6 +136,19 @@ cross: ## build every release target into build/dist/ (needs goreleaser)
 
 dist: ## full release artifacts into build/dist/ (needs goreleaser)
 	$(GORELEASER) release --clean --snapshot
+
+# The web UI's vendored Tabler files. Each target downloads the npm tarballs,
+# checks them against the registry's integrity hash before extracting, and
+# rewrites the files, the licences, MANIFEST.sha256 and THIRD_PARTY_NOTICES.md
+# together, so a version never moves without its notices and hashes.
+tabler-check: ## say whether a newer Tabler or Tabler Icons release is out (writes nothing)
+	go -C $(MODULE) run ./internal/tools/tablervendor -check -root ..
+
+tabler-update: ## move the web UI to the newest Tabler + Tabler Icons; re-vendor, notices, hashes
+	go -C $(MODULE) run ./internal/tools/tablervendor -latest -root ..
+
+tabler-vendor: ## re-vendor exactly what src/internal/web/assets/vendor/TABLER_VERSION pins
+	go -C $(MODULE) run ./internal/tools/tablervendor -root ..
 
 # Everything generated lives under build/, so this empties it. It used to remove
 # `bin dist`, and GoReleaser has written to build/dist since the single-folder

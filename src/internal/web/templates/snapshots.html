@@ -1,0 +1,50 @@
+{{define "content"}}
+{{template "page_header" "Snapshots"}}
+<p class="text-secondary">Every command that changes <code>~/.ssh</code> archives its config, <code>known_hosts</code> and public keys first. Private keys are never in a snapshot.</p>
+<div class="card">
+  {{if .Data}}
+  <div class="table-responsive">
+    <table class="table table-vcenter card-table">
+      <caption class="visually-hidden">Snapshots, newest first</caption>
+      <thead><tr><th scope="col">Snapshot</th><th scope="col">Taken</th><th scope="col">Size</th><th scope="col">Compare</th></tr></thead>
+      <tbody>
+        {{range .Data}}
+        <tr>
+          <th scope="row"><code>{{.ID}}</code>{{if .KeyBearing}} <span class="badge badge-bad">holds private keys</span>{{end}}</th>
+          <td class="text-nowrap">{{when .Taken}}</td>
+          <td>{{size .Size}}</td>
+          <td>{{if .KeyBearing}}<span class="text-secondary">not opened</span>{{else}}<a href="/snapshots/{{.ID}}">{{icon "git-compare"}}<span class="ms-1">with now</span></a>{{end}}</td>
+        </tr>
+        {{end}}
+      </tbody>
+    </table>
+  </div>
+  {{else}}<div class="card-body text-secondary">No snapshots yet.</div>{{end}}
+</div>
+{{if and (not .ReadOnly) .Data}}
+<div class="card mt-3">
+  <div class="card-body">
+    {{template "change_open" .}}<input type="hidden" name="action" value="snapshots-prune">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-3"><label class="form-label" for="s-keep">Keep the newest</label><input class="form-control" id="s-keep" name="keep" inputmode="numeric" value="10"></div>
+        <div class="col-sm-3"><button type="submit" class="btn btn-outline-danger w-100">Preview pruning</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{if not .ReadOnly}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">Encrypted bundle</h2></div>
+  <div class="card-body">
+    <p class="text-secondary">Snapshots leave private keys out. A bundle holds everything, keys included, encrypted with age to <code>SSH_MANAGER_AGE_RECIPIENT</code>, in the config home's <code>dist/</code>.</p>
+    {{template "change_open" .}}<input type="hidden" name="action" value="bundle">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-3"><label class="form-label" for="b-keep">Then keep the newest <span class="text-secondary">(empty keeps all)</span></label><input class="form-control" id="b-keep" name="keep" inputmode="numeric"></div>
+        <div class="col-sm-3"><button type="submit" class="btn btn-outline-secondary w-100">Preview a bundle</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
+{{end}}

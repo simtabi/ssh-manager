@@ -43,6 +43,7 @@ func newNotifyCmd() *cobra.Command {
 					command, installYes); err != nil {
 				return err
 			}
+			lockForMutation(p)
 			if err := scheduler.Install(command, scheduler.Label); err != nil {
 				return err
 			}

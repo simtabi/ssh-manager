@@ -1,0 +1,39 @@
+{{define "content"}}{{with .Data}}{{with .Op}}
+<div class="page-header d-print-none mb-3">
+  <div class="text-secondary"><a href="/history">History</a> / <code>{{short .OpID}}</code></div>
+  <h1 class="page-title">{{.Command}} <span class="ms-2 badge {{resultClass .Result}}">{{if .Result}}{{.Result}}{{else}}unfinished{{end}}</span></h1>
+</div>
+<div class="row row-cards">
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-4">Arguments</dt><dd class="col-8 text-break"><code>{{orDash (join .Args " ")}}</code></dd>
+          <dt class="col-4">Source</dt><dd class="col-8">{{.Source}}</dd>
+          <dt class="col-4">Started</dt><dd class="col-8">{{stamp .StartedAt}}</dd>
+          <dt class="col-4">Finished</dt><dd class="col-8">{{orDash (stamp .FinishedAt)}}</dd>
+          {{if .Error}}<dt class="col-4">Error</dt><dd class="col-8 text-danger">{{.Error}}</dd>{{end}}
+          <dt class="col-4">About</dt><dd class="col-8">{{orDash (subjects .Subjects)}}</dd>
+          <dt class="col-4">Snapshot</dt><dd class="col-8">{{if .Snapshot}}<a href="/snapshots/{{.Snapshot}}"><code>{{.Snapshot}}</code></a>{{else}}–{{end}}</dd>
+          <dt class="col-4">By</dt><dd class="col-8">{{orDash .OSUser}}{{if .Machine}} on {{.Machine}}{{end}}</dd>
+          <dt class="col-4">Version</dt><dd class="col-8">{{orDash .Version}}</dd>
+          <dt class="col-4">Operation</dt><dd class="col-8 text-break"><code>{{.OpID}}</code></dd>
+        </dl>
+      </div>
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h2 class="card-title">Events</h2></div>
+      {{if .Events}}
+      <ul class="list-group list-group-flush">{{range .Events}}<li class="list-group-item"><div class="d-flex justify-content-between gap-2"><code>{{.Event}}</code><span class="text-secondary text-nowrap">{{stamp .TS}}</span></div><code class="text-secondary small text-break">{{printf "%s" .Fields}}</code></li>{{end}}</ul>
+      {{else}}<div class="card-body text-secondary">This operation raised no audit events.</div>{{end}}
+    </div>
+  </div>
+{{end}}
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Manifest</h2></div>
+      <div class="card-body{{if .Diff}} p-0{{end}}">{{if .Diff}}{{template "diff" .Diff}}{{else}}<p class="text-secondary mb-0">{{.DiffNote}}</p>{{end}}</div>
+    </div>
+  </div>
+</div>
+{{end}}{{end}}

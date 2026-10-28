@@ -30,6 +30,9 @@ func newDoctorCmd() *cobra.Command {
 
 			out := c.OutOrStdout()
 			if fix {
+				// --fix changes modes in the config home and ~/.ssh, so it is a
+				// mutation like any other: serialized, and on the record.
+				lockForMutation(p)
 				for _, change := range svc.FixPerms() {
 					if !jsonOut {
 						_, _ = fmt.Fprintln(out, "fixed perms:", change)

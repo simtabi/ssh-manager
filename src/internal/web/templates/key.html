@@ -1,0 +1,39 @@
+{{define "content"}}{{with .Data}}
+<div class="page-header d-print-none mb-3">
+  <div class="text-secondary"><a href="/keys">Keys</a> / profile <code>{{.Detail.Ref.Profile}}</code></div>
+  <h1 class="page-title"><code>{{.Detail.Ref.KeyName}}</code></h1>
+</div>
+<div class="row row-cards">
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Key</h2></div>
+      <div class="card-body">
+        <dl class="row mb-0">
+          <dt class="col-5">Type</dt><dd class="col-7">{{.Detail.Type}}</dd>
+          <dt class="col-5">Fingerprint</dt><dd class="col-7 text-break"><code>{{orDash .Detail.Fingerprint}}</code></dd>
+          {{if and .Detail.DiskFingerprint (ne .Detail.DiskFingerprint .Detail.Fingerprint)}}<dt class="col-5">On disk</dt><dd class="col-7 text-break"><span class="badge badge-bad">different key</span> <code>{{.Detail.DiskFingerprint}}</code></dd>{{end}}
+          {{if .Detail.FingerprintErr}}<dt class="col-5">Public key</dt><dd class="col-7">{{.Detail.FingerprintErr}}</dd>{{end}}
+          <dt class="col-5">Created</dt><dd class="col-7">{{orDash .Detail.Created}}</dd>
+          <dt class="col-5">Rotate after</dt><dd class="col-7">{{.Detail.RotateAfterDays}} days</dd>
+          <dt class="col-5">Expires</dt><dd class="col-7">{{orDash .Detail.ExpiresOn}}{{with .Expiry}} <span class="badge {{statusClass .State}}">{{.State}}</span> <span class="text-secondary">{{expiryDays .}}</span>{{end}}</dd>
+          <dt class="col-5">Store</dt><dd class="col-7">{{if .Detail.Vault}}1Password vault <code>{{.Detail.Vault}}</code>{{else}}disk{{end}}</dd>
+          <dt class="col-5">Identity file</dt><dd class="col-7 text-break"><code>{{.Detail.IdentityFile}}</code></dd>
+          <dt class="col-5">Used by</dt><dd class="col-7">{{range $i, $h := .Detail.Hosts}}{{if $i}}, {{end}}<a href="/hosts/{{$h}}"><code>{{$h}}</code></a>{{else}}–{{end}}</dd>
+        </dl>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Deployments</h2></div>
+      {{if .Detail.Deployments}}
+      <ul class="list-group list-group-flush">{{range .Detail.Deployments}}<li class="list-group-item d-flex justify-content-between"><span>{{.Target}} <span class="text-secondary">via {{.Method}}{{with deref .Date}}, {{.}}{{end}}</span></span>{{if .Verified}}<span class="badge badge-ok">verified</span>{{else}}<span class="badge badge-warn">unverified</span>{{end}}</li>{{end}}</ul>
+      {{else}}<div class="card-body text-secondary">Not deployed anywhere yet.</div>{{end}}
+    </div>
+    <div class="card mt-3">
+      <div class="card-header"><h2 class="card-title">History</h2></div>
+      {{template "op_table" .Ops}}
+    </div>
+  </div>
+</div>
+{{end}}{{end}}
