@@ -235,7 +235,9 @@ func copyHome(p paths.Paths) (paths.Paths, func(), error) {
 		return paths.Paths{}, nil, err
 	}
 	cleanup := func() { _ = os.RemoveAll(dir) }
-	shadow := paths.Paths{SSHDir: filepath.Join(dir, "ssh"), ConfigDir: filepath.Join(dir, "config")}
+	// The copy's SSH directory is named .ssh, as a real one is: a restore
+	// refuses to write over anything else.
+	shadow := paths.Paths{SSHDir: filepath.Join(dir, ".ssh"), ConfigDir: filepath.Join(dir, "config")}
 	files, err := capture(p)
 	if err != nil {
 		cleanup()

@@ -15,6 +15,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/change"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
@@ -241,7 +242,17 @@ func TestEveryFormNamesAKnownAction(t *testing.T) {
 	c := signIn(t, s)
 	action := regexp.MustCompile(`name="action" value="([a-z-]+)"`)
 	seen := map[string]bool{}
-	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/hosts/devbox", "/keys", "/snapshots", "/doctor", "/audit"} {
+	var openable string
+	for _, s := range snapshots.List(p.SnapshotsDir()) {
+		if !snapshots.HoldsKeyMaterial(s) {
+			openable = filepath.Base(s)
+		}
+	}
+	if openable == "" {
+		t.Fatal("the changes above took no snapshot to offer a restore of")
+	}
+	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/hosts/devbox", "/keys", "/snapshots",
+		"/snapshots/" + openable, "/doctor", "/audit"} {
 		for _, m := range action.FindAllStringSubmatch(c.get(page).Body.String(), -1) {
 			seen[m[1]] = true
 			if _, ok := actionFields[m[1]]; !ok {

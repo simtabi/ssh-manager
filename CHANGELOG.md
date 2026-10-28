@@ -27,6 +27,9 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   or a category move carries - and what a change does outside the home is listed and bound to the confirmation.
   The flat `ssh_config` and the Termius CSV download from the hosts page and write nothing, so `--read-only`
   keeps them.
+- **Snapshots restore from the web UI.** A snapshot's page previews the restore as a diff against `~/.ssh` now,
+  and confirming snapshots `~/.ssh` first, as `sshmgr snapshots restore` does. A snapshot that still holds
+  private keys is refused.
 - **`sshmgr serve` (alias `ui`) - a web UI on this machine.** An overview built from the same rows the
   menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
   snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's

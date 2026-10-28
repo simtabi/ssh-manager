@@ -59,6 +59,7 @@ These changes can be made from the pages:
 | Mint a profile's or host's missing keys | Keys | `sshmgr keygen <target> --no-pin --yes` |
 | Add a key, optionally wired to a host | Keys | `sshmgr key add` |
 | Prune old snapshots | Snapshots | `sshmgr snapshots prune --keep` |
+| Restore a snapshot | the snapshot's page | `sshmgr snapshots restore <id> --yes` |
 | Fix file modes | Doctor | `sshmgr doctor --fix` |
 | Write an editable `providers.json` | Doctor | `sshmgr providers --export` |
 | Remove stale pins and records, optionally adopting pins first | Doctor | `sshmgr clean --yes [--adopt]` |
@@ -105,6 +106,11 @@ it lists what confirming will do, and only confirming does it. The confirmation 
 lists too. Prune, bundle, the Docker context and the notifications take no snapshot first, as their
 commands take none.
 
+**Restoring a snapshot** previews exactly what it puts back: the copy is restored from the
+snapshot, and the page shows the diff against `~/.ssh` now. The confirmation names the snapshot
+file. Confirming snapshots `~/.ssh` first, then restores. A snapshot that still holds private keys
+is refused here, as its page refuses to open it.
+
 **Exports download.** The hosts page offers the flat `ssh_config` (`sshmgr config export --flat`)
 and the Termius CSV (`sshmgr termius export`, with or without git hosts) as downloads. Nothing is
 written to the home, so `--read-only` keeps them.
@@ -112,8 +118,8 @@ written to the home, so `--read-only` keeps them.
 Some changes are terminal-only:
 
 - rotating, overwriting a key (`keygen --force`), and passphrases;
-- deploying, revoking a key from its targets (`--revoke`), restoring a snapshot or a bundle: these
-  reach other machines or replace `~/.ssh`, and their output is worth watching as it comes;
+- deploying, rotating, rolling back, revoking a key from its targets (`--revoke`), restoring a
+  bundle: these reach other machines, or need the encrypted backup's identity;
 - pinning host keys (`knownhosts init`, `knownhosts pin`): a scan reaches every host, and trusting
   a key is a decision made per key;
 - `key regen-pub`: it needs the private keys, which a preview never copies, and may ask for a

@@ -62,7 +62,11 @@ func copyTree(t *testing.T, from, to string) {
 		if err != nil {
 			return err
 		}
-		return os.WriteFile(dst, b, fi.Mode().Perm())
+		if err := os.WriteFile(dst, b, fi.Mode().Perm()); err != nil {
+			return err
+		}
+		// Snapshots are ordered by modification time, so the copy keeps it.
+		return os.Chtimes(dst, fi.ModTime(), fi.ModTime())
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -255,15 +259,26 @@ func TestEveryWebChangeMatchesItsCommand(t *testing.T) {
 			m.SetProfile("work", prof)
 			_ = m.Save(p.Manifest())
 		}, stubs("docker", `[ "$2" != inspect ]`), sameCalls},
+		{"snapshots restore", []string{"snapshots", "restore", "ssh-", "--yes"}, change.SnapshotRestore("", "ssh-", 10), func(p paths.Paths) {
+			f, _ := os.OpenFile(filepath.Join(p.SSHDir, "config"), os.O_APPEND|os.O_WRONLY, 0o600)
+			_, _ = f.WriteString("# edited after the snapshot\n")
+			_ = f.Close()
+		}, nil, nil},
 		{"notify test", []string{"notify", "test"}, change.NotifyTest(), nil, notifier, sameCalls},
 		{"audit notify", []string{"audit", "--notify"}, change.AuditNotify(), nil, notifier, nil},
 	}
-	if len(cases) != 24 {
+	if len(cases) != 25 {
 		t.Fatalf("%d cases; every change the web offers needs one", len(cases))
 	}
 	for _, tc := range cases {
 		t.Run(tc.name, func(t *testing.T) {
 			cliHome, webHome := twinHomes(t, setup)
+			ch := tc.ch
+			// A restore reads its snapshot from the home it restores, which
+			// exists only now.
+			if ch.Command == "snapshots restore" {
+				ch = change.SnapshotRestore(webHome.SnapshotsDir(), "ssh-", 10)
+			}
 			if tc.pre != nil {
 				tc.pre(cliHome)
 				tc.pre(webHome)
@@ -279,14 +294,14 @@ func TestEveryWebChangeMatchesItsCommand(t *testing.T) {
 			if tc.env != nil {
 				tc.env(t, "web")
 			}
-			plan, err := change.Preview(webHome, tc.ch)
+			plan, err := change.Preview(webHome, ch)
 			if err != nil {
 				t.Fatal(err)
 			}
 			if plan.Err != "" {
 				t.Fatalf("the preview says it would fail: %s", plan.Err)
 			}
-			if _, _, err := change.Apply(webHome, tc.ch, plan.Hash, 10, history.SourceWeb); err != nil {
+			if _, _, err := change.Apply(webHome, ch, plan.Hash, 10, history.SourceWeb); err != nil {
 				t.Fatalf("apply: %v", err)
 			}
 			if tc.check != nil {
