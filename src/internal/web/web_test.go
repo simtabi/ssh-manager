@@ -175,6 +175,13 @@ func TestAuth(t *testing.T) {
 	if loc := rec.Header().Get("Location"); strings.Contains(loc, "token") || !strings.Contains(loc, "/hosts") {
 		t.Errorf("the redirect keeps the token or loses the page: %s", loc)
 	}
+	// A path a browser reads as another host never leaves the redirect.
+	for _, path := range []string{"//evil.example/", "/%5Cevil.example/", "//evil.example/hosts"} {
+		rec := do(s, httptest.NewRequest(http.MethodGet, "http://"+testHost+path+"?token="+testToken, nil))
+		if loc := rec.Header().Get("Location"); rec.Code != http.StatusSeeOther || loc != "/" {
+			t.Errorf("%s: %d to %q, want a redirect to /", path, rec.Code, loc)
+		}
+	}
 	var cookie *http.Cookie
 	for _, c := range rec.Result().Cookies() {
 		if c.Name == SessionCookie {

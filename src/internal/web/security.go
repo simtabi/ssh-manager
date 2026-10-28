@@ -142,7 +142,7 @@ func (s *Server) auth(next http.Handler) http.Handler {
 			q := clean.Query()
 			q.Del("token")
 			clean.RawQuery = q.Encode()
-			http.Redirect(w, r, clean.RequestURI(), http.StatusSeeOther)
+			http.Redirect(w, r, localTarget(clean), http.StatusSeeOther)
 			return
 		}
 		c, err := r.Cookie(SessionCookie)
@@ -204,4 +204,21 @@ func (s *Server) originAllowed(r *http.Request) bool {
 		return false
 	}
 	return s.hostAllowed(u.Host) && strings.EqualFold(u.Host, r.Host)
+}
+
+// localTarget is where the sign-in redirect may go: a path on this server.
+// A path starting "//" or "/\\" is read by a browser as another host, so
+// /?token= on such a path would send the freshly signed-in browser away.
+// Both the decoded and the escaped path are checked.
+func localTarget(u url.URL) string {
+	for _, p := range []string{u.Path, u.EscapedPath()} {
+		if !strings.HasPrefix(p, "/") || strings.HasPrefix(p, "//") || strings.HasPrefix(p, "/\\") {
+			return "/"
+		}
+	}
+	target := u.EscapedPath()
+	if u.RawQuery != "" {
+		target += "?" + u.RawQuery
+	}
+	return target
 }
