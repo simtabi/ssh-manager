@@ -70,6 +70,7 @@ project-local mode. See [installation.md](installation.md) for the full layout.
 | `net [selector]` | Per-host connection status + a VPN/tunnel indicator. Exit ≠0 if a `requires_vpn` host is unreachable. | U·F |
 | `expiry` | Per-key rotation-age table (ok / due_soon / overdue), from each key's stored `expires_on`. | U·E·F |
 | `audit [--notify]` | Where each key is deployed + expiry + hygiene + recent activity (optionally fire a desktop alert). | U·E·F |
+| `serve [--addr/--port/--allow-remote/--allow-host/--no-open/--token-file]` | The read-only web UI on `127.0.0.1:7822`: overview, profiles, hosts, keys, snapshots and their diffs, history, doctor, audit. Signs in with the token in the printed address; takes no lock. | U |
 | `history [--host/--profile/--key/--since/--until/--command/--source/--limit/--json]`, `history show <op>` | Every change sshmgr has made, newest first, from `log/history.db`: command, result, snapshot, audit events, and the manifest before and after. The first run imports `audit.log`, the inventory's dates and the snapshots. | U |
 
 ## Deploy, rotate, network/VPN

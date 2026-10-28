@@ -8,6 +8,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Added
 
+- **`sshmgr serve` (alias `ui`) - a read-only web UI on this machine.** An overview built from the same rows the
+  menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
+  snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's
+  manifest diff, and the doctor and audit reports. It listens on `127.0.0.1:7822`, signs a browser in with a
+  one-time token in the printed address, answers only its own Host names, and sends a strict CSP. A snapshot
+  that still holds private keys is listed but never opened. It takes no lock, so it never holds up a command.
+  Tabler 1.7.1 is embedded; `THIRD_PARTY_NOTICES.md` ships in every archive.
+
 - **`sshmgr history` - every change sshmgr has made.** A SQLite store at `log/history.db` records one operation
   per command that takes the lock: the command and its arguments (names only; other values read `<set>`), how it
   ended, the snapshot it took, the audit events it raised, and the manifest before and after. `--host`,
