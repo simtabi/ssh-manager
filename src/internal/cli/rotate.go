@@ -74,6 +74,11 @@ func rotateOne(c *cobra.Command, key string, allowUnverified, passphrase, yes, n
 		return err
 	}
 	lockForMutation(p)
+	// Refused before the backup: a backup written for a rotation that can
+	// never run is a bundle left behind for nothing.
+	if err := p.RefuseOutsideSandbox("rotate"); err != nil {
+		return err
+	}
 	if err := backupKeysBeforeDestroying(p, c.OutOrStdout(), noKeyBackup); err != nil {
 		return err
 	}
@@ -157,6 +162,9 @@ func rotateMany(c *cobra.Command, sel keysvc.Selection, allowUnverified, passphr
 	}
 	if err := confirmOrAbort(c, fmt.Sprintf("Rotate %d key(s): %s? (each current key moves to old/, "+
 		"replacing any earlier predecessor)", len(names), strings.Join(names, ", ")), yes); err != nil {
+		return err
+	}
+	if err := p.RefuseOutsideSandbox("rotate"); err != nil {
 		return err
 	}
 	if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {

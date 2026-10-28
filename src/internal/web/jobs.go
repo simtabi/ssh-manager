@@ -175,6 +175,9 @@ func deployJob(j *jobs.Job, p paths.Paths, retain int, key, target string) error
 // rotateJob is rotate's single-key path after its confirmation. A target that
 // takes the key by hand pauses the job with the new public key to paste.
 func rotateJob(j *jobs.Job, p paths.Paths, retain int, key string, allowUnverified bool) error {
+	if err := p.RefuseOutsideSandbox("rotate"); err != nil {
+		return err
+	}
 	if err := bundler.BackupBeforeDestroying(p, j, false); err != nil {
 		return err
 	}
@@ -284,6 +287,9 @@ func selected(p paths.Paths, sel keysvc.Selection) ([]string, error) {
 }
 
 func rotateKeysJob(j *jobs.Job, p paths.Paths, retain int, sel keysvc.Selection, allowUnverified bool) error {
+	if err := p.RefuseOutsideSandbox("rotate"); err != nil {
+		return err
+	}
 	if err := bundler.BackupBeforeDestroying(p, j, false); err != nil {
 		return err
 	}

@@ -556,6 +556,10 @@ func (t *tui) rotate() {
 	// the key before the one it archives. The TUI has no --no-key-backup, so
 	// it always needs SSH_MANAGER_AGE_RECIPIENT; the error says so.
 	lockForMutation(t.p)
+	if err := t.p.RefuseOutsideSandbox("rotate"); err != nil {
+		t.print("error: " + err.Error())
+		return
+	}
 	if err := backupKeysBeforeDestroying(t.p, t.out, false); err != nil {
 		t.print("error: " + err.Error())
 		return
