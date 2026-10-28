@@ -242,6 +242,13 @@ func TestEveryFormNamesAKnownAction(t *testing.T) {
 	c := signIn(t, s)
 	action := regexp.MustCompile(`name="action" value="([a-z-]+)"`)
 	seen := map[string]bool{}
+	// A bundle, for the snapshots page to offer a restore of.
+	if err := os.MkdirAll(p.DistDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p.DistDir(), "ssh-manager-20261001-100000.age"), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
 	var openable string
 	for _, s := range snapshots.List(p.SnapshotsDir()) {
 		if !snapshots.HoldsKeyMaterial(s) {

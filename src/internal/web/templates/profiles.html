@@ -61,6 +61,19 @@
   </div>
   <div class="col-lg-6">
     <div class="card">
+      <div class="card-header"><h2 class="card-title">Rotate keys</h2></div>
+      <div class="card-body">
+        {{template "job_open" .}}<input type="hidden" name="action" value="rotate-keys">
+          <div class="mb-2"><label class="form-label" for="r-profile">Profile</label><select class="form-select" id="r-profile" name="profile">{{range .Data}}<option value="{{.Name}}">{{.Name}}</option>{{end}}</select></div>
+          <div class="mb-3"><label class="form-check"><input class="form-check-input" type="checkbox" name="all" value="1"><span class="form-check-label">Every key in every profile instead</span></label></div>
+          <p class="text-secondary small mb-3">Each key a host uses rotates in turn, as a job. A key that fails is left as it was. An encrypted backup is written first.</p>
+          <button type="submit" class="btn btn-outline-danger">Review</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card">
       <div class="card-header"><h2 class="card-title">Move a profile to a category</h2></div>
       <div class="card-body">
         {{template "change_open" .}}<input type="hidden" name="action" value="profile-category">

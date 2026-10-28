@@ -53,6 +53,12 @@ func (s *Server) routes() http.Handler {
 	return mux
 }
 
+// snapshotsPage is the snapshots and the encrypted bundles beside them.
+type snapshotsPage struct {
+	Snapshots []SnapshotView
+	Bundles   []BundleView
+}
+
 // pages holds the page handlers, kept off Server so neither type grows into
 // the facade cmd/sshmgr's layering test guards against.
 type pages struct{ s *Server }
@@ -132,7 +138,13 @@ func (h pages) handleSnapshots(w http.ResponseWriter, r *http.Request) {
 		h.fail(w, r, err)
 		return
 	}
-	h.s.render(w, http.StatusOK, "snapshots", h.s.newView(r, "snapshots", "Snapshots", list))
+	bundles, err := h.s.opts.Engine.Bundles()
+	if err != nil {
+		h.fail(w, r, err)
+		return
+	}
+	h.s.render(w, http.StatusOK, "snapshots", h.s.newView(r, "snapshots", "Snapshots",
+		snapshotsPage{Snapshots: list, Bundles: bundles}))
 }
 
 type snapshotPage struct {

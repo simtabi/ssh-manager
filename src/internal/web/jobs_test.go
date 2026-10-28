@@ -3,6 +3,8 @@ package web
 import (
 	"net/http"
 	"net/url"
+	"os"
+	"path/filepath"
 	"regexp"
 	"strings"
 	"testing"
@@ -150,4 +152,56 @@ func liveOps(t *testing.T, s *Server) []history.Op {
 		t.Fatal(err)
 	}
 	return ops
+}
+
+// Rotating a profile's keys reviews the keys it will rotate, then writes the
+// backup first, so with no recipient it stops before anything else.
+func TestRotatingAProfileListsItsKeysAndNeedsABackup(t *testing.T) {
+	t.Setenv("SSH_MANAGER_AGE_RECIPIENT", "")
+	s, _, _ := newTestServer(t)
+	t.Cleanup(mutation.Release)
+	c := signIn(t, s)
+	key := fixtureKey(t, c)
+	rev := c.change("/jobs/review", url.Values{"action": {"rotate-keys"}, "profile": {"work"}})
+	if body := rev.Body.String(); rev.Code != http.StatusOK || !strings.Contains(body, key) ||
+		!strings.Contains(body, "sshmgr rotate work --yes") {
+		t.Fatalf("review: %d\n%s", rev.Code, body)
+	}
+	start := c.change("/jobs", url.Values{"action": {"rotate-keys"}, "all": {"1"}})
+	v := waitJob(t, s, strings.TrimPrefix(start.Header().Get("Location"), "/jobs/"))
+	if v.State != jobs.Failed || !strings.Contains(v.Err, "SSH_MANAGER_AGE_RECIPIENT") {
+		t.Errorf("job = %s %q", v.State, v.Err)
+	}
+	if rec := c.change("/jobs/review", url.Values{"action": {"rotate-keys"}, "profile": {"nosuch"}}); rec.Code != http.StatusBadRequest {
+		t.Errorf("an unknown profile: %d, want 400", rec.Code)
+	}
+}
+
+// A bundle restore takes only a bundle named as sshmgr names them, from dist/,
+// and decrypts only with the identity in the environment.
+func TestBundleRestoreTakesABundleFromDistAndTheIdentityFromTheEnvironment(t *testing.T) {
+	t.Setenv("SSH_MANAGER_AGE_IDENTITY_FILE", "")
+	s, p, _ := newTestServer(t)
+	t.Cleanup(mutation.Release)
+	c := signIn(t, s)
+	name := "ssh-manager-20261001-100000.age"
+	for _, bad := range []string{"../manifest.json", "ssh-manager-x.age", name} {
+		if rec := c.change("/jobs/review", url.Values{"action": {"bundle-restore"}, "bundle": {bad}}); rec.Code != http.StatusBadRequest {
+			t.Errorf("bundle %q: %d, want 400", bad, rec.Code)
+		}
+	}
+	if err := os.MkdirAll(p.DistDir(), 0o700); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(p.DistDir(), name), []byte("x"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if body := c.get("/snapshots").Body.String(); !strings.Contains(body, "Restore "+name) {
+		t.Errorf("the snapshots page does not offer the bundle:\n%s", body)
+	}
+	start := c.change("/jobs", url.Values{"action": {"bundle-restore"}, "bundle": {name}})
+	v := waitJob(t, s, strings.TrimPrefix(start.Header().Get("Location"), "/jobs/"))
+	if v.State != jobs.Failed || !strings.Contains(v.Err, "SSH_MANAGER_AGE_IDENTITY_FILE") {
+		t.Errorf("job = %s %q", v.State, v.Err)
+	}
 }
