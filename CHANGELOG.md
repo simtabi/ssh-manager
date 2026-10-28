@@ -48,6 +48,17 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Changed
 
+- **Commands no longer hold the lock while they wait for your answer.** `reconcile`, `keygen`, `key delete`,
+  `key regen-pub`, `host apply`, `clean` and `import` used to take the lock first and keep it while the question sat
+  on screen, so every other sshmgr command waited for as long as you took. They now ask first, then take the lock
+  and work out again what they showed you; if it moved meanwhile - another command changed the manifest - they stop
+  with "something changed while you were deciding" and change nothing. With `--yes` or no terminal, nothing asks,
+  and they lock first exactly as before. `keygen --force` now writes its key backup under the lock, after the
+  questions rather than between them.
+- **`host apply` asks before changing an existing profile.** It applied a batch to an existing profile without
+  asking, unlike every other manifest edit; it now shows the batch and asks, on a terminal. `--yes` and scripts are
+  unaffected.
+
 - **`config render`, `doctor --fix`, `providers --export`, `bundle`, `git use`, `vm docker-context`, `init`,
   `migrate` and `notify install` take the advisory lock.** Each changes state and none was serialized with the
   other commands; `config render` now also re-reads the manifest after its confirmation, under the lock.
