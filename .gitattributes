@@ -5,4 +5,6 @@
 *.tar.gz binary
 # The web UI's vendored Tabler files are committed byte for byte as upstream
 # ships them and pinned by MANIFEST.sha256, so git must not normalize them.
-src/internal/web/assets/vendor/** -text -diff linguist-vendored
+# icons.txt and TABLER_VERSION are edited by hand and keep their diffs.
+src/internal/web/assets/vendor/tabler/** -text -diff linguist-vendored
+src/internal/web/assets/vendor/tabler-icons.svg -text linguist-vendored
