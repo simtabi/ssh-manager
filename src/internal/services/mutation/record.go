@@ -1,6 +1,7 @@
 package mutation
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"os/user"
@@ -23,7 +24,12 @@ type Scope struct {
 	Source   string   // history.SourceCLI, SourceTUI, SourceWeb
 	DryRun   bool
 	Subjects []history.Subject
+	OpID     string // optional: the id to record under, so a caller can link to it
 }
+
+// ErrDeclined marks an error that means the person, or the state, said no:
+// a scope that ends with it is recorded as aborted, not as a failure.
+var ErrDeclined = errors.New("declined")
 
 // Outcome is how a scope ended.
 type Outcome struct {
@@ -39,9 +45,10 @@ type frame struct {
 }
 
 var (
-	recMu  sync.Mutex
-	stack  []*frame
-	warned bool
+	recMu     sync.Mutex
+	stack     []*frame
+	warned    bool
+	suspended int
 	// Disabled turns recording off. The tests that are not about history set
 	// it, and so does $SSH_MANAGER_HISTORY=0.
 	Disabled = os.Getenv("SSH_MANAGER_HISTORY") == "0"
@@ -96,6 +103,9 @@ func opening(p paths.Paths) {
 	}
 	recMu.Lock()
 	defer recMu.Unlock()
+	if suspended > 0 {
+		return
+	}
 	f := top()
 	if f == nil || f.op != nil {
 		return
@@ -117,6 +127,7 @@ func openLocked(f *frame, p paths.Paths) {
 		return
 	}
 	op := &history.Op{
+		OpID:            f.scope.OpID,
 		Command:         f.scope.Command,
 		Args:            f.scope.Args,
 		Source:          f.scope.Source,
@@ -193,6 +204,9 @@ func sinkEvent(e log.Event) {
 	}
 	recMu.Lock()
 	defer recMu.Unlock()
+	if suspended > 0 {
+		return
+	}
 	f := top()
 	if f == nil {
 		return
@@ -211,6 +225,21 @@ func sinkEvent(e log.Event) {
 	}
 	if err := f.store.AddEvent(f.op.OpID, e.TS, e.Name, e.Fields, f.op.Source, ""); err != nil {
 		warn(err)
+	}
+}
+
+// Suspend stops recording until the returned function is called. A preview
+// runs a change against a throwaway copy of the home, and what it does there
+// is not something that happened. The caller must keep anything real from
+// running meanwhile; change does, by previewing and applying one at a time.
+func Suspend() func() {
+	recMu.Lock()
+	suspended++
+	recMu.Unlock()
+	return func() {
+		recMu.Lock()
+		suspended--
+		recMu.Unlock()
 	}
 }
 

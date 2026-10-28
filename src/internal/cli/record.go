@@ -87,7 +87,9 @@ func recordCommands(root *cobra.Command) {
 	mutation.InstallSink()
 	var walk func(c *cobra.Command)
 	walk = func(c *cobra.Command) {
-		if run := c.RunE; run != nil {
+		// serve hosts scopes of its own, one per change a browser confirms; a
+		// scope around the whole server would claim every event it ever sees.
+		if run := c.RunE; run != nil && c.Name() != "serve" {
 			c.RunE = func(c *cobra.Command, args []string) error {
 				mutation.Begin(scopeFor(c, args))
 				err := run(c, args)

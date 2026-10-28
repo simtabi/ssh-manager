@@ -7,6 +7,7 @@
 package mutation
 
 import (
+	"errors"
 	"fmt"
 	"os"
 
@@ -84,10 +85,13 @@ func Release() {
 // it exits, which a server cannot do without blocking every other sshmgr
 // command for as long as it runs. fn must not call Scoped itself.
 func Scoped(p paths.Paths, s Scope, fn func() error) error {
+	// The CLI installs the sink at start-up; a caller that is not the CLI may
+	// not have, and its events would reach audit.log and miss the history.
+	InstallSink()
 	Begin(s)
 	LockForMutation(p)
 	err := fn()
-	End(Outcome{Err: err})
+	End(Outcome{Err: err, Aborted: errors.Is(err, ErrDeclined)})
 	Release()
 	return err
 }
