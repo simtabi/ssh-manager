@@ -170,3 +170,42 @@ func TestRestoreOverlaysAndKeepsWhatItCannotReplace(t *testing.T) {
 		t.Errorf("the bundled key was not laid back over the stale one: %q", got)
 	}
 }
+
+// Two bundles in the same second - a bundle, then the backup a purge or a
+// rotation writes - must both survive. The name was the second alone, so the
+// second opened the first with O_TRUNC, and a purge's backup, the only copy of
+// the keys it deleted, was overwritten by the next backup.
+func TestTwoBundlesInOneSecondBothSurvive(t *testing.T) {
+	ssh, cfg := writeSrc(t)
+	dest := t.TempDir()
+	b := New(ssh, cfg, fakeCipher{})
+	first, err := b.Bundle("age1recipient", dest, "20260101-000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	before, err := os.ReadFile(first.AgePath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(ssh, "profiles", "work", "work_a-ed25519"), []byte("PRIV-B\n"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second, err := b.Bundle("age1recipient", dest, "20260101-000000")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if second.AgePath == first.AgePath {
+		t.Fatalf("both bundles were written to %s", first.AgePath)
+	}
+	if after, _ := os.ReadFile(first.AgePath); string(after) != string(before) {
+		t.Error("the second bundle changed the first")
+	}
+	if got := Sorted(dest); len(got) != 2 || got[1] != second.AgePath {
+		t.Errorf("Sorted = %v, want the second bundle newest", got)
+	}
+	for _, side := range []string{".sha256", ".contents"} {
+		if _, err := os.Stat(second.AgePath + side); err != nil {
+			t.Errorf("the second bundle has no %s: %v", side, err)
+		}
+	}
+}
