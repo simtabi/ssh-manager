@@ -29,7 +29,10 @@
       </div>
       <div class="card-footer text-secondary d-flex flex-wrap gap-2 align-items-center">
         <span class="me-auto">These are the rows the <code>sshmgr</code> menu prints at the top.</span>
-        {{if not $.ReadOnly}}{{template "change_open" $}}<input type="hidden" name="action" value="config-render"><button type="submit" class="btn btn-sm btn-outline-primary">Re-render ~/.ssh/config</button></form>{{end}}
+        {{if not $.ReadOnly}}
+        {{template "change_open" $}}<input type="hidden" name="action" value="reconcile"><button type="submit" class="btn btn-sm btn-primary">Reconcile: mint missing keys and render</button></form>
+        {{template "change_open" $}}<input type="hidden" name="action" value="config-render"><button type="submit" class="btn btn-sm btn-outline-primary">Re-render ~/.ssh/config</button></form>
+        {{end}}
       </div>
     </div>
   </div>

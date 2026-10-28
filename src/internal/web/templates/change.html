@@ -11,6 +11,8 @@
 <div class="alert alert-danger" role="alert">{{icon "circle-x"}}<span class="ms-1">This change would fail, so it cannot be made: {{.Plan.Err}}</span></div>
 {{else}}
 {{if .Plan.Output}}<div class="card mb-3"><div class="card-header"><h2 class="card-title">What sshmgr would say</h2></div><div class="card-body"><pre class="code-block" tabindex="0">{{.Plan.Output}}</pre></div></div>{{end}}
+{{if .Plan.Effects}}<div class="card mb-3"><div class="card-header"><h2 class="card-title">What it would do</h2></div><ul class="list-group list-group-flush">{{range .Plan.Effects}}<li class="list-group-item">{{.}}</li>{{end}}</ul></div>{{end}}
+{{if .Plan.Mints}}<div class="alert alert-info" role="note">{{icon "key"}}<span class="ms-1">The keys below were minted for this preview and thrown away. Confirming mints new ones, so their fingerprints will differ; everything else will be as shown.</span></div>{{end}}
 <h2 class="h3">What it would write</h2>
 {{range .Plan.Files}}
 <div class="card mb-3">

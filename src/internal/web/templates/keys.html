@@ -23,5 +23,39 @@
   </div>
   {{else}}<div class="card-body text-secondary">No keys in the manifest yet.</div>{{end}}
 </div>
-<p class="text-secondary mt-2">A declared key no host uses can be deleted here: the declaration and its record go, the files stay. Keys are minted and rotated in a terminal, with <code>sshmgr reconcile</code>, <code>sshmgr key add</code> and <code>sshmgr rotate</code>.</p>
+<p class="text-secondary mt-2">A declared key no host uses can be deleted here: the declaration and its record go, the files stay. Rotation, overwriting a key, passphrases and keys kept in 1Password stay in the terminal: <code>sshmgr rotate</code>, <code>sshmgr keygen --force</code>, <code>--passphrase</code>.</p>
+{{if not .ReadOnly}}
+<div class="row row-cards mt-1">
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Add a key</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="key-add">
+          <div class="row g-2">
+            <div class="col-sm-4"><label class="form-label" for="k-profile">Profile</label><input class="form-control" id="k-profile" name="profile" required autocomplete="off" spellcheck="false" list="k-profiles"></div>
+            <div class="col-sm-4"><label class="form-label" for="k-name">Key name</label><input class="form-control" id="k-name" name="key" required autocomplete="off" spellcheck="false"></div>
+            <div class="col-sm-4"><label class="form-label" for="k-type">Type</label><select class="form-select" id="k-type" name="key_type"><option value="">the manifest's default</option><option>ed25519</option><option>ecdsa</option><option>rsa</option></select></div>
+            <div class="col-12"><label class="form-label" for="k-host">Wire it to host <span class="text-secondary">(optional alias in that profile)</span></label><input class="form-control" id="k-host" name="host" autocomplete="off" spellcheck="false"></div>
+          </div>
+          <datalist id="k-profiles">{{range .Data}}<option value="{{.Ref.Profile}}">{{end}}</datalist>
+          <p class="text-secondary small mt-2 mb-2">Declares the key and mints it, with no passphrase.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h2 class="card-title">Mint missing keys</h2></div>
+      <div class="card-body">
+        {{template "change_open" .}}<input type="hidden" name="action" value="keygen">
+          <div class="mb-2"><label class="form-label" for="g-target">For a profile or host alias</label><input class="form-control" id="g-target" name="target" required autocomplete="off" spellcheck="false" list="k-profiles"></div>
+          <p class="text-secondary small mb-2">Keys that exist are left alone.</p>
+          <button type="submit" class="btn btn-primary">Preview</button>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+{{end}}
 {{end}}

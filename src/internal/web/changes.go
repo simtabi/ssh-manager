@@ -26,15 +26,21 @@ import (
 // actionFields are the form fields each action reads, in the order the
 // confirmation carries them.
 var actionFields = map[string][]string{
-	"profile-add":    {"name", "key_scope", "key_name", "key_comment"},
-	"profile-edit":   {"name", "key_scope", "key_name"},
-	"profile-delete": {"name"},
-	"host-add":       {"profile", "alias", "hostname", "user", "port", "tags"},
-	"host-edit":      {"profile", "alias", "hostname", "user", "port", "tags"},
-	"host-delete":    {"profile", "alias"},
-	"key-delete":     {"profile", "key"},
-	"vm-add":         {"profile", "alias", "hypervisor", "vm", "user"},
-	"config-render":  {},
+	"profile-add":      {"name", "key_scope", "key_name", "key_comment"},
+	"profile-edit":     {"name", "key_scope", "key_name"},
+	"profile-delete":   {"name"},
+	"host-add":         {"profile", "alias", "hostname", "user", "port", "tags"},
+	"host-edit":        {"profile", "alias", "hostname", "user", "port", "tags"},
+	"host-delete":      {"profile", "alias"},
+	"key-delete":       {"profile", "key"},
+	"vm-add":           {"profile", "alias", "hypervisor", "vm", "user"},
+	"config-render":    {},
+	"reconcile":        {},
+	"keygen":           {"target"},
+	"key-add":          {"profile", "key", "key_type", "host"},
+	"providers-export": {},
+	"snapshots-prune":  {"keep"},
+	"doctor-fix":       {},
 }
 
 // nameRe is what a profile, alias or key name may be on the web: the
@@ -198,6 +204,32 @@ func buildChange(f url.Values) (change.Change, error) {
 		ch = change.VMAdd(n("profile"), n("alias"), hv, vm, user)
 	case "config-render":
 		ch = change.ConfigRender()
+	case "reconcile":
+		ch = change.Reconcile()
+	case "keygen":
+		ch = change.Keygen(n("target"))
+	case "key-add":
+		kt := pl("key_type")
+		switch kt {
+		case "", "ed25519", "rsa", "ecdsa", "ed25519-sk", "ecdsa-sk":
+		default:
+			errs = append(errs, badForm("key type must be ed25519, rsa, ecdsa, ed25519-sk or ecdsa-sk"))
+		}
+		host := ""
+		if strings.TrimSpace(f.Get("host")) != "" {
+			host = n("host")
+		}
+		ch = change.KeyAdd(n("profile"), n("key"), kt, host)
+	case "providers-export":
+		ch = change.ProvidersExport()
+	case "snapshots-prune":
+		keep, err := strconv.Atoi(strings.TrimSpace(f.Get("keep")))
+		if err != nil || keep < 0 || keep > 1000 {
+			errs = append(errs, badForm("keep must be a number from 0 to 1000"))
+		}
+		ch = change.SnapshotsPrune(keep)
+	case "doctor-fix":
+		ch = change.DoctorFix()
 	}
 	return ch, errors.Join(errs...)
 }

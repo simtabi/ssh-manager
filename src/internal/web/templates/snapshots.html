@@ -21,4 +21,16 @@
   </div>
   {{else}}<div class="card-body text-secondary">No snapshots yet.</div>{{end}}
 </div>
+{{if and (not .ReadOnly) .Data}}
+<div class="card mt-3">
+  <div class="card-body">
+    {{template "change_open" .}}<input type="hidden" name="action" value="snapshots-prune">
+      <div class="row g-2 align-items-end">
+        <div class="col-sm-3"><label class="form-label" for="s-keep">Keep the newest</label><input class="form-control" id="s-keep" name="keep" inputmode="numeric" value="10"></div>
+        <div class="col-sm-3"><button type="submit" class="btn btn-outline-danger w-100">Preview pruning</button></div>
+      </div>
+    </form>
+  </div>
+</div>
+{{end}}
 {{end}}

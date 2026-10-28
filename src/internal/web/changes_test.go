@@ -156,7 +156,7 @@ func TestReadOnlyServesNoChangeAndShowsNoForm(t *testing.T) {
 			t.Errorf("read-only %s: %d, want 405", path, rec.Code)
 		}
 	}
-	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys"} {
+	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys", "/snapshots", "/doctor"} {
 		if strings.Contains(c.get(page).Body.String(), "/changes/preview") {
 			t.Errorf("read-only %s shows a change form", page)
 		}
@@ -170,7 +170,7 @@ func TestEveryFormNamesAKnownAction(t *testing.T) {
 	c := signIn(t, s)
 	action := regexp.MustCompile(`name="action" value="([a-z-]+)"`)
 	seen := map[string]bool{}
-	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys"} {
+	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/keys", "/snapshots", "/doctor"} {
 		for _, m := range action.FindAllStringSubmatch(c.get(page).Body.String(), -1) {
 			seen[m[1]] = true
 			if _, ok := actionFields[m[1]]; !ok {
@@ -178,9 +178,43 @@ func TestEveryFormNamesAKnownAction(t *testing.T) {
 			}
 		}
 	}
-	for _, want := range []string{"profile-add", "profile-edit", "profile-delete", "host-add", "host-edit", "host-delete", "vm-add", "config-render"} {
+	for _, want := range []string{"profile-add", "profile-edit", "profile-delete", "host-add", "host-edit", "host-delete",
+		"vm-add", "config-render", "reconcile", "keygen", "key-add", "snapshots-prune", "doctor-fix", "providers-export"} {
 		if !seen[want] {
 			t.Errorf("no page offers %s", want)
 		}
+	}
+}
+
+// Minting from the web: the preview says its keys are throwaway, and
+// confirming mints the key that stays.
+func TestReconcileFromTheWebMintsTheMissingKey(t *testing.T) {
+	s, p, _ := newTestServer(t)
+	t.Cleanup(mutation.Release)
+	c := signIn(t, s)
+	add := addHost("db")
+	add.Set("hash", hashField.FindStringSubmatch(c.change("/changes/preview", addHost("db")).Body.String())[1])
+	if rec := c.change("/changes/apply", add); rec.Code != http.StatusOK {
+		t.Fatalf("host add: %d", rec.Code)
+	}
+	f := url.Values{"action": {"reconcile"}}
+	body := c.change("/changes/preview", f).Body.String()
+	if !strings.Contains(body, "minted for this preview and thrown away") {
+		t.Errorf("a minting preview should say its keys are throwaway:\n%s", body)
+	}
+	m := hashField.FindStringSubmatch(body)
+	if m == nil {
+		t.Fatalf("no confirm hash:\n%s", body)
+	}
+	f.Set("hash", m[1])
+	if rec := c.change("/changes/apply", f); rec.Code != http.StatusOK {
+		t.Fatalf("apply: %d\n%s", rec.Code, rec.Body.String())
+	}
+	pub, err := os.ReadFile(p.SSHDir + "/profiles/work/work_db-ed25519.pub")
+	if err != nil || !strings.HasPrefix(string(pub), "ssh-ed25519 ") {
+		t.Errorf("no key minted for the new host: %v", err)
+	}
+	if b, _ := os.ReadFile(p.SSHDir + "/profiles/work/work_gh-ed25519"); !strings.Contains(string(b), privateMarker) {
+		t.Error("the private key that was already on disk was replaced")
 	}
 }
