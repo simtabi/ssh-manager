@@ -11,6 +11,7 @@ import (
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/history"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/mutation"
+	"github.com/simtabi/ssh-manager/src/v3/internal/services/snapshots"
 	"github.com/simtabi/ssh-manager/src/v3/internal/util/paths"
 )
 
@@ -224,4 +225,132 @@ func webOps(t *testing.T, p paths.Paths) []history.Op {
 		t.Fatal(err)
 	}
 	return ops
+}
+
+// A minting change previews with a throwaway key, leaves the real home alone,
+// and still applies: the hash binds to the keys it makes, not their bytes.
+func TestAMintingChangePreviewsAndApplies(t *testing.T) {
+	p := home(t)
+	if err := HostAdd("work", "new01", HostInput{Hostname: ptr("new01.example"), User: ptr("ops")}).Run(p, io.Discard); err != nil {
+		t.Fatal(err)
+	}
+	newKey := filepath.Join(p.SSHDir, "profiles", "work", "work_new01-ed25519")
+	plan, err := Preview(p, Reconcile())
+	if err != nil || plan.Err != "" {
+		t.Fatalf("preview: %v %s", err, plan.Err)
+	}
+	if !plan.Mints {
+		t.Error("the plan should say its keys are throwaway")
+	}
+	if _, err := os.Stat(newKey); err == nil {
+		t.Fatal("the preview minted a key into the real home")
+	}
+	shown := false
+	for _, f := range plan.Files {
+		shown = shown || strings.HasSuffix(f.Path, "work_new01-ed25519.pub")
+	}
+	if !shown {
+		t.Errorf("the preview does not show the key it would make: %+v", plan.Files)
+	}
+	// The existing key is not minted again: its placeholder stood in for it.
+	for _, f := range plan.Files {
+		if strings.HasSuffix(f.Path, "work_gh-ed25519.pub") {
+			t.Errorf("the preview re-minted a key that exists: %s %s", f.Path, f.State)
+		}
+	}
+	if _, _, err := Apply(p, Reconcile(), plan.Hash, 10, history.SourceWeb); err != nil {
+		t.Fatalf("apply: %v", err)
+	}
+	if _, err := os.Stat(newKey); err != nil {
+		t.Error("apply did not mint the key")
+	}
+	if b, _ := os.ReadFile(filepath.Join(p.SSHDir, "profiles", "work", "work_gh-ed25519")); string(b) != privateMarker+"\n" {
+		t.Error("apply touched the existing private key")
+	}
+}
+
+// The preview copy stands in for a private key with an empty file: present,
+// so nothing re-mints it, and holding nothing of it.
+func TestPlaceholdersAreEmpty(t *testing.T) {
+	p := home(t)
+	checked := 0
+	spy := Change{Command: "spy", Run: func(shadow paths.Paths, _ io.Writer) error {
+		fi, err := os.Stat(filepath.Join(shadow.SSHDir, "profiles", "work", "work_gh-ed25519"))
+		if err != nil {
+			t.Errorf("no placeholder for the private key: %v", err)
+			return nil
+		}
+		checked++
+		if fi.Size() != 0 {
+			t.Errorf("the placeholder holds %d bytes", fi.Size())
+		}
+		return nil
+	}}
+	if _, err := Preview(p, spy); err != nil {
+		t.Fatal(err)
+	}
+	if checked != 1 {
+		t.Fatal("the spy did not run")
+	}
+}
+
+// A preview mints for real, so a profile kept in 1Password is refused: the
+// preview would leave an item in the vault.
+func TestMintingInOnePasswordIsRefused(t *testing.T) {
+	p := home(t)
+	if err := os.WriteFile(p.Manifest(), []byte(`{"version":1,"defaults":{"key_type":"ed25519"},"profiles":{
+	  "work":{"key_scope":"per_service","key_store":"1password","op_vault":"Private",
+	    "hosts":[{"alias":"gh","hostname":"github.com","user":"git"}]}}}`), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	for _, ch := range []Change{Reconcile(), Keygen("work"), KeyAdd("work", "x", "", "")} {
+		plan, err := Preview(p, ch)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if !strings.Contains(plan.Err, "1Password") {
+			t.Errorf("%s: plan.Err = %q, want the 1Password refusal", ch.Command, plan.Err)
+		}
+	}
+}
+
+// Prune and fix show what they do outside the files a preview copies.
+func TestEffectsAreShownAndBound(t *testing.T) {
+	p := home(t)
+	for i := 0; i < 3; i++ {
+		mutation.SnapshotBeforeMutation(p, 10)
+	}
+	mutation.Release()
+	plan, err := Preview(p, SnapshotsPrune(1))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(plan.Effects) != 2 || !strings.HasPrefix(plan.Effects[0], "removes snapshot ssh-") {
+		t.Errorf("effects = %v, want the two oldest snapshots", plan.Effects)
+	}
+	// A new snapshot changes what prune would remove, so the hash moves.
+	mutation.SnapshotBeforeMutation(p, 10)
+	mutation.Release()
+	again, _ := Preview(p, SnapshotsPrune(1))
+	if again.Hash == plan.Hash {
+		t.Error("the prune preview's hash did not move when its effects did")
+	}
+	if _, _, err := Apply(p, SnapshotsPrune(1), again.Hash, 10, history.SourceWeb); err != nil {
+		t.Fatal(err)
+	}
+	if n := len(snapshots.List(p.SnapshotsDir())); n != 1 {
+		t.Errorf("%d snapshots left, want 1 (prune must not snapshot first)", n)
+	}
+
+	if err := os.Chmod(p.Manifest(), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	fix, _ := Preview(p, DoctorFix())
+	found := false
+	for _, e := range fix.Effects {
+		found = found || strings.Contains(e, "manifest.json")
+	}
+	if !found {
+		t.Errorf("doctor --fix effects %v do not name the manifest", fix.Effects)
+	}
 }

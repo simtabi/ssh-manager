@@ -92,3 +92,7 @@ func CurrentFiles(sshDir string) (map[string]string, error) {
 	})
 	return out, err
 }
+
+// Archivable reports whether a file of this name may go into a snapshot: the
+// allowlist of files known to hold nothing secret.
+func Archivable(name string) bool { return archivable(name) }

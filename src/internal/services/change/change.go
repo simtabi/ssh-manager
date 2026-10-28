@@ -19,11 +19,13 @@ import (
 	"bytes"
 	"crypto/sha256"
 	"encoding/hex"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"io"
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"sync"
@@ -46,6 +48,21 @@ type Change struct {
 	Args     []string
 	Subjects []history.Subject
 	Run      func(p paths.Paths, out io.Writer) error
+
+	// Mints marks a change that makes a new key. Its preview mints a
+	// throwaway key in the copy, which apply cannot reproduce, so public key
+	// blobs and fingerprints are left out of the hash: the confirmation
+	// binds to everything else the change writes, and to which keys it makes.
+	Mints bool
+
+	// NoSnapshot skips the ~/.ssh snapshot before the change, for one that
+	// manages the snapshots themselves and would otherwise prune its own.
+	NoSnapshot bool
+
+	// Effects lists what the change does outside the files a preview copies
+	// - snapshots it removes, modes it fixes - as lines for the preview to
+	// show. They are part of the hash, so they cannot change unseen either.
+	Effects func(p paths.Paths) ([]string, error)
 }
 
 // FileDiff is one file the change touches. Path is relative to the home it
@@ -62,8 +79,10 @@ type Plan struct {
 	Command string
 	Args    []string
 	Files   []FileDiff
+	Effects []string
 	Output  string
 	Err     string // the change would fail, with this message
+	Mints   bool   // the keys it shows are throwaway; apply mints new ones
 	Hash    string
 }
 
@@ -100,9 +119,17 @@ func preview(p paths.Paths, ch Change) (Plan, error) {
 	defer cleanup()
 
 	var out bytes.Buffer
-	plan := Plan{Command: ch.Command, Args: ch.Args}
-	if err := ch.Run(shadow, &out); err != nil {
-		plan.Err = err.Error()
+	plan := Plan{Command: ch.Command, Args: ch.Args, Mints: ch.Mints}
+	if ch.Effects != nil {
+		if plan.Effects, err = ch.Effects(p); err != nil {
+			plan.Err = err.Error()
+		}
+	}
+	// An effect that cannot be worked out is not something to run blind.
+	if plan.Err == "" {
+		if err := ch.Run(shadow, &out); err != nil {
+			plan.Err = err.Error()
+		}
 	}
 	plan.Output = strings.ReplaceAll(out.String(), shadow.ConfigDir, p.ConfigDir)
 	plan.Output = strings.ReplaceAll(plan.Output, shadow.SSHDir, p.SSHDir)
@@ -111,7 +138,7 @@ func preview(p paths.Paths, ch Change) (Plan, error) {
 		return Plan{}, err
 	}
 	plan.Files = diffTrees(before, after)
-	plan.Hash = hashPlan(ch, before, plan)
+	plan.Hash = hashPlan(ch, before, after, plan)
 	return plan, nil
 }
 
@@ -142,7 +169,9 @@ func Apply(p paths.Paths, ch Change, hash string, retain int, source string) (Pl
 		if fresh.Err != "" {
 			return errors.New(fresh.Err)
 		}
-		if snap := mutation.SnapshotBeforeMutation(p, retain); snap != "" {
+		if ch.NoSnapshot {
+			mutation.LockForMutation(p)
+		} else if snap := mutation.SnapshotBeforeMutation(p, retain); snap != "" {
 			res.Snapshot = filepath.Base(snap)
 		}
 		var out bytes.Buffer
@@ -207,14 +236,32 @@ func copyHome(p paths.Paths) (paths.Paths, func(), error) {
 			return paths.Paths{}, nil, err
 		}
 	}
-	// The directory layout matters to commands that look for a profile's
-	// directory; recreate it, without any of the files in it.
+	// The layout matters as much as the contents: a command decides whether
+	// a key exists by looking for its file. So every directory is recreated,
+	// every copied file keeps its modification time (a recorded key is dated
+	// from its .pub), and every file the copy does not take - a private key,
+	// above all - is stood in for by an empty placeholder at the same path.
+	// The placeholder says the file is there; it holds nothing of it.
 	_ = filepath.Walk(p.SSHDir, func(path string, fi os.FileInfo, err error) error {
-		if err != nil || !fi.IsDir() {
+		if err != nil {
 			return nil
 		}
-		if rel, err := filepath.Rel(p.SSHDir, path); err == nil {
-			_ = os.MkdirAll(filepath.Join(shadow.SSHDir, rel), 0o700)
+		rel, err := filepath.Rel(p.SSHDir, path)
+		if err != nil {
+			return nil
+		}
+		dst := filepath.Join(shadow.SSHDir, rel)
+		switch {
+		case fi.IsDir():
+			_ = os.MkdirAll(dst, 0o700)
+		case !fi.Mode().IsRegular():
+		case snapshots.Archivable(fi.Name()):
+			_ = os.Chtimes(dst, fi.ModTime(), fi.ModTime())
+		default:
+			if f, err := os.OpenFile(dst, os.O_CREATE|os.O_EXCL|os.O_WRONLY, 0o600); err == nil {
+				_ = f.Close()
+				_ = os.Chtimes(dst, fi.ModTime(), fi.ModTime())
+			}
 		}
 		return nil
 	})
@@ -260,9 +307,12 @@ func diffTrees(before, after map[string]string) []FileDiff {
 // hashPlan binds a preview to the change and the state it was computed
 // from. The output is left out: it names paths that differ between the copy
 // and the home, and it describes the change rather than being it.
-func hashPlan(ch Change, before map[string]string, plan Plan) string {
+func hashPlan(ch Change, before, after map[string]string, plan Plan) string {
 	h := sha256.New()
 	_, _ = fmt.Fprintf(h, "%s\x00%s\x00%s\x00", ch.Command, strings.Join(ch.Args, "\x00"), plan.Err)
+	for _, e := range plan.Effects {
+		_, _ = fmt.Fprintf(h, "effect\x00%s\x00", e)
+	}
 	keys := make([]string, 0, len(before))
 	for k := range before {
 		keys = append(keys, k)
@@ -271,8 +321,56 @@ func hashPlan(ch Change, before map[string]string, plan Plan) string {
 	for _, k := range keys {
 		_, _ = fmt.Fprintf(h, "%s\x00%s\x00", k, history.Hash([]byte(before[k])))
 	}
+	if ch.Mints {
+		// Not the diff: the inventory is keyed by fingerprint, so a fresh key's
+		// record lands somewhere different every time and moves the diff's
+		// shape, not just its bytes. The state it leads to, in canonical form,
+		// is the same however the throwaway key happened to come out.
+		names := make([]string, 0, len(after))
+		for k := range after {
+			names = append(names, k)
+		}
+		sort.Strings(names)
+		for _, k := range names {
+			_, _ = fmt.Fprintf(h, "after\x00%s\x00%s\x00", k, canonical(k, after[k]))
+		}
+		return hex.EncodeToString(h.Sum(nil))
+	}
 	for _, f := range plan.Files {
 		_, _ = fmt.Fprintf(h, "%s\x00%s\x00%s\x00", f.Path, f.State, history.FormatDiff(f.Lines))
 	}
 	return hex.EncodeToString(h.Sum(nil))
 }
+
+// canonical is a file's content with what differs between two mints of the
+// same keys taken out: key blobs and fingerprints, and for the inventory, the
+// fingerprint-keyed order of its records.
+func canonical(name, body string) string {
+	blank := func(s string) string {
+		return volatileFingerprints.ReplaceAllString(volatileKeys.ReplaceAllString(s, "<key>"), "<fingerprint>")
+	}
+	if name != "config/inventory.json" {
+		return blank(body)
+	}
+	var inv struct {
+		Version int                        `json:"version"`
+		Keys    map[string]json.RawMessage `json:"keys"`
+	}
+	if json.Unmarshal([]byte(body), &inv) != nil {
+		return blank(body)
+	}
+	recs := make([]string, 0, len(inv.Keys))
+	for _, r := range inv.Keys {
+		recs = append(recs, blank(string(r)))
+	}
+	sort.Strings(recs)
+	return fmt.Sprintf("version %d\n%s", inv.Version, strings.Join(recs, "\n"))
+}
+
+// volatileKeys and volatileFingerprints match what differs between two mints
+// of the same key: the public key blob and its fingerprint. Inventory records
+// are keyed by fingerprint, so the key match covers those lines too.
+var (
+	volatileKeys         = regexp.MustCompile(`(ssh-ed25519|ssh-rsa|ecdsa-sha2-[a-z0-9]+|sk-[a-z0-9@.-]+) [A-Za-z0-9+/=]{16,}`)
+	volatileFingerprints = regexp.MustCompile(`SHA256:[A-Za-z0-9+/=]{20,}`)
+)
