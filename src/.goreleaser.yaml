@@ -85,6 +85,9 @@ archives:
       - LICENSE
       - README.md
       - CHANGELOG.md
+      # The web UI embeds Tabler, Bootstrap and Popper; their MIT notices ship
+      # with the binary that carries them.
+      - THIRD_PARTY_NOTICES.md
 
 # Native Linux packages (nfpm operates on the Linux builds only).
 nfpms:

@@ -1,0 +1,9 @@
+# The vendored Tabler assets the web UI embeds. This is the one place their
+# versions are pinned. Change them with `make tabler-update` (newest releases)
+# or edit and run `make tabler-vendor`; never by hand-editing vendored files.
+# bootstrap and @popperjs/core are bundled inside tabler.min.js; they are
+# listed so their licence texts are fetched at the matching versions.
+@tabler/core 1.7.1
+@tabler/icons-sprite 3.49.0
+bootstrap 5.3.8
+@popperjs/core 2.11.8
