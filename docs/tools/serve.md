@@ -115,11 +115,37 @@ is refused here, as its page refuses to open it.
 and the Termius CSV (`sshmgr termius export`, with or without git hosts) as downloads. Nothing is
 written to the home, so `--read-only` keeps them.
 
+## Jobs
+
+Deploying, rotating and rolling back reach the hosts that use a key, so no copy can preview them.
+A key's page offers each as a **job**:
+
+1. **Review.** The page says what the job will do, and the command it is the same as.
+2. **Run.** The job starts, and its page shows the output as it comes. It holds the lock until it
+   ends, and it is recorded in the history like any other change.
+
+| Job | Where | The same as |
+|---|---|---|
+| Deploy a key to every host that uses it | the key's page | `sshmgr deploy <profile/key> --yes` |
+| Rotate a key | the key's page | `sshmgr rotate <profile/key> --yes` |
+| Roll a key back to its predecessor | the key's page | `sshmgr rollback <profile/key> --yes` |
+
+- **One job at a time.** Starting a second while one runs takes you to the one running. No change
+  is previewed or made while a job runs.
+- **Nothing a job runs can prompt.** `ssh` and `ssh-copy-id` run with stdin closed and
+  `BatchMode=yes`, so a target that needs a password fails at once, with a note to deploy it from a
+  terminal. A terminal is where the CLI still asks.
+- **Rotate asks you to paste a key.** A target that takes the key by hand, such as a panel, pauses
+  the job with the new public key shown for copying. Confirm once it is pasted; sshmgr then logs in
+  with it to prove it. Rotate writes an encrypted backup first, so it needs
+  `SSH_MANAGER_AGE_RECIPIENT`.
+- **Cancel** stops a job at its next step, never inside one. A rotate waiting on you is answered no.
+
 Some changes are terminal-only:
 
 - rotating, overwriting a key (`keygen --force`), and passphrases;
-- deploying, rotating, rolling back, revoking a key from its targets (`--revoke`), restoring a
-  bundle: these reach other machines, or need the encrypted backup's identity;
+- rotating many keys at once, revoking a key from its targets (`--revoke`), and restoring a
+  bundle, which needs the encrypted backup's identity;
 - pinning host keys (`knownhosts init`, `knownhosts pin`): a scan reaches every host, and trusting
   a key is a decision made per key;
 - `key regen-pub`: it needs the private keys, which a preview never copies, and may ask for a

@@ -1,0 +1,36 @@
+{{define "content"}}{{with .Data}}
+<div class="page-header d-print-none mb-3">
+  <div class="text-secondary">Job, started {{when .Started}}</div>
+  <h1 class="page-title"><code>sshmgr {{.Command}}</code></h1>
+</div>
+<div class="mb-3" id="job-state" data-state="{{.State}}">
+  {{if eq .State "running"}}<span class="badge badge-info">running</span>
+  {{else if eq .State "waiting"}}<span class="badge badge-warn">waiting for you</span>
+  {{else if eq .State "done"}}<span class="badge badge-ok">done</span>
+  {{else if eq .State "cancelled"}}<span class="badge badge-warn">cancelled</span>
+  {{else}}<span class="badge badge-bad">failed</span>{{end}}
+  {{if .OpID}}<a class="ms-2" href="/history/{{.OpID}}">{{icon "history"}}<span class="ms-1">In the history</span></a>{{end}}
+</div>
+{{with .Question}}
+<div class="card mb-3 border-warning">
+  <div class="card-body">
+    <p>{{.Prompt}}</p>
+    {{if .Text}}<pre class="code-block" tabindex="0">{{.Text}}</pre>{{end}}
+    <div class="d-flex gap-2">
+      <form method="post" action="/jobs/{{$.Data.ID}}/answer"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="answer" value="yes"><button type="submit" class="btn btn-primary">Done, carry on</button></form>
+      <form method="post" action="/jobs/{{$.Data.ID}}/answer"><input type="hidden" name="csrf" value="{{$.CSRF}}"><input type="hidden" name="answer" value="no"><button type="submit" class="btn btn-outline-secondary">Not done, stop here</button></form>
+    </div>
+  </div>
+</div>
+{{end}}
+{{if .Err}}<div class="alert {{if eq .State "cancelled"}}alert-warning{{else}}alert-danger{{end}}" role="alert">{{.Err}}</div>{{end}}
+<div class="card mb-3">
+  <div class="card-header"><h2 class="card-title">Output</h2></div>
+  <div class="card-body"><pre class="code-block" id="job-log" tabindex="0" aria-live="polite" data-events="/jobs/{{.ID}}/events">{{range .Lines}}{{.}}
+{{end}}</pre></div>
+</div>
+{{if or (eq .State "running") (eq .State "waiting")}}
+<form method="post" action="/jobs/{{.ID}}/cancel"><input type="hidden" name="csrf" value="{{$.CSRF}}"><button type="submit" class="btn btn-outline-danger">Cancel at the next step</button></form>
+<p class="text-secondary small mt-2">The page updates as the job runs. Without JavaScript, reload it.</p>
+{{end}}
+{{end}}{{end}}

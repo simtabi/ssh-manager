@@ -252,12 +252,19 @@ func TestEveryFormNamesAKnownAction(t *testing.T) {
 		t.Fatal("the changes above took no snapshot to offer a restore of")
 	}
 	for _, page := range []string{"/", "/profiles", "/hosts", "/hosts/gh", "/hosts/devbox", "/keys", "/snapshots",
-		"/snapshots/" + openable, "/doctor", "/audit"} {
+		"/snapshots/" + openable, "/keys/" + fixtureKey(t, c), "/doctor", "/audit"} {
 		for _, m := range action.FindAllStringSubmatch(c.get(page).Body.String(), -1) {
 			seen[m[1]] = true
-			if _, ok := actionFields[m[1]]; !ok {
+			_, change := actionFields[m[1]]
+			_, job := jobFields[m[1]]
+			if !change && !job {
 				t.Errorf("%s posts unknown action %q", page, m[1])
 			}
+		}
+	}
+	for want := range jobFields {
+		if !seen[want] {
+			t.Errorf("no page offers the %s job", want)
 		}
 	}
 	if len(actionFields) < 22 {

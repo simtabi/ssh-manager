@@ -36,4 +36,17 @@
     </div>
   </div>
 </div>
+{{if not $.ReadOnly}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">On its targets</h2></div>
+  <div class="card-body">
+    <p class="text-secondary">These reach the hosts that use the key. Each runs as a job, and its output shows as it runs.</p>
+    <div class="d-flex flex-wrap gap-2 align-items-start">
+      {{template "job_open" $}}<input type="hidden" name="action" value="deploy"><input type="hidden" name="key" value="{{.Detail.Ref}}"><button type="submit" class="btn btn-primary">Deploy {{.Detail.Ref}}</button></form>
+      {{template "job_open" $}}<input type="hidden" name="action" value="rotate"><input type="hidden" name="key" value="{{.Detail.Ref}}"><button type="submit" class="btn btn-outline-danger">Rotate {{.Detail.Ref}}</button></form>
+      {{template "job_open" $}}<input type="hidden" name="action" value="rollback"><input type="hidden" name="key" value="{{.Detail.Ref}}"><button type="submit" class="btn btn-outline-secondary">Roll back to the previous key</button></form>
+    </div>
+  </div>
+</div>
+{{end}}
 {{end}}{{end}}

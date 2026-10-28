@@ -219,7 +219,7 @@ func TestHostCheckRefusesARebindingHost(t *testing.T) {
 	}
 }
 
-// Only the two change routes take a POST: one without the session's CSRF
+// Only the change and job routes take a POST: one without the session's CSRF
 // token is refused, and a valid one anywhere else finds no route that acts.
 func TestOnlyTheChangeRoutesTakeAPost(t *testing.T) {
 	s, _, _ := newTestServer(t)

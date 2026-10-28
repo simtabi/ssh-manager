@@ -12,10 +12,10 @@ import (
 
 // routes registers every page. Each takes names from the path, the query or
 // the form, never a filesystem path, and the engine resolves each name against
-// what exists. The two POST routes are the only ones that change anything, and
-// --read-only does not register them.
+// what exists. Only the POST routes change anything - the changes and the jobs
+// (see jobs.go) - and --read-only registers none of them, nor the job pages.
 func (s *Server) routes() http.Handler {
-	h := pages{s}
+	h, jh := pages{s}, jobPages{s}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /assets/{hash}/{path...}", s.serveAsset)
 	mux.HandleFunc("GET /{$}", h.handleOverview)
@@ -35,6 +35,12 @@ func (s *Server) routes() http.Handler {
 	if !s.opts.ReadOnly {
 		mux.HandleFunc("POST /changes/preview", h.handlePreview)
 		mux.HandleFunc("POST /changes/apply", h.handleApply)
+		mux.HandleFunc("POST /jobs/review", jh.handleJobReview)
+		mux.HandleFunc("POST /jobs", jh.handleJobStart)
+		mux.HandleFunc("GET /jobs/{id}", jh.handleJob)
+		mux.HandleFunc("GET /jobs/{id}/events", jh.handleJobEvents)
+		mux.HandleFunc("POST /jobs/{id}/answer", jh.handleJobAnswer)
+		mux.HandleFunc("POST /jobs/{id}/cancel", jh.handleJobCancel)
 	}
 	mux.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
 		if r.Method != http.MethodGet && r.Method != http.MethodHead {
