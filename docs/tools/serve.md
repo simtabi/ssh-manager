@@ -46,7 +46,11 @@ These changes can be made from the pages:
 | Add a profile | Profiles | `sshmgr profile add` |
 | Change a profile's key scope | Profiles | `sshmgr profile edit --key-scope --key-name` |
 | Delete a profile | Profiles | `sshmgr profile delete --yes` |
+| Delete a profile and its key files | Profiles, ticking *and its key files* | `sshmgr profile delete --purge --yes` |
+| Move a profile to a category | Profiles | `sshmgr profile edit --category` |
 | Add a host, or a VM host | Hosts | `sshmgr host add`, `sshmgr vm add` |
+| Add or update hosts from specs | Hosts | `sshmgr host apply --host … --yes` |
+| Create a VM host's Docker context | the host's page | `sshmgr vm docker-context` |
 | Edit a host's hostname, user, port or tags | the host's page | `sshmgr host edit` |
 | Delete a host and its pins | the host's page | `sshmgr host delete --yes` |
 | Delete a declared key that no host uses | Keys | `sshmgr key delete --yes` |
@@ -57,6 +61,10 @@ These changes can be made from the pages:
 | Prune old snapshots | Snapshots | `sshmgr snapshots prune --keep` |
 | Fix file modes | Doctor | `sshmgr doctor --fix` |
 | Write an editable `providers.json` | Doctor | `sshmgr providers --export` |
+| Remove stale pins and records, optionally adopting pins first | Doctor | `sshmgr clean --yes [--adopt]` |
+| Write an encrypted bundle | Snapshots | `sshmgr bundle [--keep]` |
+| Send the desktop alert, if one is due | Audit | `sshmgr audit --notify` |
+| Send a test notification | Audit | `sshmgr notify test` |
 
 Each change takes two steps:
 
@@ -82,24 +90,42 @@ preview's; everything else comes out as shown. These changes never overwrite a k
 never take a passphrase, and never pin hosts, which needs the network. They're refused for a profile
 kept in 1Password: a preview mints for real, and in a vault that would leave an item behind.
 
+**Files the copy cannot show.** A purge deletes private keys, and a category move carries them to a
+new directory. The copy holds them only as placeholders, so the preview lists each one the change
+would remove or create, by path, without its contents. That list is bound to the confirmation too.
+
+**Deleting a profile's key files** always writes an encrypted backup of `~/.ssh` and the config
+first, as the CLI does, so it needs `SSH_MANAGER_AGE_RECIPIENT` set where `sshmgr serve` runs, and
+`age` installed. There is no `--no-key-backup` on the web.
+
 **Changes with effects outside the copy.** Prune and fix list what they would do outside the copied
-files: the snapshots they would remove, the paths whose modes they would fix. The confirmation is
-bound to those lists too. Prune takes no snapshot of its own first, because one more snapshot would
-push another out.
+files: the snapshots they would remove, the paths whose modes they would fix. A bundle, a Docker
+context and the notifications act outside the home altogether, so a preview never runs that part;
+it lists what confirming will do, and only confirming does it. The confirmation is bound to those
+lists too. Prune, bundle, the Docker context and the notifications take no snapshot first, as their
+commands take none.
+
+**Exports download.** The hosts page offers the flat `ssh_config` (`sshmgr config export --flat`)
+and the Termius CSV (`sshmgr termius export`, with or without git hosts) as downloads. Nothing is
+written to the home, so `--read-only` keeps them.
 
 Some changes are terminal-only:
 
 - rotating, overwriting a key (`keygen --force`), and passphrases;
-- `--purge`: it deletes private keys, which a preview never copies;
-- moving a profile to a category: it moves key directories;
-- pinning host keys, `host apply`, `key regen-pub`, `clean`, the exports, `bundle` and `vm docker-context`.
+- deploying, revoking a key from its targets (`--revoke`), restoring a snapshot or a bundle: these
+  reach other machines or replace `~/.ssh`, and their output is worth watching as it comes;
+- pinning host keys (`knownhosts init`, `knownhosts pin`): a scan reaches every host, and trusting
+  a key is a decision made per key;
+- `key regen-pub`: it needs the private keys, which a preview never copies, and may ask for a
+  passphrase;
+- `--no-key-backup`.
 
-`--read-only` serves none of these changes, and the pages show no forms.
+`--read-only` serves none of the changes in the table above, and the pages show no forms.
 
 ## What it will not do
 
 - **Hold the lock while you read.** It holds the lock only while it checks and makes a change you
-  confirmed.
+  confirmed. The `sshmgr` menu now does the same.
 - **Open a snapshot that holds private keys.** A snapshot written before private keys were left out
   is listed but never opened. `sshmgr snapshots prune --keep 0` removes it.
 - **Show private keys.** Pages read public keys, `known_hosts` and config only.

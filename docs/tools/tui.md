@@ -92,9 +92,12 @@ redraws the menu without comment; a closed input ends the session.
 
 Every entry under *Change `~/.ssh`*, and snapshot restore, asks before it writes,
 and each applies the same guards as its CLI command: it takes the advisory lock
-before reading the manifest, and `~/.ssh` is snapshotted before any change.
-Reconcile shows its dry run as the question and pins host keys afterwards unless
-`SSH_MANAGER_AUTO_PIN=0`. Deploy is refused in dev mode. Rotate writes an
+before it writes, and `~/.ssh` is snapshotted before any change. The lock is
+released when the change ends, so an open menu never holds up another sshmgr
+command between changes, and no question waits for your answer while holding it.
+Reconcile shows its dry run as the question, then takes the lock and works the
+dry run out again; if the manifest moved while you were deciding, it stops and
+changes nothing. It pins host keys afterwards unless `SSH_MANAGER_AUTO_PIN=0`. Deploy is refused in dev mode. Rotate writes an
 encrypted key backup first, as `sshmgr rotate` does, so it needs
 `SSH_MANAGER_AGE_RECIPIENT`; the TUI has no `--no-key-backup`, so without a
 recipient it stops and says so.

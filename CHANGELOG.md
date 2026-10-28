@@ -20,6 +20,13 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   overwrite, take a passphrase or pin, and are refused for 1Password profiles. Snapshot pruning,
   `doctor --fix` and `providers --export` are there too, with what they do outside the files listed in
   the preview and bound to the confirmation.
+- **The rest of the everyday changes are in the web UI.** `host apply` (a box of specs), moving a profile to a
+  category, deleting a profile with its key files (always after an encrypted backup, so it needs
+  `SSH_MANAGER_AGE_RECIPIENT`), `clean`, an encrypted `bundle`, a VM host's Docker context, a test notification
+  and the audit's desktop alert. A preview now names the files it cannot show - the private keys a purge deletes
+  or a category move carries - and what a change does outside the home is listed and bound to the confirmation.
+  The flat `ssh_config` and the Termius CSV download from the hosts page and write nothing, so `--read-only`
+  keeps them.
 - **`sshmgr serve` (alias `ui`) - a web UI on this machine.** An overview built from the same rows the
   menu's banner prints, the profiles, hosts (with the rendered block and the pinned host keys) and keys, the
   snapshots with a diff against `~/.ssh` or another snapshot, the operation history with each operation's
@@ -58,6 +65,10 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **`host apply` asks before changing an existing profile.** It applied a batch to an existing profile without
   asking, unlike every other manifest edit; it now shows the batch and asks, on a terminal. `--yes` and scripts are
   unaffected.
+- **The menu no longer holds the lock for the rest of the session.** A `sshmgr` menu took the lock with its first
+  change and kept it until it quit, so an open menu held up every other sshmgr command. Each change now releases it
+  when it ends. Reconcile from the menu also asks before it takes the lock, and stops with "something changed
+  while you were deciding" if the manifest moved meanwhile.
 
 - **`config render`, `doctor --fix`, `providers --export`, `bundle`, `git use`, `vm docker-context`, `init`,
   `migrate` and `notify install` take the advisory lock.** Each changes state and none was serialized with the
