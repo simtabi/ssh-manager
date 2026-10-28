@@ -104,6 +104,37 @@ flowchart LR
     AW --> UL[release lock]
 ```
 
+### Web UI: preview, confirm, or run as a job
+
+`sshmgr serve` (`internal/web`) reads the home through one `Engine`, and makes changes through two
+services that the CLI's own code paths sit behind:
+
+```mermaid
+flowchart LR
+    F[form: names, never paths] --> P[change.Preview<br/>run it on a private copy]
+    P --> D[diff + effects + hash]
+    D --> C[confirm]
+    C --> A[change.Apply<br/>lock, preview again, compare hash]
+    A -->|same| R[snapshot, run on the home, record]
+    A -->|moved| D
+    F --> J[jobs: review, then run<br/>deploy, rotate, rollback, bundle restore]
+    J --> S[output over SSE<br/>pause to ask, cancel between steps]
+```
+
+- **A preview is the change, made somewhere harmless.** `services/change` copies the config files
+  and every file a snapshot may hold into a temporary home, with an empty placeholder wherever a
+  private key is, runs the change there, and diffs the result. Files it holds only as placeholders
+  are listed by path when a change removes or creates them. Work a copy cannot hold - a Docker
+  context, a notification, an encrypted backup - runs on apply only, and is listed beforehand.
+- **A confirmation is bound to a hash** of the change, the state it was computed from, and what it
+  will do. Apply takes the lock, previews again, and stops if the hash moved.
+- **Jobs** (`services/jobs`) are the changes that reach other machines. They run one at a time,
+  under the lock for as long as they run, with stdin closed and `BatchMode=yes` for ssh.
+- **One change at a time per process.** Previews, changes and jobs share one slot
+  (`mutation.Exclusive`), and each operation is scoped (`mutation.Scoped`): it takes the lock, opens
+  its history record, and releases both when it ends. The CLI keeps its once-per-process lock; the
+  menu releases it after each change.
+
 ### reconcile: manifest to ~/.ssh
 
 ```mermaid
@@ -273,6 +304,15 @@ imports `services`).
 
 Services composing one another is fine and expected: `reconciler` needs
 `keystore`, `doctor` needs `preflight`. That is layering, not a God object.
+
+### Why does the web UI preview a change by making it?
+
+A description of a change is a second implementation of it, and the two drift: the preview says one
+thing and the change does another. Running the real change against a copy shows exactly what it
+writes, through the same code the CLI runs, and the parity test holds every web change to its CLI
+command byte for byte. The copy holds no private key, so a preview cannot leak one. What a copy
+cannot show - private keys, Docker contexts, notifications, other machines - is listed instead, or
+runs as a job, where nothing is previewed and the output is shown as it happens.
 
 ### Why is the TUI a plain menu?
 
