@@ -35,3 +35,22 @@ func applyManifestEdit(c *cobra.Command, p paths.Paths) error {
 func warnDangling(out io.Writer, p paths.Paths, m *manifest.Manifest) {
 	change.WarnDangling(out, p, m)
 }
+
+// recheck is the second half of asking before locking. A command that asks a
+// person first must not hold the lock while they read - that blocks every
+// other sshmgr command for as long as they take - so it asks unlocked, then
+// takes the lock here and works out again what its question showed. If that
+// moved, the person agreed to something that is no longer what would happen,
+// and nothing is done. A command that asks nobody (--yes, no terminal) takes
+// the lock before it reads, as it always did, and never gets here.
+func recheck(p paths.Paths, shown string, again func() (string, error)) error {
+	lockForMutation(p)
+	now, err := again()
+	if err != nil {
+		return err
+	}
+	if now != shown {
+		return errChanged
+	}
+	return nil
+}

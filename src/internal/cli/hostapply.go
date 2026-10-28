@@ -8,11 +8,8 @@ import (
 
 	"github.com/spf13/cobra"
 
-	"github.com/simtabi/ssh-manager/src/v3/internal/core/inventory"
 	"github.com/simtabi/ssh-manager/src/v3/internal/core/manifest"
-	"github.com/simtabi/ssh-manager/src/v3/internal/platform"
 	"github.com/simtabi/ssh-manager/src/v3/internal/services/editor"
-	"github.com/simtabi/ssh-manager/src/v3/internal/services/reconciler"
 )
 
 const hostApplyLong = `Add or update hosts from compact specs:
@@ -79,37 +76,52 @@ func newHostApplyCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
+			willAsk := !dryRun && asks(yes)
+			if !willAsk {
+				lockForMutation(p)
+			}
 			out := c.OutOrStdout()
-			m, err := manifest.Load(p.Manifest())
-			if err != nil {
-				return err
-			}
-			_, exists := m.Profiles[profile]
-			if !exists && !createProfile {
-				return fmt.Errorf("unknown profile: %q (add it with `sshmgr profile add %s`, "+
-					"or pass --create-profile / --category)", profile, profile)
-			}
 			ed := editor.New(p)
-
-			if dryRun || !exists {
-				// A missing profile cannot be previewed against, so every spec is an add.
+			var exists bool
+			// summarize reads the profile and previews the batch against it. A
+			// missing profile cannot be previewed against, so every spec is an add.
+			summarize := func() (string, error) {
+				m, err := manifest.Load(p.Manifest())
+				if err != nil {
+					return "", err
+				}
+				_, exists = m.Profiles[profile]
+				if !exists && !createProfile {
+					return "", fmt.Errorf("unknown profile: %q (add it with `sshmgr profile add %s`, "+
+						"or pass --create-profile / --category)", profile, profile)
+				}
 				var preview []editor.ApplyResult
 				if exists {
 					if preview, err = ed.ApplyHosts(profile, specs, true); err != nil {
-						return err
+						return "", err
 					}
 				} else {
 					for _, s := range specs {
 						preview = append(preview, editor.ApplyResult{Alias: s.Alias, Action: editor.HostAdded})
 					}
 				}
-				summary := formatApply(profile, !exists, preview, true)
-				if dryRun {
-					_, _ = fmt.Fprintln(out, summary)
-					return nil
-				}
-				if err := confirmChange(c, summary, yes); err != nil {
+				return formatApply(profile, !exists, preview, true), nil
+			}
+			summary, err := summarize()
+			if err != nil {
+				return err
+			}
+			if dryRun {
+				_, _ = fmt.Fprintln(out, summary)
+				return nil
+			}
+			// Every batch asks now, an existing profile's too (W15): it used to
+			// apply with no confirmation where every other manifest edit asks.
+			if err := confirmChange(c, summary, yes); err != nil {
+				return err
+			}
+			if willAsk {
+				if err := recheck(p, summary, summarize); err != nil {
 					return err
 				}
 			}
@@ -129,16 +141,7 @@ func newHostApplyCmd() *cobra.Command {
 				}
 				return nil
 			}
-			m, err = manifest.Load(p.Manifest())
-			if err != nil {
-				return err
-			}
-			inv, err := inventory.Load(p.Inventory())
-			if err != nil {
-				return err
-			}
-			r := reconciler.New(p, m, inv, platform.EmitUseKeychain())
-			return reconcileApply(c, p, m, r, yes, false, noPin)
+			return reconcileApply(c, p, yes, false, noPin)
 		},
 	}
 	f := cmd.Flags()

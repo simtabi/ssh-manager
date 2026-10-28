@@ -29,25 +29,37 @@ func newKeygenCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
-			m, err := manifest.Load(p.Manifest())
-			if err != nil {
+			// It asks about overwrites when --force is given without --yes, and
+			// asks to proceed on a terminal. Either way it asks before it locks,
+			// then re-reads under the lock (see recheck); asking nobody, it locks
+			// first, as it always did.
+			willAsk := !yes && (force || stdinIsTerminal())
+			if !willAsk {
+				lockForMutation(p)
+			}
+			var m *manifest.Manifest
+			var r *reconciler.Reconciler
+			var existing []manifest.KeyRef
+			load := func() error {
+				var err error
+				if m, err = manifest.Load(p.Manifest()); err != nil {
+					return err
+				}
+				if !selectorKnown(m, target) {
+					return fmt.Errorf("unknown profile or host: %q", target)
+				}
+				inv, err := inventory.Load(p.Inventory())
+				if err != nil {
+					return err
+				}
+				r = reconciler.New(p, m, inv, platform.EmitUseKeychain())
+				existing, err = r.ExistingKeys(target)
 				return err
 			}
-			if !selectorKnown(m, target) {
-				return fmt.Errorf("unknown profile or host: %q", target)
-			}
-			inv, err := inventory.Load(p.Inventory())
-			if err != nil {
+			if err := load(); err != nil {
 				return err
 			}
-			r := reconciler.New(p, m, inv, platform.EmitUseKeychain())
 			out := c.OutOrStdout()
-
-			existing, err := r.ExistingKeys(target)
-			if err != nil {
-				return err
-			}
 			// Keyed by ref, and prompted per ref. The same key name legitimately
 			// exists in several profiles, so both the question and the answer have
 			// to name the profile - otherwise one "yes" regenerates a stranger's
@@ -71,13 +83,6 @@ func newKeygenCmd() *cobra.Command {
 				}
 			}
 
-			// Overwriting displaces the current key into old/, which discards any
-			// predecessor already parked there.
-			if len(overwrite) > 0 {
-				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
-					return err
-				}
-			}
 			pw := ""
 			if passphrase {
 				secret, err := readPassphrase(c.InOrStdin())
@@ -94,6 +99,24 @@ func newKeygenCmd() *cobra.Command {
 					what = "keygen mints every missing key in the manifest."
 				}
 				if err := confirmChange(c, what, yes); err != nil {
+					return err
+				}
+			}
+			if willAsk {
+				// The answers were about these keys existing; they still must.
+				shown := keyRefs(existing)
+				if err := recheck(p, shown, func() (string, error) {
+					err := load()
+					return keyRefs(existing), err
+				}); err != nil {
+					return err
+				}
+			}
+			// Overwriting displaces the current key into old/, which discards any
+			// predecessor already parked there. Backed up under the lock, so it is
+			// of the keys about to be replaced, not of what another command left.
+			if len(overwrite) > 0 {
+				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
 					return err
 				}
 			}
@@ -152,4 +175,12 @@ func selectorKnown(m *manifest.Manifest, selector string) bool {
 		}
 	}
 	return false
+}
+
+func keyRefs(refs []manifest.KeyRef) string {
+	names := make([]string, 0, len(refs))
+	for _, r := range refs {
+		names = append(names, r.String())
+	}
+	return strings.Join(names, ",")
 }

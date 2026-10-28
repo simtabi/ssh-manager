@@ -46,12 +46,17 @@ func newKeyDeleteCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
-			m, err := manifest.Load(p.Manifest())
-			if err != nil {
-				return err
+			if yes {
+				lockForMutation(p) // nobody is asked, so lock before reading, as ever
 			}
-			ref, err := m.ResolveKeySelector(args[0])
+			resolve := func() (manifest.KeyRef, error) {
+				m, err := manifest.Load(p.Manifest())
+				if err != nil {
+					return manifest.KeyRef{}, err
+				}
+				return m.ResolveKeySelector(args[0])
+			}
+			ref, err := resolve()
 			if err != nil {
 				return err
 			}
@@ -62,6 +67,14 @@ func newKeyDeleteCmd() *cobra.Command {
 			}
 			if err := confirmOrAbort(c, what, yes); err != nil {
 				return err
+			}
+			if !yes {
+				if err := recheck(p, ref.String(), func() (string, error) {
+					r, err := resolve()
+					return r.String(), err
+				}); err != nil {
+					return err
+				}
 			}
 			if purge {
 				if err := backupKeysBeforeDestroying(p, out, noKeyBackup); err != nil {
@@ -238,23 +251,43 @@ func newKeyRegenPubCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
-			m, err := manifest.Load(p.Manifest())
+			willAsk := !dryRun && asks(yes)
+			if !willAsk {
+				lockForMutation(p)
+			}
+			load := func() (*inventory.Inventory, []keysvc.Row, *pubkeys.Service, error) {
+				m, err := manifest.Load(p.Manifest())
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				inv, err := inventory.Load(p.Inventory())
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				rows, err := keysvc.New(m, inv, p.SSHDir).Select(keysvc.Selection{Selectors: args, Category: category, All: all})
+				if err != nil {
+					return nil, nil, nil, err
+				}
+				return inv, rows, pubkeys.New(m, inv), nil
+			}
+			inv, rows, svc, err := load()
 			if err != nil {
 				return err
 			}
-			inv, err := inventory.Load(p.Inventory())
-			if err != nil {
-				return err
-			}
-			rows, err := keysvc.New(m, inv, p.SSHDir).Select(keysvc.Selection{Selectors: args, Category: category, All: all})
-			if err != nil {
-				return err
-			}
-			svc := pubkeys.New(m, inv)
 			if !dryRun {
 				if err := confirmChange(c, fmt.Sprintf("Regenerate the .pub of %d key(s).", len(rows)), yes); err != nil {
 					return err
+				}
+				if willAsk {
+					// Asked unlocked; the keys it named must still be the keys it does.
+					shown := refsOf(rows)
+					if err := recheck(p, shown, func() (string, error) {
+						var err error
+						inv, rows, svc, err = load()
+						return refsOf(rows), err
+					}); err != nil {
+						return err
+					}
 				}
 				snapshotBeforeMutation(p)
 			}
@@ -280,4 +313,13 @@ func newKeyRegenPubCmd() *cobra.Command {
 	cmd.Flags().BoolVar(&dryRun, "dry-run", false, "report what would change, and change nothing")
 	cmd.Flags().BoolVarP(&yes, "yes", "y", false, "skip the confirmation prompt")
 	return cmd
+}
+
+// refsOf names a selection's keys, in order, for recheck to compare.
+func refsOf(rows []keysvc.Row) string {
+	names := make([]string, 0, len(rows))
+	for _, r := range rows {
+		names = append(names, r.Ref.String())
+	}
+	return strings.Join(names, ",")
 }

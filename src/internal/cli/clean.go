@@ -35,7 +35,9 @@ func newCleanCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
+			// The question shows nothing read from the home, so asking first and
+			// locking after it loses nothing - and no one's reading time holds
+			// up other commands.
 			if !dryRun {
 				if err := confirmChange(c,
 					"clean removes known_hosts pins tagged sshmgr that no host needs, "+
@@ -43,6 +45,7 @@ func newCleanCmd() *cobra.Command {
 					return err
 				}
 			}
+			lockForMutation(p)
 			m, err := manifest.Load(p.Manifest())
 			if err != nil {
 				return err

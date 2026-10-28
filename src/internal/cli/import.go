@@ -35,7 +35,8 @@ func newImportCmd() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			lockForMutation(p)
+			// Asked before the lock: the question names paths, not state, so
+			// nothing it shows can go stale while someone reads it.
 			if !dryRun {
 				if err := confirmChange(c,
 					"import replaces "+p.Manifest()+" with what it reads from "+configPath+
@@ -43,6 +44,7 @@ func newImportCmd() *cobra.Command {
 					return err
 				}
 			}
+			lockForMutation(p)
 			imp := importer.New(p, platform.EmitUseKeychain())
 
 			if dryRun {

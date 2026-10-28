@@ -93,7 +93,7 @@ func recordCommands(root *cobra.Command) {
 			c.RunE = func(c *cobra.Command, args []string) error {
 				mutation.Begin(scopeFor(c, args))
 				err := run(c, args)
-				mutation.End(mutation.Outcome{Err: err, Aborted: errors.Is(err, errAborted)})
+				mutation.End(mutation.Outcome{Err: err, Aborted: errors.Is(err, errAborted) || errors.Is(err, errChanged)})
 				return err
 			}
 		}
