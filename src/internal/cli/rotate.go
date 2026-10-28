@@ -172,29 +172,13 @@ func rotateMany(c *cobra.Command, sel keysvc.Selection, allowUnverified, passphr
 	}
 	snapshotBeforeMutation(p)
 	rot := withManualPaste(c, rotator.New(p, m, inv))
-	var failed []string
-	for _, n := range names {
-		report, err := rot.Rotate(n, allowUnverified, pw)
-		switch {
-		case err != nil:
-			failed = append(failed, n)
-			_, _ = fmt.Fprintf(out, "rotation FAILED: %s\n  %v\n", n, err)
-			continue
-		case report.Committed:
-			if err := inv.Save(p.Inventory()); err != nil {
-				return err
-			}
-		default:
-			failed = append(failed, n)
-		}
-		_, _ = fmt.Fprintln(out, report.Format())
+	failed, err := rot.RotateEach(names, allowUnverified, pw, out, func() error { return inv.Save(p.Inventory()) })
+	if err != nil {
+		return err
 	}
-	_, _ = fmt.Fprintf(out, "%d of %d key(s) rotated", len(names)-len(failed), len(names))
 	if len(failed) > 0 {
-		_, _ = fmt.Fprintf(out, "; not rotated (left as they were): %s\n", strings.Join(failed, ", "))
 		return errNotClean
 	}
-	_, _ = fmt.Fprintln(out)
 	return nil
 }
 
