@@ -132,6 +132,9 @@ A key's page offers each as a **job**:
 | Rotate a profile's keys, or every key | Profiles | `sshmgr rotate <profile> --yes`, `sshmgr rotate --all --yes` |
 | Restore an encrypted bundle from `dist/` | Snapshots | `sshmgr restore <bundle> --yes` |
 
+- **Not in dev mode.** Deploy, rotate and rollback reach real servers, so under `--dev-root` the key
+  and profile pages say so instead of offering them, as the CLI refuses them. A bundle restore is
+  local, and is offered.
 - **One job at a time.** Starting a second while one runs takes you to the one running. No change
   is previewed or made while a job runs.
 - **Nothing a job runs can prompt.** `ssh` and `ssh-copy-id` run with stdin closed and

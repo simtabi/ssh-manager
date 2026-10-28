@@ -205,3 +205,33 @@ func TestBundleRestoreTakesABundleFromDistAndTheIdentityFromTheEnvironment(t *te
 		t.Errorf("job = %s %q", v.State, v.Err)
 	}
 }
+
+// Dev mode refuses what reaches real servers. A key's page says so instead of
+// offering buttons that can only fail, and the job itself is refused at
+// review, with the CLI's reason.
+func TestDevModeOffersNoJobThatReachesServers(t *testing.T) {
+	p, _ := fixtureHome(t)
+	p.DevRoot = filepath.Dir(p.SSHDir)
+	s, err := New(Options{Engine: AppEngine{P: p}, Token: testToken, AllowedHosts: AllowedHosts("127.0.0.1", 7822, nil)})
+	if err != nil {
+		t.Fatal(err)
+	}
+	c := signIn(t, s)
+	key := fixtureKey(t, c)
+	body := c.get("/keys/" + key).Body.String()
+	if strings.Contains(body, `value="deploy"`) || !strings.Contains(body, "dev mode") {
+		t.Errorf("a dev-mode key page offers deploy, or does not say why not:\n%s", body)
+	}
+	for _, action := range []string{"deploy", "rotate", "rollback"} {
+		rec := c.change("/jobs/review", url.Values{"action": {action}, "key": {key}})
+		if rec.Code != http.StatusBadRequest || !strings.Contains(rec.Body.String(), "refused in dev mode") {
+			t.Errorf("%s in dev mode: %d", action, rec.Code)
+		}
+	}
+	if strings.Contains(c.get("/profiles").Body.String(), `value="rotate-keys"`) {
+		t.Error("a dev-mode profiles page offers to rotate keys")
+	}
+	if rec := c.change("/jobs/review", url.Values{"action": {"rotate-keys"}, "all": {"1"}}); rec.Code != http.StatusBadRequest {
+		t.Errorf("rotate-keys in dev mode: %d", rec.Code)
+	}
+}

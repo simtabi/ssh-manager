@@ -71,6 +71,17 @@ func buildJob(f url.Values, h home) (jobSpec, error) {
 	if _, ok := jobFields[action]; !ok {
 		return jobSpec{}, badForm("unknown job %q", action)
 	}
+	// Everything but a bundle restore reaches real servers, which a sandbox
+	// cannot contain: refused here, as the CLI refuses it.
+	if action != "bundle-restore" {
+		verb := action
+		if verb == "rotate-keys" {
+			verb = "rotate"
+		}
+		if err := h.p.RefuseOutsideSandbox(verb); err != nil {
+			return jobSpec{}, badForm("%s", err.Error())
+		}
+	}
 	retain := h.retain
 	if retain < 1 {
 		retain = 10
