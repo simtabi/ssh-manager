@@ -241,3 +241,27 @@ func TestDevModeRefusesEveryVerbThatReachesATarget(t *testing.T) {
 		t.Errorf("dev mode reached a target:\n%s", b)
 	}
 }
+
+// Rotate is refused in dev mode, and refused first: it used to write its
+// encrypted key backup, then refuse, so a sandbox run left a bundle behind (and
+// with no recipient set, said the backup was missing rather than why it could
+// never run).
+func TestRotateIsRefusedInDevModeBeforeItWritesABackup(t *testing.T) {
+	editHome(t)
+	t.Setenv("SSH_MANAGER_AGE_RECIPIENT", "")
+	t.Setenv("SSH_MANAGER_AUTO_PIN", "0")
+	sandbox := filepath.Join(t.TempDir(), "sandbox")
+	run(t, "--dev-root", sandbox, "init")
+	run(t, "--dev-root", sandbox, "profile", "add", "work")
+	run(t, "--dev-root", sandbox, "host", "add", "work", "gh", "-H", "github.com", "-u", "git")
+	run(t, "--dev-root", sandbox, "reconcile", "--yes", "--no-pin")
+	for _, args := range [][]string{
+		{"rotate", "work/work_gh-ed25519", "--yes"},
+		{"rotate", "--all", "--yes"},
+	} {
+		_, err := runErr(t, append([]string{"--dev-root", sandbox}, args...)...)
+		if err == nil || !strings.Contains(err.Error(), "refused in dev mode") {
+			t.Errorf("%v: %v, want the dev-mode refusal first", args, err)
+		}
+	}
+}

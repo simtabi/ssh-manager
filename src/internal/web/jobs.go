@@ -71,6 +71,17 @@ func buildJob(f url.Values, h home) (jobSpec, error) {
 	if _, ok := jobFields[action]; !ok {
 		return jobSpec{}, badForm("unknown job %q", action)
 	}
+	// Everything but a bundle restore reaches real servers, which a sandbox
+	// cannot contain: refused here, as the CLI refuses it.
+	if action != "bundle-restore" {
+		verb := action
+		if verb == "rotate-keys" {
+			verb = "rotate"
+		}
+		if err := h.p.RefuseOutsideSandbox(verb); err != nil {
+			return jobSpec{}, badForm("%s", err.Error())
+		}
+	}
 	retain := h.retain
 	if retain < 1 {
 		retain = 10
@@ -175,6 +186,9 @@ func deployJob(j *jobs.Job, p paths.Paths, retain int, key, target string) error
 // rotateJob is rotate's single-key path after its confirmation. A target that
 // takes the key by hand pauses the job with the new public key to paste.
 func rotateJob(j *jobs.Job, p paths.Paths, retain int, key string, allowUnverified bool) error {
+	if err := p.RefuseOutsideSandbox("rotate"); err != nil {
+		return err
+	}
 	if err := bundler.BackupBeforeDestroying(p, j, false); err != nil {
 		return err
 	}
@@ -284,6 +298,9 @@ func selected(p paths.Paths, sel keysvc.Selection) ([]string, error) {
 }
 
 func rotateKeysJob(j *jobs.Job, p paths.Paths, retain int, sel keysvc.Selection, allowUnverified bool) error {
+	if err := p.RefuseOutsideSandbox("rotate"); err != nil {
+		return err
+	}
 	if err := bundler.BackupBeforeDestroying(p, j, false); err != nil {
 		return err
 	}

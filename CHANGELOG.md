@@ -96,6 +96,14 @@ adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ### Fixed
 
+- **A bundle could overwrite another written in the same second.** Bundles were named for the second they were
+  written in, and the second truncated the first. A `bundle` followed by a purge's backup, or a purge followed by a
+  rotation, could lose the backup holding the only copy of the keys the purge deleted. A bundle is now created
+  exclusively, and a name already taken gets the next `-N` suffix.
+- **`rotate` in dev mode wrote a key backup, then refused.** It now refuses first, in the CLI, the menu and the web
+  UI, so a sandbox run leaves no bundle behind. With no recipient set it says why it can never run, not that the
+  backup is missing.
+
 - **Rotation keeps a key's declared type.** A key declared under a profile's `keys` with its own `type` (say
   `ecdsa`) came back from `rotate` as `defaults.key_type` (`ed25519`) under its `ecdsa` name, and its inventory
   record said `ed25519`. Rotation now mints, and records, the type `reconcile` used.

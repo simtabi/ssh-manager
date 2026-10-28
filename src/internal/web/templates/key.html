@@ -36,7 +36,12 @@
     </div>
   </div>
 </div>
-{{if not $.ReadOnly}}
+{{if and (not $.ReadOnly) $.DevRoot}}
+<div class="card mt-3">
+  <div class="card-header"><h2 class="card-title">On its targets</h2></div>
+  <div class="card-body text-secondary">Deploying, rotating and rolling back reach real servers, which the sandbox under <code>{{$.DevRoot}}</code> cannot contain, so dev mode refuses them, as the CLI does.</div>
+</div>
+{{else if not $.ReadOnly}}
 <div class="card mt-3">
   <div class="card-header"><h2 class="card-title">On its targets</h2></div>
   <div class="card-body">

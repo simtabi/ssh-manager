@@ -16,6 +16,7 @@ import (
 	"compress/gzip"
 	"crypto/sha256"
 	"encoding/hex"
+	"errors"
 	"fmt"
 	"io"
 	"os"
@@ -142,11 +143,28 @@ func (b *Bundler) Bundle(recipient, destDir, stamp string) (BundleResult, error)
 	if err := os.MkdirAll(destDir, 0o700); err != nil {
 		return BundleResult{}, err
 	}
-	agePath := filepath.Join(destDir, "ssh-manager-"+stamp+".age")
-	contents, err := b.encryptTo(agePath, recipient)
-	if err != nil {
-		_ = os.Remove(agePath) // never leave a half-written bundle to be trusted later
-		return BundleResult{}, err
+	// A bundle never replaces another: two in one second - a bundle, then the
+	// backup a purge or a rotation writes - would otherwise share a name, and
+	// the second would truncate the first, which may be the only copy of keys
+	// since deleted. The file is created exclusively, so a name taken between
+	// looking and writing moves on to the next suffix too.
+	var agePath string
+	var contents []string
+	for n := 0; ; n++ {
+		agePath = filepath.Join(destDir, "ssh-manager-"+stamp+".age")
+		if n > 0 {
+			agePath = filepath.Join(destDir, fmt.Sprintf("ssh-manager-%s-%d.age", stamp, n))
+		}
+		var err error
+		contents, err = b.encryptTo(agePath, recipient)
+		if errors.Is(err, os.ErrExist) {
+			continue
+		}
+		if err != nil {
+			_ = os.Remove(agePath) // never leave a half-written bundle to be trusted later
+			return BundleResult{}, err
+		}
+		break
 	}
 	sha, err := sha256File(agePath)
 	if err != nil {
@@ -168,9 +186,9 @@ func (b *Bundler) Bundle(recipient, destDir, stamp string) (BundleResult, error)
 func (b *Bundler) encryptTo(agePath, recipient string) ([]string, error) {
 	// Owner-only from creation: the cipher must never be handed a descriptor to a
 	// file that was briefly world-readable.
-	out, err := os.OpenFile(agePath, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
+	out, err := os.OpenFile(agePath, os.O_WRONLY|os.O_CREATE|os.O_EXCL, 0o600)
 	if err != nil {
-		return nil, err
+		return nil, err // os.ErrExist: Bundle picks the next name
 	}
 	defer func() { _ = out.Close() }()
 
